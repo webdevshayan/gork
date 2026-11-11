@@ -1,6 +1,8 @@
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'chat_service.dart';
+import 'cloud_computer_store.dart';
 import 'history_store.dart';
 import 'memory_store.dart';
 import 'notifications.dart';
@@ -18,6 +20,7 @@ class Locator {
   static SharedPreferences? _prefs;
   static Scheduler? _scheduler;
   static NotificationService? _notifications;
+  static http.Client? _httpClient;
 
   static void bind({
     SecureStore? store,
@@ -39,6 +42,7 @@ class Locator {
     _prefs = null;
     _scheduler = null;
     _notifications = null;
+    _httpClient = null;
   }
 
   static SecureStore get store => _store ??= SecureStoreImpl();
@@ -62,4 +66,8 @@ class Locator {
 
   static Scheduler get scheduler =>
       _scheduler ??= Scheduler(tasks, chat: chat, onNotify: notifications.show);
+
+  static CloudComputerStore get cloudComputer => CloudComputerStore(prefs);
+
+  static http.Client get httpClient => _httpClient ??= http.Client();
 }

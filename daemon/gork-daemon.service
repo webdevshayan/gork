@@ -1,0 +1,21 @@
+[Unit]
+Description=gork companion daemon (scheduled AI tasks, 24/7)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gork/daemon
+# --- Configure me ---
+# The key stays on YOUR VPS. Use any OpenAI-compatible provider.
+#Environment=GORK_BASE_URL=https://api.openai.com/v1
+#Environment=GORK_MODEL=gpt-4o-mini
+#Environment=GORK_API_KEY=sk-your-key-here
+# Optional free push channel (no account needed): pick a random long topic name.
+#Environment=NTFY_TOPIC=gork-your-random-topic-name
+Environment=GORK_PORT=8787
+ExecStart=/usr/lib/dart/bin/dart run bin/server.dart
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
