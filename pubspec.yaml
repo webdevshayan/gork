@@ -35,11 +35,20 @@ dependencies:
   http: ^1.2.0
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.2
-  flutter_local_notifications: ^18.0.1
+  flutter_local_notifications: 17.2.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # The lints package below contains a set of recommended lints to
+dependency_overrides:
+  # Pin the last non-jni (pure platform-channel) Android plugin versions:
+  # jni-based plugins require compiling native C code, which needs a full NDK
+  # (~3 GB) — not available on the build box. Behavior is identical.
+  shared_preferences_android: 2.4.28
+  path_provider_android: 2.2.23
+  flutter_local_notifications: 17.2.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -42,3 +42,18 @@ Doctor summary (to see all details, run flutter doctor -v):
 
 Note: the Chrome (web) and Linux desktop rows are unchecked on purpose.
 This project builds Android APKs only.
+
+## Build-system notes (added in Movement 11)
+
+- Gradle runs with capped memory (`-Xmx1536m`) — the box has 4 GB RAM, no swap.
+- Maven Central rate-limits this network (HTTP 429); Gradle uses the Aliyun
+  mirrors first (public + google) in `settings.gradle.kts` and the root
+  `build.gradle.kts`.
+- The build target is `arm64-v8a`:
+  `flutter build apk --release --split-per-abi --target-platform android-arm64`
+- The NDK is a stub (`source.properties` only): no plugin ships native code
+  after pinning the non-jni plugin versions. `llvm-strip`/`llvm-objcopy` are
+  shims over a locally extracted `llvm-19` (Debian .debs), because GNU
+  binutils here is x86-64-only.
+- `core library desugaring` is enabled (required by flutter_local_notifications).
+- Minimum SDK is 23 (`flutter_secure_storage` requirement).

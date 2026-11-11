@@ -7,7 +7,6 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gork/screens/inbox_screen.dart';
-import 'package:gork/services/inbox_service.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
 

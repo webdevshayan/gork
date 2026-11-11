@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:http/http.dart' as http;
-
 import '../providers/providers.dart';
 import 'llm_client.dart';
 import 'secure_store.dart';
