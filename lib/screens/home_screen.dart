@@ -5,6 +5,7 @@ import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 import 'chat_screen.dart';
 import 'cloud_computer_screen.dart';
+import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
 import 'tasks_screen.dart';
@@ -140,6 +141,15 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const CloudComputerScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.dashboard_outlined,
+            label: 'Panels',
+            subtitle: 'Mini-dashboards, starting with live weather',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PanelsScreen()),
             ),
           ),
         ],
