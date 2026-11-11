@@ -6,11 +6,13 @@ import 'cloud_computer_store.dart';
 import 'history_store.dart';
 import 'memory_store.dart';
 import 'notifications.dart';
+import 'panels_store.dart';
 import 'projects_store.dart';
 import 'scheduler.dart';
 import 'secure_store.dart';
 import 'tasks_store.dart';
 import 'vault_store.dart';
+import 'weather_service.dart';
 
 /// Tiny service locator. Real bindings use the device keystore; tests bind
 /// in-memory fakes via bind().
@@ -28,12 +30,14 @@ class Locator {
     SharedPreferences? prefs,
     Scheduler? scheduler,
     NotificationService? notifications,
+    http.Client? httpClient,
   }) {
     if (store != null) _store = store;
     if (chat != null) _chat = chat;
     if (prefs != null) _prefs = prefs;
     if (scheduler != null) _scheduler = scheduler;
     if (notifications != null) _notifications = notifications;
+    if (httpClient != null) _httpClient = httpClient;
   }
 
   static void reset() {
@@ -70,4 +74,13 @@ class Locator {
   static CloudComputerStore get cloudComputer => CloudComputerStore(prefs);
 
   static http.Client get httpClient => _httpClient ??= http.Client();
+
+  static WeatherService get weather => WeatherService(httpClient);
+
+  static PanelsStore get panels => PanelsStore(prefs);
+
+  static double get ambientLat =>
+      prefs.getDouble('ambient.lat') ?? 24.8607; // Karachi default
+  static double get ambientLon =>
+      prefs.getDouble('ambient.lon') ?? 67.0011;
 }

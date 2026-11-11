@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/locator.dart';
+import 'services/weather_service.dart';
 
 import 'app.dart';
 
@@ -18,6 +19,18 @@ Future<void> main() async {
   Timer.periodic(const Duration(minutes: 1), (_) {
     try {
       Locator.scheduler.tick(DateTime.now());
+    } catch (_) {}
+  });
+
+  // Ambient: refresh the phase tint and adapt to weather.
+  Timer.periodic(const Duration(minutes: 15), (_) async {
+    ambient.refresh();
+    try {
+      final weather = await Locator.weather.fetch(
+        lat: Locator.ambientLat,
+        lon: Locator.ambientLon,
+      );
+      ambient.wetWeather = weather.isWet;
     } catch (_) {}
   });
 }
