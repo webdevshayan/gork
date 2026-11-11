@@ -37,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _providerId;
   bool _loading = false;
   String? _error;
+  List<String> _toolsUsed = [];
 
   @override
   void initState() {
@@ -108,12 +109,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      final reply = await Locator.chat.chat(
+      final result = await Locator.agent.run(
         providerId: _providerId!,
-        messages: _asChatMessages(),
+        userText: text,
+        priorMessages: [
+          for (final m in _messages.take(_messages.length - 1))
+            ChatMessage(m.role, m.content),
+        ],
       );
       setState(() {
-        _messages.add(_UiMessage('assistant', reply.content));
+        _messages.add(_UiMessage('assistant', result.content));
+        _toolsUsed = result.toolsUsed;
         _loading = false;
       });
     } catch (e) {
@@ -219,6 +225,27 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
+          if (_toolsUsed.isNotEmpty && !_loading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.sm),
+              child: Wrap(
+                spacing: Spacing.sm,
+                children: [
+                  for (final tool in _toolsUsed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: Spacing.sm, vertical: Spacing.xs),
+                      decoration: BoxDecoration(
+                        color: palette.primary.withValues(alpha: 0.12),
+                        borderRadius:
+                            BorderRadius.circular(RadiusTokens.full),
+                      ),
+                      child: Text('used: $tool',
+                          style: TypeScale.caption(color: palette.primary)),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: _messages.isEmpty
                 ? GCard(
