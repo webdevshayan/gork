@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
 import '../services/locator.dart';
-import '../services/scheduler.dart';
 import '../services/tasks_store.dart';
 import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';

@@ -5,11 +5,9 @@ import '../providers/providers.dart';
 import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
-import '../services/memory_store.dart';
 import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
-import 'providers_screen.dart';
 
 class _UiMessage {
   final String role;
@@ -74,18 +72,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (mounted) setState(() {});
   }
-
-  String _systemPrompt() {
-    final memoryBlock = Locator.memory.systemPromptBlock();
-    return 'You are gork, the user\u2019s personal AI assistant running on their '
-        'Android phone. Be direct, concrete and helpful. '
-        'Sensitive actions always ask for confirmation first.$memoryBlock';
-  }
-
-  List<ChatMessage> _asChatMessages() => [
-        ChatMessage('system', _systemPrompt()),
-        for (final m in _messages) ChatMessage(m.role, m.content),
-      ];
 
   Future<void> _send() async {
     final text = _input.text.trim();

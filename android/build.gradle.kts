@@ -1,7 +1,22 @@
 allprojects {
     repositories {
+        // repo.maven.apache.org rate-limits some networks (HTTP 429);
+        // Aliyun mirrors Central + Google and is listed first.
+        maven("https://maven.aliyun.com/repository/public")
+        maven("https://maven.aliyun.com/repository/google")
         google()
         mavenCentral()
+    }
+}
+
+subprojects {
+    buildscript {
+        repositories {
+            maven("https://maven.aliyun.com/repository/public")
+            maven("https://maven.aliyun.com/repository/google")
+            google()
+            mavenCentral()
+        }
     }
 }
 
