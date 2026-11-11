@@ -6,6 +6,7 @@ import '../widgets/screen.dart';
 import 'chat_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
+import 'tasks_screen.dart';
 import 'vault_screen.dart';
 
 /// One feature card on the home grid.
@@ -120,6 +121,15 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VaultScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.schedule_outlined,
+            label: 'Tasks',
+            subtitle: 'Timed jobs the AI runs for you',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TasksScreen()),
             ),
           ),
         ],
