@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gork/main.dart';
+import 'package:gork/app.dart';
 
 void main() {
   testWidgets('app builds and shows its name and purpose', (tester) async {
