@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/design_tokens.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
+import 'chat_screen.dart';
 import 'providers_screen.dart';
 
 /// One feature card on the home grid.
@@ -83,6 +84,15 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Spacing.md),
+          FeatureTile(
+            icon: Icons.chat_bubble_outline,
+            label: 'Chat',
+            subtitle: 'Talk to your own AI provider (BYOK)',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatScreen()),
+            ),
+          ),
           FeatureTile(
             icon: Icons.settings_outlined,
             label: 'Providers',
