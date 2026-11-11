@@ -17,6 +17,7 @@ class Screen extends StatelessWidget {
     final palette = paletteOf(context);
     return Scaffold(
       backgroundColor: palette.background,
+      floatingActionButton: fab,
       appBar: title == null
           ? null
           : AppBar(

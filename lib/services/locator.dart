@@ -3,7 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'chat_service.dart';
 import 'history_store.dart';
 import 'memory_store.dart';
+import 'projects_store.dart';
 import 'secure_store.dart';
+import 'vault_store.dart';
 
 /// Tiny service locator. Real bindings use the device keystore; tests bind
 /// in-memory fakes via bind().
@@ -33,4 +35,8 @@ class Locator {
   static HistoryStore get history => HistoryStore(prefs);
 
   static MemoryStore get memory => MemoryStore(prefs);
+
+  static ProjectsStore get projects => ProjectsStore(prefs);
+
+  static VaultStore get vault => VaultStore(store);
 }

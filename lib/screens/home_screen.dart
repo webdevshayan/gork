@@ -4,7 +4,9 @@ import '../constants/design_tokens.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 import 'chat_screen.dart';
+import 'projects_screen.dart';
 import 'providers_screen.dart';
+import 'vault_screen.dart';
 
 /// One feature card on the home grid.
 class FeatureTile extends StatelessWidget {
@@ -100,6 +102,24 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const ProvidersScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.folder_outlined,
+            label: 'Projects',
+            subtitle: 'Workspaces with notes and files',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProjectsScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.lock_outline,
+            label: 'Vault',
+            subtitle: 'Encrypted passwords and secrets on this device',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VaultScreen()),
             ),
           ),
         ],
