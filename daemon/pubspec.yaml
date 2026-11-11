@@ -1,0 +1,15 @@
+name: gork_daemon
+description: gork companion daemon — runs scheduled tasks 24/7 on the user's own VPS.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.25.0

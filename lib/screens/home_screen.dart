@@ -4,6 +4,7 @@ import '../constants/design_tokens.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 import 'chat_screen.dart';
+import 'cloud_computer_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
 import 'tasks_screen.dart';
@@ -130,6 +131,15 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TasksScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.dns_outlined,
+            label: 'Cloud Computer',
+            subtitle: 'Self-hosted or free-tier browser agent backend',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CloudComputerScreen()),
             ),
           ),
         ],
