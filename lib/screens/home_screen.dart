@@ -5,6 +5,7 @@ import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 import 'chat_screen.dart';
 import 'cloud_computer_screen.dart';
+import 'inbox_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
@@ -150,6 +151,15 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const PanelsScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.inbox_outlined,
+            label: 'Inbox',
+            subtitle: 'Proactive suggestions with one-tap actions',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const InboxScreen()),
             ),
           ),
         ],

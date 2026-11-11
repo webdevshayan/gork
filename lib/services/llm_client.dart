@@ -9,9 +9,29 @@ class ChatMessage {
   final String role;
   final String content;
 
-  const ChatMessage(this.role, this.content);
+  /// For assistant messages carrying tool calls (OpenAI protocol).
+  final List<ToolCall>? toolCalls;
 
-  Map<String, dynamic> toOpenAiJson() => {'role': role, 'content': content};
+  /// For tool-result messages (role == 'tool').
+  final String? toolCallId;
+
+  const ChatMessage(this.role, this.content, {this.toolCalls, this.toolCallId});
+
+  Map<String, dynamic> toOpenAiJson() {
+    final map = <String, dynamic>{'role': role, 'content': content};
+    if (toolCalls != null && toolCalls!.isNotEmpty) {
+      map['tool_calls'] = [
+        for (final c in toolCalls!)
+          {
+            'id': c.id,
+            'type': 'function',
+            'function': {'name': c.name, 'arguments': c.argumentsJson},
+          }
+      ];
+    }
+    if (toolCallId != null) map['tool_call_id'] = toolCallId;
+    return map;
+  }
 }
 
 /// A tool the model may call (function calling).

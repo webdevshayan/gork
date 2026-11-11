@@ -1,9 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'agent_service.dart';
 import 'chat_service.dart';
 import 'cloud_computer_store.dart';
 import 'history_store.dart';
+import 'inbox_service.dart';
 import 'memory_store.dart';
 import 'notifications.dart';
 import 'panels_store.dart';
@@ -11,6 +13,7 @@ import 'projects_store.dart';
 import 'scheduler.dart';
 import 'secure_store.dart';
 import 'tasks_store.dart';
+import 'tool_registry.dart';
 import 'vault_store.dart';
 import 'weather_service.dart';
 
@@ -78,6 +81,20 @@ class Locator {
   static WeatherService get weather => WeatherService(httpClient);
 
   static PanelsStore get panels => PanelsStore(prefs);
+
+  static ToolRegistry get toolRegistry => ToolRegistry(
+        memory: memory,
+        projects: projects,
+        tasks: tasks,
+        panels: panels,
+        vault: vault,
+        weather: weather,
+      );
+
+  static AgentService get agent =>
+      AgentService(chat, toolRegistry, memory);
+
+  static InboxService get inbox => InboxService(prefs, weather);
 
   static double get ambientLat =>
       prefs.getDouble('ambient.lat') ?? 24.8607; // Karachi default
