@@ -59,18 +59,40 @@ void main() {
     expect(body['status'], 'ok');
   });
 
-  test('buildHandler with secret rejects requests without the header',
+  test('buildHandler with secret rejects gated requests without the header',
       () async {
     final handler = buildHandler(makeDaemon(), secret: 's3cret');
-    final res = await handler(_req('GET', '/health'));
+    final res = await handler(_req('GET', '/tasks'));
     expect(res.statusCode, 401);
+  });
+
+  test('/health stays open even when a secret is set (liveness checks must '
+      'not need auth)', () async {
+    final handler = buildHandler(makeDaemon(), secret: 's3cret');
+    final res = await handler(_req('GET', '/health'));
+    expect(res.statusCode, 200);
+    final body = await _body(res);
+    expect(body['status'], 'ok');
   });
 
   test('buildHandler with secret accepts the right header', () async {
     final handler = buildHandler(makeDaemon(), secret: 's3cret');
     final res = await handler(
-        _req('GET', '/health', headers: {'x-gork-secret': 's3cret'}));
+        _req('GET', '/tasks', headers: {'x-gork-secret': 's3cret'}));
     expect(res.statusCode, 200);
+  });
+
+  test('taskStorePath defaults to tasks.json next to the working directory',
+      () {
+    expect(taskStorePath(env: {}), 'tasks.json');
+    expect(taskStorePath(env: {'GORK_HOME': ''}), 'tasks.json');
+  });
+
+  test('taskStorePath honors GORK_HOME so state survives CWD changes', () {
+    expect(taskStorePath(env: {'GORK_HOME': '/var/lib/gork-daemon'}),
+        '/var/lib/gork-daemon/tasks.json');
+    expect(taskStorePath(env: {'GORK_HOME': '/data/data/com.termux/files/home/.gork-daemon'}),
+        '/data/data/com.termux/files/home/.gork-daemon/tasks.json');
   });
 
   test('task CRUD still works through the gated handler', () async {

@@ -15,7 +15,19 @@ import 'package:gork_daemon/scheduler.dart';
 /// The phone app connects over REST.
 const int kDefaultPort = 8787;
 
-TaskStore newTaskStore() => FileTaskStore('tasks.json');
+/// Where task state lives.
+///
+/// `GORK_HOME` (if set) points at the daemon's state directory — set by the
+/// systemd unit, the Termux service, or gork-daemonctl — so tasks.json
+/// survives no matter which directory the daemon was started from.
+String taskStorePath({Map<String, String>? env}) {
+  final e = env ?? Platform.environment;
+  final home = e['GORK_HOME'] ?? '';
+  if (home.isEmpty) return 'tasks.json';
+  return home.endsWith('/') ? '${home}tasks.json' : '$home/tasks.json';
+}
+
+TaskStore newTaskStore() => FileTaskStore(taskStorePath());
 
 class Daemon {
   final TaskStore tasks;
@@ -58,6 +70,9 @@ Response _json(Map<String, dynamic> data, [int status = 200]) => Response(
 Middleware requireSecret(String? secret) {
   return (inner) => (Request request) async {
         if (secret == null || secret.isEmpty) return inner(request);
+        // Liveness stays open: installers, uptime monitors and `curl` checks
+        // must be able to verify the daemon without holding the secret.
+        if (request.url.path == 'health') return inner(request);
         if (request.headers['x-gork-secret'] == secret) return inner(request);
         return Response(401,
             body: jsonEncode({'error': 'bad or missing X-Gork-Secret'}),

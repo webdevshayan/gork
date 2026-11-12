@@ -73,3 +73,4 @@ Install: copy the APK to your Android phone and open it (allow
 | #17 | Release v1.0.0 |
 | #18 | v1.0.0 test & release report |
 | #19 | Hark Pro glass UI rebuild: ambient backdrop + glass shell (nav pill, bottom input), spec-exact Home / Chat / System Preferences |
+| #20 | Daemon self-hosts anywhere: Termux + proot + no-systemd backends (gork-daemonctl), missing bin entrypoint fixed, /health-gated honest installs |

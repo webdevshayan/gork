@@ -1,19 +1,18 @@
 [Unit]
 Description=gork companion daemon (scheduled AI tasks, 24/7)
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
+# The installer generates this unit with resolved paths; this file is the
+# reference shape of it. Configuration lives in the EnvironmentFile, not here.
 WorkingDirectory=/opt/gork/daemon
-# --- Configure me ---
-# The key stays on YOUR VPS. Use any OpenAI-compatible provider.
-#Environment=GORK_BASE_URL=https://api.openai.com/v1
-#Environment=GORK_MODEL=gpt-4o-mini
-#Environment=GORK_API_KEY=sk-your-key-here
-# Optional free push channel (no account needed): pick a random long topic name.
-#Environment=NTFY_TOPIC=gork-your-random-topic-name
-Environment=GORK_PORT=8787
-ExecStart=/usr/lib/dart/bin/dart run bin/server.dart
+Environment=GORK_HOME=/var/lib/gork-daemon
+# --- Configure me: /etc/gork-daemon/config.env ---
+# GORK_API_KEY, GORK_BASE_URL, GORK_MODEL, NTFY_TOPIC, GORK_SECRET, GORK_PORT
+EnvironmentFile=-/etc/gork-daemon/config.env
+ExecStart=/usr/bin/dart run bin/gork_daemon.dart
 Restart=always
 RestartSec=5
 
