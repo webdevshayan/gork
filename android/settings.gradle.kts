@@ -11,7 +11,8 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        maven("https://maven.aliyun.com/repository/public") // central mirror; repo.maven.apache.org rate-limits some networks
+        maven("https://maven.aliyun.com/repository/central") // central mirror; repo.maven.apache.org rate-limits some networks
+        maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
         google()
         mavenCentral()
@@ -21,7 +22,8 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-        maven("https://maven.aliyun.com/repository/public") // central mirror
+        maven("https://maven.aliyun.com/repository/central") // central mirror
+        maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
         google()
         mavenCentral()
