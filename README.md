@@ -66,3 +66,5 @@ Install: copy the APK to your Android phone and open it (allow
 | #11 | Release polish + first release APK |
 | #12 | Integration framework + GitHub integration (notifications, issues) |
 | #13 | Slack, Strava, Spotify integrations with agent tools |
+| #14 | Gmail + PayPal integrations (unread mail, transactions) |
+| #15 | 24/7 Handoff: task sync with the daemon + shared-secret auth |

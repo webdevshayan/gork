@@ -87,8 +87,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('curl -fsSL'), findsOneWidget);
 
-    // Save an endpoint, verify persisted.
-    await tester.enterText(find.byType(TextField).first, 'http://9.9.9.9:8787');
+    // Scroll back up to the endpoint field, type the endpoint.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('cloud-endpoint')),
+      -300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('cloud-endpoint')), 'http://9.9.9.9:8787');
+    await tester.pumpAndSettle();
+
+    // Scroll down to Save and tap; the controller keeps the typed text.
+    await tester.scrollUntilVisible(
+      find.text('Save'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 

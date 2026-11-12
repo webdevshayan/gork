@@ -53,6 +53,22 @@ Response _json(Map<String, dynamic> data, [int status = 200]) => Response(
       headers: {'content-type': 'application/json'},
     );
 
+/// Optional shared-secret gate. When GORK_SECRET is set, every request must
+/// carry the same value in the X-Gork-Secret header.
+Middleware requireSecret(String? secret) {
+  return (inner) => (Request request) async {
+        if (secret == null || secret.isEmpty) return inner(request);
+        if (request.headers['x-gork-secret'] == secret) return inner(request);
+        return Response(401,
+            body: jsonEncode({'error': 'bad or missing X-Gork-Secret'}),
+            headers: {'content-type': 'application/json'});
+      };
+}
+
+/// The full HTTP handler: router wrapped in the secret gate.
+Handler buildHandler(Daemon daemon, {String? secret}) =>
+    const Pipeline().addMiddleware(requireSecret(secret)).addHandler(buildRouter(daemon));
+
 Router buildRouter(Daemon daemon) {
   final router = Router();
 
@@ -71,7 +87,14 @@ Router buildRouter(Daemon daemon) {
   });
 
   router.post('/tasks', (Request request) async {
-    final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+    final raw = await request.readAsString();
+    final Map<String, dynamic> body;
+    try {
+      body =
+          raw.isEmpty ? <String, dynamic>{} : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
     final id = (body['id'] as String?) ??
         DateTime.now().millisecondsSinceEpoch.toString();
     final task = Task(
@@ -112,7 +135,8 @@ Future<void> main(List<String> args) async {
       topic == null || topic.isEmpty ? const NoopNotifier() : NtfyNotifier(topic);
 
   final daemon = Daemon(newTaskStore(), llm, notifier);
-  final router = buildRouter(daemon);
+  final secret = Platform.environment['GORK_SECRET'];
+  final handler = buildHandler(daemon, secret: secret);
 
   // 24/7 loop: check the schedule every minute.
   Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -123,8 +147,9 @@ Future<void> main(List<String> args) async {
     }
   });
 
-  final server = await shelf_io.serve(router, InternetAddress.anyIPv4, port);
+  final server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
   stdout.writeln(
       'gork daemon listening on http://${server.address.host}:${server.port}');
-  stdout.writeln('LLM: ${llm.describe()} | ntfy: ${topic ?? 'disabled'}');
+  stdout.writeln(
+      'LLM: ${llm.describe()} | ntfy: ${topic ?? 'disabled'} | secret: ${secret == null || secret.isEmpty ? 'off' : 'on'}');
 }

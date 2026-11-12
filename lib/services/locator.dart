@@ -5,6 +5,7 @@ import 'agent_service.dart';
 import 'chat_service.dart';
 import 'cloud_computer_store.dart';
 import 'history_store.dart';
+import 'handoff_service.dart';
 import 'inbox_service.dart';
 import 'integrations.dart';
 import 'memory_store.dart';
@@ -90,6 +91,8 @@ class Locator {
         panels: panels,
         vault: vault,
         weather: weather,
+        integrations: integrations,
+        handoff: handoff,
       );
 
   static AgentService get agent =>
@@ -98,6 +101,13 @@ class Locator {
   static InboxService get inbox => InboxService(prefs, weather);
 
   static Integrations get integrations => Integrations(store, httpClient);
+
+  static HandoffService get handoff => HandoffService(
+        client: httpClient,
+        prefs: prefs,
+        store: store,
+        tasks: tasks,
+      );
 
   static double get ambientLat =>
       prefs.getDouble('ambient.lat') ?? 24.8607; // Karachi default
