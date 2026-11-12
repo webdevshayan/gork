@@ -13,7 +13,7 @@ alternative inspired by Hark Pro. Built in public, one pull request at a time.
 - **Android APK only** — no accounts, no payments, no app store.
 - **24/7 via your own VPS** — the companion daemon runs on hardware you own.
 
-## Features (v0.1.0)
+## Features (v1.0.0)
 
 | Area | What works today |
 |---|---|
@@ -29,10 +29,11 @@ alternative inspired by Hark Pro. Built in public, one pull request at a time.
 | Panels | Mini-dashboards: live Open-Meteo weather panel (no key) + manual panels |
 | Inbox | Proactive suggestions from live signals; sensitive actions confirm first |
 | Ambient UI | Time-of-day accent shifts + weather-aware tint, contrast-checked |
+| Integrations | GitHub, Slack, Strava, Spotify, Gmail, PayPal — BYO token, agent tools for each |
 
 ## Test suite
 
-Every PR runs `flutter test` (63+ tests: units, widget flows, mocked HTTP,
+Every PR runs `flutter test` (125+ tests: units, widget flows, mocked HTTP,
 WCAG contrast checks) and `dart test` for the daemon.
 
 ## The APK
@@ -68,3 +69,5 @@ Install: copy the APK to your Android phone and open it (allow
 | #13 | Slack, Strava, Spotify integrations with agent tools |
 | #14 | Gmail + PayPal integrations (unread mail, transactions) |
 | #15 | 24/7 Handoff: task sync with the daemon + shared-secret auth |
+| #16 | First-run onboarding wizard |
+| #17 | Release v1.0.0 |
