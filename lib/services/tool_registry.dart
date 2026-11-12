@@ -1,7 +1,9 @@
 import 'github_service.dart';
+import 'gmail_service.dart';
 import 'integrations.dart';
 import 'llm_client.dart';
 import 'locator.dart';
+import 'paypal_service.dart';
 import 'slack_service.dart';
 import 'spotify_service.dart';
 import 'strava_service.dart';
@@ -144,6 +146,21 @@ class ToolRegistry {
             'Toggle play/pause on the active Spotify device.', {
           'type': 'object',
           'properties': {},
+        }),
+        ToolDef('gmail_unread',
+            'List unread Gmail messages (sender — subject).', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('paypal_recent_transactions',
+            'List recent PayPal transactions of the connected account.', {
+          'type': 'object',
+          'properties': {
+            'days': {
+              'type': 'integer',
+              'description': 'look back this many days (1-31)'
+            }
+          },
         }),
       ];
 
@@ -294,6 +311,20 @@ class ToolRegistry {
       case 'spotify_play_pause':
         return _runTool<SpotifyService>('spotify', 'spotify_play_pause',
             () => integrations!.spotifyService(), (s) => s.playPause());
+
+      case 'gmail_unread':
+        return _runTool<GmailService>('gmail', 'gmail_unread',
+            () => integrations!.gmailService(), (g) => g.unread().then((l) =>
+                l.isEmpty ? 'no unread mail' : l.join('\n')));
+
+      case 'paypal_recent_transactions':
+        final days = (args['days'] as num?)?.toInt() ?? 7;
+        return _runTool<PayPalService>(
+            'paypal', 'paypal_recent_transactions',
+            () => integrations!.paypalService(),
+            (p) => p.transactions(days: days).then((l) => l.isEmpty
+                ? 'no transactions in the last $days days'
+                : l.join('\n')));
 
       default:
         return 'error: unknown tool $name';

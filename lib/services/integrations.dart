@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'github_service.dart';
+import 'gmail_service.dart';
+import 'paypal_service.dart';
 import 'secure_store.dart';
 import 'slack_service.dart';
 import 'spotify_service.dart';
@@ -71,8 +73,8 @@ const List<IntegrationDef> kIntegrations = [
     name: 'PayPal',
     tokenLabel: 'Client ID : Secret',
     tokenHint:
-        'developer.paypal.com/dashboard/applications — paste as '
-        'client_id:secret (live or sandbox base URL below)',
+        'developer.paypal.com — paste as client_id:secret; prefix '
+        'sandbox: to use the sandbox',
   ),
 ];
 
@@ -121,10 +123,15 @@ Future<dynamic> jsonRequest(
   Map<String, String> headers = const {},
   Object? body,
   String? basicAuth,
+  String? rawBody,
 }) async {
   final req = http.Request(method, uri)..headers.addAll(headers);
   if (basicAuth != null) req.headers['Authorization'] = 'Basic $basicAuth';
-  if (body != null) req.body = jsonEncode(body);
+  if (rawBody != null) {
+    req.body = rawBody;
+  } else if (body != null) {
+    req.body = jsonEncode(body);
+  }
   final http.Response res;
   try {
     res = await http.Response.fromStream(await client.send(req));
@@ -192,6 +199,18 @@ class Integrations {
     return SpotifyService(client: client, token: () async => t);
   }
 
+  Future<GmailService?> gmailService() async {
+    final t = await vault.token('gmail');
+    if (t == null || t.isEmpty) return null;
+    return GmailService(client: client, token: () async => t);
+  }
+
+  Future<PayPalService?> paypalService() async {
+    final t = await vault.token('paypal');
+    if (t == null || t.isEmpty) return null;
+    return PayPalService(client: client, token: () async => t);
+  }
+
   /// Null on success, error text otherwise. Fill cases per movement.
   /// [tokenOverride] lets the UI test a freshly pasted token before saving.
   Future<String?> testConnection(String id, {String? tokenOverride}) async {
@@ -212,6 +231,12 @@ class Integrations {
           break;
         case 'spotify':
           await SpotifyService(client: client, token: () async => t).whoAmI();
+          break;
+        case 'gmail':
+          await GmailService(client: client, token: () async => t).whoAmI();
+          break;
+        case 'paypal':
+          await PayPalService(client: client, token: () async => t).whoAmI();
           break;
         default:
           return 'Token saved (no live test for $id yet)';
