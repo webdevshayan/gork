@@ -17,53 +17,69 @@ Future<void> initProfilePhoto() async {
   avatarPath.value = Locator.prefs.getString('profile.photoPath');
 }
 
-/// Full-screen blurred ambient sky/ocean photo. Every glass surface blurs
-/// whatever is behind it, so this sits at the bottom of the shell Stack.
-/// Offline (or in tests) it falls back to a sky gradient.
+/// Full-screen blurred ambient sky. The photo is a bundled asset — the app
+/// is fully offline — and a light sky gradient is always painted underneath
+/// it, so there is never a black flash while the image decodes.
+///
+/// Overlays (contrast pass):
+///   * Light surfaces get a WHITE wash over the photo, so black87 text and
+///     glass read cleanly.
+///   * Dark dims with a black scrim.
+///   * Auto/System follow the platform brightness.
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
 
-  static const String _skyUrl =
-      'https://images.unsplash.com/photo-1505118380757-91f5f5632de0'
-      '?auto=format&fit=crop&w=1200&q=80';
+  static const String _skyAsset = 'assets/ambient/sky.jpg';
+
+  static const Color _lightScrim = Colors.white;
+  static const Color _darkScrim = Colors.black;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<String?>(
       valueListenable: themeSetting,
       builder: (context, mode, _) {
-        final bool dark = mode == 'Dark';
+        final Brightness platform =
+            MediaQuery.platformBrightnessOf(context);
+        final bool dark =
+            mode == 'Dark' ||
+            ((mode == null || mode == 'Auto' || mode == 'System') &&
+                platform == Brightness.dark);
         return SizedBox.expand(
           key: const ValueKey('ambient-backdrop'),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                child: Image.network(
-                  _skyUrl,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  errorBuilder: (_, __, ___) => const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xFF7FB4DC),
-                          Color(0xFFBFDCEF),
-                          Color(0xFFF6E7C8),
-                        ],
-                      ),
-                    ),
+              // Always painted first: no black background while the asset
+              // decodes (cold start included).
+              const DecoratedBox(
+                key: ValueKey('ambient-placeholder'),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF8FC0E8),
+                      Color(0xFFC9E2F2),
+                      Color(0xFFF7ECD4),
+                    ],
                   ),
                 ),
               ),
-              if (dark)
-                Container(
-                  key: const ValueKey('theme-scrim'),
-                  color: Colors.black.withValues(alpha: 0.45),
+              ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                child: Image.asset(
+                  _skyAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
                 ),
+              ),
+              Container(
+                key: const ValueKey('theme-scrim'),
+                color: dark
+                    ? _darkScrim.withValues(alpha: 0.45)
+                    : _lightScrim.withValues(alpha: 0.35),
+              ),
             ],
           ),
         );
