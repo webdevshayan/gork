@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# gork-daemonctl — start/stop/status/health/logs for the gork daemon.
+#
+# Works everywhere bash works: a real systemd VPS, a proot Debian on an
+# Android phone, and native Termux (no root, no systemd, $PREFIX-safe).
+# This is the fallback backend whenever a real init system is not available,
+# and it never lies: `start` only exits 0 after /health answers (or clearly
+# reports why it could not).
+#
+# Usage:
+#   gork-daemonctl start|stop|restart|status|health|logs [n]
+#
+# Environment / config.env (sourced from $GORK_HOME, overrides defaults):
+#   GORK_HOME           state dir (pid, log, tasks.json)  [~/.gork-daemon]
+#   GORK_SRC_DIR        checkout of the gork repo (daemon/)  [this script's dir]
+#   GORK_DAEMON_CMD     full command override (used by tests / advanced)
+#   GORK_PORT           listen port                      [8787]
+#   GORK_HEALTH_TIMEOUT seconds to wait for /health on start [20]
+#   GORK_API_KEY GORK_BASE_URL GORK_MODEL GORK_SECRET NTFY_TOPIC  (pass-through)
+set -euo pipefail
+
+# --- defaults (overridable by environment, then by config.env) ---------------
+GORK_HOME="${GORK_HOME:-$HOME/.gork-daemon}"
+GORK_SRC_DIR="${GORK_SRC_DIR:-}"
+GORK_DAEMON_CMD="${GORK_DAEMON_CMD:-}"
+GORK_PORT="${GORK_PORT:-8787}"
+GORK_HEALTH_TIMEOUT="${GORK_HEALTH_TIMEOUT:-20}"
+: "${GORK_API_KEY:=}"; : "${GORK_BASE_URL:=}"; : "${GORK_MODEL:=}"
+: "${GORK_SECRET:=}"; : "${NTFY_TOPIC:=}"
+
+# config.env wins (mirrors systemd EnvironmentFile semantics)
+if [ -f "$GORK_HOME/config.env" ]; then
+  # shellcheck disable=SC1091
+  . "$GORK_HOME/config.env"
+fi
+
+GORK_SRC_DIR="${GORK_SRC_DIR:-"$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"}"
+PIDFILE="$GORK_HOME/gork-daemon.pid"
+LOGFILE="$GORK_HOME/gork-daemon.log"
+HEALTH_URL="http://127.0.0.1:$GORK_PORT/health"
+
+export GORK_HOME GORK_PORT GORK_API_KEY GORK_BASE_URL GORK_MODEL GORK_SECRET NTFY_TOPIC
+
+# --- helpers -----------------------------------------------------------------
+say()  { printf '%s\n' "$*"; }
+die()  { printf '%s\n' "$*" >&2; exit 1; }
+
+pid_alive() {
+  [ -f "$PIDFILE" ] || return 1
+  local p; p="$(cat "$PIDFILE" 2>/dev/null || true)"
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+
+http_get() { # prints body, exit 0 only on HTTP 2xx
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 3 -O - "$HEALTH_URL" 2>/dev/null
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$HEALTH_URL" <<'PY' 2>/dev/null
+import sys, urllib.request
+print(urllib.request.urlopen(sys.argv[1], timeout=3).read().decode())
+PY
+  else
+    return 2   # no http client available at all
+  fi
+}
+
+wait_health() { # $1 = timeout seconds; exit 0 iff /health answers in time
+  local deadline=$(( $(date +%s) + ${1:-$GORK_HEALTH_TIMEOUT} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! pid_alive; then
+      say "daemon process exited during startup — last log lines:"
+      tail -n 15 "$LOGFILE" >&2 || true
+      return 1
+    fi
+    if http_get >/dev/null 2>&1; then return 0; fi
+    sleep 0.5
+  done
+  return 1
+}
+
+daemon_cmd() { # prints the resolved launch command; may cd
+  if [ -n "$GORK_DAEMON_CMD" ]; then
+    printf '%s' "bash -c '$GORK_DAEMON_CMD'"
+    return 0
+  fi
+  if [ -x "$GORK_HOME/bin/gork-daemon" ]; then
+    printf '%s' "$GORK_HOME/bin/gork-daemon"
+    return 0
+  fi
+  if command -v dart >/dev/null 2>&1 && [ -f "$GORK_SRC_DIR/bin/gork_daemon.dart" ]; then
+    printf '%s' "dart run bin/gork_daemon.dart"
+    return 0
+  fi
+  if [ -f "$GORK_SRC_DIR/bin/gork_daemon.dart" ]; then
+    die "found $GORK_SRC_DIR/bin/gork_daemon.dart but dart is not installed.
+  Termux:        pkg install dart
+  Debian/Ubuntu: see https://dart.dev/get-dart"
+  fi
+  return 1
+}
+
+# --- commands ----------------------------------------------------------------
+cmd_start() {
+  mkdir -p "$GORK_HOME"
+  if pid_alive; then
+    say "gork daemon already running (pid $(cat "$PIDFILE")) — nothing to do"
+    return 0
+  fi
+  # The port must be free BEFORE we launch. If something else already serves
+  # /health here, a freshly started daemon would die on 'port in use' while
+  # the stale one kept answering our health checks — a start that lies.
+  if http_get >/dev/null 2>&1; then
+    die "port $GORK_PORT already serves /health, but no pidfile points at it.
+A stale daemon (or another program) is listening on this port.
+  find it : ss -tlnp | grep $GORK_PORT   (or: lsof -i :$GORK_PORT)
+  stop it : kill <pid>
+  or move : set a different GORK_PORT in $GORK_HOME/config.env"
+  fi
+  local cmd; cmd="$(daemon_cmd)" || die "no way to launch the daemon:
+  - set GORK_DAEMON_CMD, or
+  - put a compiled binary at $GORK_HOME/bin/gork-daemon, or
+  - install dart and point GORK_SRC_DIR at the repo's daemon/ folder"
+
+  say "starting gork daemon (port $GORK_PORT, home $GORK_HOME)..."
+  (
+    cd "$GORK_SRC_DIR"
+    printf -- '--- start %s: %s ---\n' "$(date -u +%FT%TZ)" "$cmd" >> "$LOGFILE"
+    nohup bash -c "exec $cmd" >> "$LOGFILE" 2>&1 < /dev/null &
+    echo $! > "$PIDFILE"
+  )
+  local pid; pid="$(cat "$PIDFILE")"
+
+  if wait_health "$GORK_HEALTH_TIMEOUT"; then
+    say "gork daemon listening on http://127.0.0.1:$GORK_PORT (pid $pid)"
+    say "log: $LOGFILE"
+    return 0
+  fi
+
+  rm -f "$PIDFILE"
+  if kill -0 "$pid" 2>/dev/null; then
+    die "start FAILED: process $pid is alive but /health on port $GORK_PORT did not answer within ${GORK_HEALTH_TIMEOUT}s.
+Last log lines:"$'\n'"$(tail -n 15 "$LOGFILE" 2>/dev/null || true)"$'\n'"Full log: $LOGFILE"
+  fi
+  die "start FAILED: the daemon exited immediately. Last log lines:"$'\n'"$(tail -n 15 "$LOGFILE" 2>/dev/null || true)"$'\n'"Full log: $LOGFILE"
+}
+
+cmd_stop() {
+  if ! pid_alive; then
+    rm -f "$PIDFILE"
+    say "gork daemon is not running"
+    return 0
+  fi
+  local pid; pid="$(cat "$PIDFILE")"
+  say "stopping gork daemon (pid $pid)..."
+  kill "$pid" 2>/dev/null || true
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do
+    sleep 0.5; i=$((i+1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  rm -f "$PIDFILE"
+  say "stopped"
+}
+
+cmd_status() {
+  if pid_alive; then
+    local h="NOT answering"
+    http_get >/dev/null 2>&1 && h="ok"
+    say "running (pid $(cat "$PIDFILE")) | port $GORK_PORT | /health: $h"
+    return 0
+  fi
+  rm -f "$PIDFILE"
+  say "stopped"
+  return 1
+}
+
+cmd_health() {
+  local body
+  body="$(http_get)" || die "/health on port $GORK_PORT is NOT answering"
+  say "$body"
+}
+
+cmd_logs() { tail -n "${1:-100}" "$LOGFILE"; }
+
+case "${1:-}" in
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  restart) cmd_stop; cmd_start ;;
+  status)  cmd_status ;;
+  health)  cmd_health ;;
+  logs)    shift; cmd_logs "${1:-100}" ;;
+  *) die "usage: gork-daemonctl {start|stop|restart|status|health|logs} [n]" ;;
+esac
