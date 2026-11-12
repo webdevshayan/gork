@@ -66,7 +66,8 @@ void main() {
     await tester.tap(find.text('Start using gork'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
+    expect(find.text('Sehwan Taluka, PK'), findsOneWidget,
+        reason: 'home now leads with the weather card');
     expect(find.text('Message Hark'), findsOneWidget);
     expect(Locator.prefs.getBool('onboarding.done'), isTrue);
   });
@@ -79,7 +80,7 @@ void main() {
     await tester.pumpWidget(const GorkApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
+    expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
     expect(find.text('Start using gork'), findsNothing);
   });
 }

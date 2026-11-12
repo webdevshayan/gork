@@ -175,6 +175,45 @@ void main() {
     expect(toolMsg['tool_call_id'], 'cc');
     expect(toolMsg['content'], isNotNull);
   });
+
+  test('the loop keeps working across 6 tool rounds (raised from 3)',
+      () async {
+    MockAnswer toolRound(int i) => MockAnswer({
+          'choices': [
+            {
+              'message': {
+                'role': 'assistant',
+                'content': '',
+                'tool_calls': [
+                  {
+                    'id': 'c$i',
+                    'type': 'function',
+                    'function': {'name': 'list_memory', 'arguments': '{}'}
+                  }
+                ]
+              }
+            }
+          ],
+        });
+    final script = <MockAnswer>[
+      for (var i = 1; i <= 6; i++) toolRound(i),
+      const MockAnswer({
+        'choices': [
+          {
+            'message': {'content': 'done after six rounds'}
+          }
+        ]
+      }),
+    ];
+    final agent = AgentService(
+      _chatWith(script),
+      buildAppToolRegistry(),
+      Locator.memory,
+    );
+    final result = await agent.run(providerId: 'openai', userText: 'go');
+    expect(result.toolsUsed.length, 6);
+    expect(result.content, 'done after six rounds');
+  });
 }
 
 class MockAnswer {

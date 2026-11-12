@@ -11,17 +11,27 @@ import '../widgets/glass.dart';
 class _UiMessage {
   final String role;
   final String content;
+  final int? time;
 
-  const _UiMessage(this.role, this.content);
+  const _UiMessage(this.role, this.content, {this.time});
 }
 
-/// The Chat tab: glass bubbles on the ambient backdrop, connected to the
-/// unified chat(). The input lives in the shell's bottom bar, which calls
-/// [ChatScreenState.send].
+/// The Chat tab, pixel-matched to the reference screenshots:
+/// white AI bubbles (radius 32, left), glass user bubbles (right), centered
+/// date separators, "Read" receipts under answered user bubbles, a floating
+/// scroll-down button, the fanned GitHub link-preview stack on an empty chat,
+/// and live search filtering driven by the shell's search bar.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, this.conversationId});
+  const ChatScreen({
+    super.key,
+    this.conversationId,
+    this.searchOpen = false,
+  });
 
   final String? conversationId;
+
+  /// Whether the shell currently shows the search bar.
+  final bool searchOpen;
 
   @override
   ChatScreenState createState() => ChatScreenState();
@@ -36,11 +46,42 @@ class ChatScreenState extends State<ChatScreen> {
   bool _loading = false;
   String? _error;
   List<String> _toolsUsed = [];
+  String? _searchQuery;
+  bool _showScrollButton = false;
+
+  /// The seeded intro from the reference: shown when this is a brand-new
+  /// conversation (never persisted, replaced by real history once it exists).
+  static const List<String> _introMessages = [
+    "Hey Shayan, I'm gork.",
+    "I keep track of life and work, trips and groceries. I pay bills "
+        "securely and find opportunities you'll love.",
+    "With your permission, I'll connect your email and calendar, catch up "
+        "on your life, and learn how I can help.",
+  ];
 
   @override
   void initState() {
     super.initState();
     _restore();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen old) {
+    super.didUpdateWidget(old);
+    if (!widget.searchOpen && old.searchOpen) {
+      _searchQuery = null;
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final bool nearBottom =
+        _scroll.offset >= _scroll.position.maxScrollExtent - 240;
+    if (nearBottom != !_showScrollButton) {
+      setState(() => _showScrollButton = !nearBottom);
+    }
   }
 
   Future<void> _restore() async {
@@ -58,16 +99,24 @@ class ChatScreenState extends State<ChatScreen> {
 
     Conversation? conversation;
     if (widget.conversationId != null) {
+      // An explicit conversation (e.g. a chat opened from inside a project)
+      // never falls back to the global latest conversation.
       conversation = Locator.history.byId(widget.conversationId!);
+      if (conversation == null) {
+        _conversationId = widget.conversationId!;
+        _title = 'New chat';
+      }
+    } else {
+      conversation = Locator.history.latest;
     }
-    conversation ??= Locator.history.latest;
 
     if (conversation != null) {
       _conversationId = conversation.id;
       _title = conversation.title;
       _providerId = conversation.providerId;
       _messages = [
-        for (final m in conversation.messages) _UiMessage(m.role, m.content),
+        for (final m in conversation.messages)
+          _UiMessage(m.role, m.content, time: m.time),
       ];
     }
     if (mounted) setState(() {});
@@ -77,21 +126,27 @@ class ChatScreenState extends State<ChatScreen> {
   Future<void> send(String rawText) async {
     final text = rawText.trim();
     if (text.isEmpty || _loading) return;
-    if (_providerId == null) {
-      setState(() => _error = 'No provider key yet. Add one in Providers.');
-      return;
-    }
 
+    // The user's message always lands in the thread, even before any key is
+    // configured — the guidance shows underneath it.
     setState(() {
-      _messages.add(_UiMessage('user', text));
+      _messages.add(
+        _UiMessage('user', text, time: DateTime.now().millisecondsSinceEpoch),
+      );
       _error = null;
-      _loading = true;
       if (_conversationId.isEmpty) {
         _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
         _title = text.length > 40 ? '${text.substring(0, 40)}…' : text;
       }
     });
     _scrollToBottom();
+
+    if (_providerId == null) {
+      setState(() => _error = 'No provider key yet. Add one in Providers.');
+      return;
+    }
+
+    setState(() => _loading = true);
 
     try {
       final result = await Locator.agent.run(
@@ -103,7 +158,10 @@ class ChatScreenState extends State<ChatScreen> {
         ],
       );
       setState(() {
-        _messages.add(_UiMessage('assistant', result.content));
+        _messages.add(
+          _UiMessage('assistant', result.content,
+              time: DateTime.now().millisecondsSinceEpoch),
+        );
         _toolsUsed = result.toolsUsed;
         _loading = false;
       });
@@ -119,11 +177,22 @@ class ChatScreenState extends State<ChatScreen> {
           title: _title,
           providerId: _providerId!,
           updatedAt: DateTime.now().millisecondsSinceEpoch,
-          messages: [for (final m in _messages) ChatTurn(m.role, m.content)],
+          messages: [
+            for (final m in _messages)
+              ChatTurn(m.role, m.content, time: m.time),
+          ],
         ),
       );
       _scrollToBottom();
     }
+  }
+
+  /// Live search — the shell's search bar drives this. Empty string shows
+  /// the filtered (empty result) state; null leaves search mode entirely.
+  void search(String? query) {
+    setState(() => _searchQuery = (query == null || query.isEmpty)
+        ? (query == null ? null : '')
+        : query.toLowerCase());
   }
 
   void _scrollToBottom() {
@@ -185,91 +254,124 @@ class ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(
-            children: [
-              GlassContainer(
-                radius: 30,
-                opacity: 0.35,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _pickProvider,
-                  child: Text(
-                    _providerId == null
-                        ? 'Pick provider'
-                        : kProviders
-                              .firstWhere((p) => p.id == _providerId)
-                              .name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GlassContainer(
-                radius: 30,
-                opacity: 0.35,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _newChat,
-                  child: const Text(
-                    'New chat',
-                    style: TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-              ),
-            ],
+  // ---- rendering -----------------------------------------------------------
+
+  String _dayLabel(int ms) {
+    final date = DateTime.fromMillisecondsSinceEpoch(ms);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final that = DateTime(date.year, date.month, date.day);
+    if (that == today) return 'Today';
+    if (that == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June', 'July',
+      'August', 'September', 'October', 'November', 'December',
+    ];
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+      'Sunday',
+    ];
+    return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
+  }
+
+  bool _sameDay(int? a, int? b) {
+    if (a == null || b == null) return true;
+    final da = DateTime.fromMillisecondsSinceEpoch(a);
+    final db = DateTime.fromMillisecondsSinceEpoch(b);
+    return da.year == db.year && da.month == db.month && da.day == db.day;
+  }
+
+  Widget _separator(String label) => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 15, color: Colors.black45),
           ),
         ),
-        if (_toolsUsed.isNotEmpty && !_loading)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final tool in _toolsUsed)
-                  GlassActionChip(label: 'used: $tool'),
-              ],
+      );
+
+  List<Widget> _bubbleList(List<_UiMessage> source) {
+    final widgets = <Widget>[];
+    for (var i = 0; i < source.length; i++) {
+      final m = source[i];
+      final prev = i > 0 ? source[i - 1] : null;
+      final bool newDay = prev == null || !_sameDay(m.time, prev.time);
+      if (newDay && m.time != null) {
+        widgets.add(_separator(_dayLabel(m.time!)));
+      } else if (prev == null && m.time != null) {
+        widgets.add(_separator(_dayLabel(m.time!)));
+      }
+      widgets.add(_Bubble(text: m.content, isUser: m.role == 'user'));
+      final bool answered = m.role == 'user' &&
+          source.indexWhere((x) => x.role == 'assistant', i) > i;
+      if (answered) {
+        widgets.add(
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 8, right: 8),
+              child: Text(
+                '•••• Read',
+                style: const TextStyle(fontSize: 12, color: Colors.black38),
+              ),
             ),
           ),
-        Expanded(
-          child: _messages.isEmpty
-              ? _EmptyChat(error: _error)
-              : _buildMessages(),
+        );
+      }
+    }
+    return widgets;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool searching = _searchQuery != null;
+    return Stack(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: searching
+                  ? _buildSearchResults()
+                  : _messages.isEmpty
+                      ? _EmptyChat(error: _error)
+                      : _buildMessages(),
+            ),
+            if (!searching && _toolsUsed.isNotEmpty && !_loading)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final tool in _toolsUsed)
+                      GlassActionChip(label: 'used: $tool'),
+                  ],
+                ),
+              ),
+            if (_error != null && _messages.isNotEmpty && !searching)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFB91C1C),
+                  ),
+                ),
+              ),
+          ],
         ),
-        if (_error != null && _messages.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              _error!,
-              style: const TextStyle(fontSize: 12, color: Color(0xFFB91C1C)),
+        if (!searching && _showScrollButton && _messages.isNotEmpty)
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GlassScrollButton(
+                onTap: _scrollToBottom,
+              ),
             ),
           ),
       ],
@@ -277,14 +379,44 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessages() {
-    return ListView.builder(
+    return ListView(
       controller: _scroll,
       padding: const EdgeInsets.all(16),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final m = _messages[index];
-        return _Bubble(text: m.content, isUser: m.role == 'user');
-      },
+      children: _bubbleList(_messages),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    final query = _searchQuery!;
+    // Empty query in search mode shows the whole conversation.
+    if (query.isEmpty) {
+      return ListView(
+        controller: _scroll,
+        padding: const EdgeInsets.all(16),
+        children: _messages.isEmpty
+            ? List<Widget>.of(_EmptyChat(error: _error).buildChildren())
+            : _bubbleList(_messages),
+      );
+    }
+    final hits = [
+      for (final m in _messages)
+        if (m.content.toLowerCase().contains(query)) m,
+    ];
+    return ListView(
+      controller: _scroll,
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (hits.isEmpty)
+          GlassContainer(
+            radius: 24,
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'No results for "$query".',
+              style: const TextStyle(fontSize: 16, color: Colors.black54),
+            ),
+          )
+        else ..._bubbleList(hits),
+      ],
     );
   }
 
@@ -295,8 +427,8 @@ class ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// Spec bubbles: AI = solid white, radius 16, left. User = glass
-/// white 0.4, radius 16, right (with its own backdrop blur).
+/// Reference bubbles: AI = solid white, radius 32, left. User = glass
+/// white 0.4 + backdrop blur, radius 32, right.
 class _Bubble extends StatelessWidget {
   const _Bubble({required this.text, required this.isUser});
 
@@ -307,10 +439,10 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget bubble = Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
         color: isUser ? Colors.white.withValues(alpha: 0.4) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(32),
         border: isUser
             ? Border.all(color: Colors.white.withValues(alpha: 0.5))
             : null,
@@ -325,11 +457,11 @@ class _Bubble extends StatelessWidget {
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.85,
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         child: isUser
             ? ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(32),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                   child: bubble,
@@ -341,74 +473,159 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-/// Empty chat: the GitHub link preview card from the spec (small glass card,
-/// slightly rotated with a stacked shadow) + guidance.
+/// Empty chat: the seeded intro sequence, then the fanned GitHub
+/// link-preview stack (three slightly rotated cards, like the reference).
 class _EmptyChat extends StatelessWidget {
   const _EmptyChat({this.error});
 
   final String? error;
 
+  static const List<_PreviewCard> _cards = [
+    _PreviewCard(
+      title: 'Movement 12: Integration framework + GitHub integration',
+      footer: 'GitHub · gork PR #12',
+      angle: -0.09,
+      lift: 44,
+    ),
+    _PreviewCard(
+      title: 'Movement 19: Hark-style glass UI rebuild',
+      footer: 'GitHub · gork PR #19',
+      angle: 0,
+      lift: 0,
+    ),
+    _PreviewCard(
+      title: 'Movement 15: 24/7 handoff — task sync with the daemon',
+      footer: 'GitHub · gork PR #15',
+      angle: 0.09,
+      lift: 44,
+    ),
+  ];
+
+  List<Widget> buildChildren() {
+    return [
+      for (final line in ChatScreenState._introMessages)
+        _Bubble(text: line, isUser: false),
+      const SizedBox(height: 24),
+      SizedBox(
+        height: 320,
+        child: Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            for (final card in _cards)
+              Positioned(
+                top: card.lift,
+                left: card.angle < 0 ? 0 : (card.angle > 0 ? 24 : 40),
+                right: card.angle > 0 ? 0 : (card.angle < 0 ? 24 : 40),
+                child: Transform.rotate(
+                  angle: card.angle,
+                  child: _PreviewCardView(card: card),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      Text(
+        error ??
+            'Say something below. Your keys stay on this device. '
+                'gork is free and open source.',
+        style: const TextStyle(fontSize: 14, color: Colors.black54),
+      ),
+      if (error != null) ...[
+        const SizedBox(height: 8),
+        const Text(
+          'Tip: add a provider key first (Menu → Security → Providers).',
+          style: TextStyle(fontSize: 14, color: Colors.black87),
+        ),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Transform.rotate(
-          angle: -0.02,
-          child: GlassContainer(
-            width: 260,
-            opacity: 0.4,
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    color: Colors.black,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.code, size: 20, color: Colors.white),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'webdevshayan/gork',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        'Hark Pro clone · open source on GitHub',
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          error ??
-              'Say something below. Your keys stay on this device. '
-                  'gork builds panels and runs tools from chat.',
-          style: const TextStyle(fontSize: 14, color: Colors.black54),
-        ),
-        if (error != null) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'Tip: pick a provider and add its key first.',
-            style: TextStyle(fontSize: 14, color: Colors.black87),
+    return ListView(padding: const EdgeInsets.all(16), children: buildChildren());
+  }
+}
+
+class _PreviewCard {
+  const _PreviewCard({
+    required this.title,
+    required this.footer,
+    required this.angle,
+    required this.lift,
+  });
+
+  final String title;
+  final String footer;
+  final double angle;
+  final double lift;
+}
+
+class _PreviewCardView extends StatelessWidget {
+  const _PreviewCardView({required this.card});
+
+  final _PreviewCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
-      ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 110,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.code, size: 40, color: Colors.black87),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            card.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.code, size: 12, color: Colors.black54),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  card.footer,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

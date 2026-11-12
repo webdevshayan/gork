@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
+import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
 import 'package:gork/widgets/glass.dart';
@@ -37,8 +38,8 @@ void main() {
     Locator.reset();
     Locator.bind(
       prefs: await SharedPreferences.getInstance(),
-      store: InMemorySecureStore(),
-      // Weather is offline in tests → the card shows the spec fallback copy.
+      store: InMemorySecureStore()..write('apikey.openai', 'sk-test'),
+      // Weather is offline in tests → the card shows the reference copy.
       httpClient: MockClient((request) async => http.Response('offline', 500)),
     );
     await tester.pumpWidget(const GorkApp());
@@ -50,52 +51,102 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('home shows identity, weather panel and create-panel pill', (
+  testWidgets('home: weather card with two inner tiles + create-panel pill', (
     tester,
   ) async {
     await pumpShell(tester);
 
     expect(find.byKey(const ValueKey('ambient-backdrop')), findsOneWidget);
     expect(find.byType(BackdropFilter), findsWidgets);
-    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
-    expect(find.text('shayanalibuilds@gmail.com'), findsOneWidget);
+    // Reference Home has NO identity header — that lives on the menu surface.
+    expect(find.text('Shayan Ali Jalb'), findsNothing);
+    expect(find.text('shayanalibuilds@gmail.com'), findsNothing);
     expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
-    expect(find.text('Broken Clouds, 26°C'), findsOneWidget);
-    expect(find.text('Sunset, 5:40 PM'), findsOneWidget);
+    expect(find.text('Broken Clouds'), findsOneWidget);
+    expect(find.text('26°C'), findsOneWidget);
+    expect(find.text('Sunset'), findsOneWidget);
+    expect(find.text('5:40 PM'), findsOneWidget);
     expect(find.text('Create a new panel'), findsOneWidget);
-    expect(find.byIcon(Icons.cloud_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.mic_none), findsOneWidget);
-    expect(
-      find.byIcon(Icons.add),
-      findsNWidgets(2),
-      reason: 'one + on the create-panel pill, one in the input bar',
-    );
     expect(find.text('Message Hark'), findsOneWidget);
+    expect(find.byIcon(Icons.mic_none), findsOneWidget);
   });
 
-  testWidgets(
-    'glass primitives: blur sigma 10, card radius 16, pill radius 30',
-    (tester) async {
-      await pumpShell(tester);
+  testWidgets('glass primitives: weather card radius 28, nav pill radius 30', (
+    tester,
+  ) async {
+    await pumpShell(tester);
 
-      final weather = tester.widget<GlassContainer>(
-        find.ancestor(
-          of: find.text('Sehwan Taluka, PK'),
-          matching: find.byType(GlassContainer),
-        ),
-      );
-      expect(weather.sigma, 10);
-      expect(weather.radius, 16);
+    final weather = tester.widget<GlassContainer>(
+      find.ancestor(
+        of: find.text('Sehwan Taluka, PK'),
+        matching: find.byType(GlassContainer),
+      ),
+    );
+    expect(weather.sigma, 10);
+    expect(weather.radius, 28);
 
-      final pill = tester.widget<GlassContainer>(
-        find.ancestor(
-          of: find.text('Home'),
-          matching: find.byType(GlassContainer),
-        ),
-      );
-      expect(pill.radius, 30);
-    },
-  );
+    final pill = tester.widget<GlassContainer>(
+      find.ancestor(
+        of: find.text('Home'),
+        matching: find.byType(GlassContainer),
+      ),
+    );
+    expect(pill.radius, 30);
+  });
+
+  testWidgets('left button follows the reference: + / settings / back', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    // Home: the + (dropdown); Chat: settings; Projects: back. No ☰ anywhere.
+    expect(find.byIcon(Icons.segment), findsNothing);
+    expect(find.byIcon(Icons.menu), findsNothing);
+
+    await openTab(tester, 'chat');
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+
+    await openTab(tester, 'projects');
+    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+  });
+
+  testWidgets('home + opens the add dropdown (file / image / panel)', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const ValueKey('left-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('home-menu')), findsOneWidget);
+    for (final item in ['Add file', 'Add image', 'New panel']) {
+      expect(find.text(item), findsOneWidget);
+    }
+
+    // Tapping + again closes the dropdown.
+    await tester.tap(find.byKey(const ValueKey('left-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-menu')), findsNothing);
+  });
+
+  testWidgets('chat settings button opens the settings surface', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await openTab(tester, 'chat');
+    await tester.tap(find.byKey(const ValueKey('left-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shayan Ali Jalb'), findsOneWidget,
+        reason: 'the settings surface shows the identity header');
+    // The left button is now back.
+    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('left-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Shayan Ali Jalb'), findsNothing);
+    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
+  });
 
   testWidgets('nav pill highlights the active tab and switches screens', (
     tester,
@@ -109,9 +160,10 @@ void main() {
 
     expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.white);
     expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black54);
-    expect(find.text('Shayan Ali Jalb'), findsNothing);
-    // Empty chat shows the GitHub link preview card from the spec.
-    expect(find.text('webdevshayan/gork'), findsOneWidget);
+    // Empty chat: seeded intro + the fanned GitHub link-preview stack.
+    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
+    expect(find.textContaining('gork PR #19', skipOffstage: false),
+        findsOneWidget);
     expect(
       find.text('Message Hark'),
       findsOneWidget,
@@ -119,51 +171,134 @@ void main() {
     );
   });
 
-  testWidgets(
-    'menu opens System Preferences; back arrow returns; input hides',
-    (tester) async {
-      await pumpShell(tester);
-
-      await tester.tap(find.byIcon(Icons.menu));
-      await tester.pumpAndSettle();
-
-      expect(find.text('System Preferences'), findsOneWidget);
-      expect(
-        find.byType(TextField),
-        findsNothing,
-        reason: 'the input bar is hidden on the preferences screen',
-      );
-      expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
-      for (final row in ['Theme', 'Data Management', 'Security', 'About']) {
-        expect(find.text(row), findsOneWidget);
-      }
-      expect(find.text('System'), findsOneWidget);
-      expect(find.byIcon(Icons.chevron_right), findsWidgets);
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is Divider && w.color == Colors.black12,
-        ),
-        findsWidgets,
-      );
-
-      await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Shayan Ali Jalb'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
-    },
-  );
-
-  testWidgets('Projects tab opens the same preferences screen', (tester) async {
+  testWidgets('settings surface: opens via profile, identity header, rows', (
+    tester,
+  ) async {
     await pumpShell(tester);
 
-    await openTab(tester, 'projects');
-
-    expect(find.text('System Preferences'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
+    // The settings page becomes visible when the profile is tapped.
+    await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
+
     expect(find.text('Shayan Ali Jalb'), findsOneWidget);
+    expect(find.text('shayanalibuilds@gmail.com'), findsOneWidget);
+    expect(find.text('gork'), findsOneWidget);
+    expect(find.text('pro'), findsOneWidget);
+    expect(find.text('Upgrade'), findsOneWidget);
+    for (final row in [
+      'Profile', 'Scheduled Tasks', 'Accounts', 'Wallet', 'Security',
+    ]) {
+      expect(find.text(row, skipOffstage: false), findsOneWidget);
+    }
+    expect(find.text('Message Hark'), findsNothing,
+        reason: 'the input bar is hidden on the settings surface');
+    // No tab is selected on the settings surface.
+    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black54);
+    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.black54);
+    expect(
+      tester.widget<Text>(find.text('Projects')).style!.color,
+      Colors.black54,
+    );
+
+    // Tapping a tab returns to it.
+    await tester.tap(find.byKey(const ValueKey('tab-home')));
+    await tester.pumpAndSettle();
+    expect(find.text('Shayan Ali Jalb'), findsNothing);
+    expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
+  });
+
+  testWidgets('profile tapped twice: second tap offers to change the photo', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const ValueKey('avatar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('avatar')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('choose-photo')), findsOneWidget);
+    expect(find.byKey(const ValueKey('remove-photo')), findsOneWidget);
+  });
+
+  testWidgets('avatar without a photo shows the person icon (offline)', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    expect(
+      tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey('avatar')),
+        matching: find.byIcon(Icons.person_outline),
+      )).size,
+      24,
+    );
+  });
+
+  testWidgets('theme page: glass radio card, persists the choice', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const ValueKey('avatar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Theme'), findsOneWidget);
+    for (final mode in ['Auto', 'System', 'Light', 'Dark']) {
+      expect(find.text(mode), findsOneWidget);
+    }
+
+    await tester.tap(find.text('Dark'));
+    await tester.pumpAndSettle();
+
+    expect(Locator.prefs.getString('ui.theme'), 'Dark');
+    expect(tester.widget<GlassRadio>(find.byType(GlassRadio).at(3)).selected,
+        isTrue);
+    expect(find.byKey(const ValueKey('theme-scrim')), findsOneWidget);
+    expect(find.byIcon(Icons.u_turn_left), findsOneWidget);
+  });
+
+  testWidgets('input bar: + opens the attach menu, mic becomes an arrow, '
+      'and the field grows with the message', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.byKey(const ValueKey('attach-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attach-menu')), findsOneWidget);
+    for (final item in ['Camera', 'Photos', 'Files']) {
+      expect(find.text(item), findsOneWidget);
+    }
+    await tester.tap(find.text('Camera'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attach-menu')), findsNothing);
+    // Expire the snackbar so it stops covering the input bar.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    // Typing swaps the mic for the black arrow circle.
+    await tester.enterText(find.byKey(const ValueKey('input-bar')), 'hello');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('send-circle')), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    expect(find.byIcon(Icons.mic_none), findsNothing);
+
+    // The message field auto-resizes instead of clipping.
+    final field = tester.widget<TextField>(find.descendant(
+      of: find.byKey(const ValueKey('input-bar')),
+      matching: find.byType(TextField),
+    ));
+    expect(field.maxLines, 6);
+
+    // Sending jumps to the chat tab.
+    await tester.tap(find.byKey(const ValueKey('send-circle')));
+    await tester.pumpAndSettle();
+    expect(find.text('hello'), findsOneWidget,
+        reason: 'the message lands on the chat tab');
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget,
+        reason: 'left button on chat is now settings');
   });
 }

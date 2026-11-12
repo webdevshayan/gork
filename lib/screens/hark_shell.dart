@@ -1,22 +1,26 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:ui';
 
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
 import 'chat_screen.dart';
-import 'cloud_computer_screen.dart';
-import 'tasks_screen.dart';
 import 'hark_home.dart';
-import 'inbox_screen.dart';
-import 'integrations_screen.dart';
+import 'menu_screen.dart';
 import 'panels_screen.dart';
-import 'projects_screen.dart';
-import 'providers_screen.dart';
-import 'vault_screen.dart';
+import 'projects_surface.dart';
 
 enum HarkTab { home, chat, projects }
 
-/// The Hark-style shell: ambient backdrop + floating glass UI.
-/// Top nav pill (Home / Chat / Projects), dynamic body, pinned bottom input.
+/// The glass shell, pixel-matched to the reference screenshots:
+/// ambient backdrop + top bar (context button / nav pill / avatar) + dynamic
+/// body + pinned bottom input. The left button changes per surface
+/// (Home = +, Chat = search, Projects/Menu = ☰); the ☰ opens the full
+/// profile/menu surface where no tab is selected.
 class HarkShell extends StatefulWidget {
   const HarkShell({super.key});
 
@@ -26,29 +30,45 @@ class HarkShell extends StatefulWidget {
 
 class _HarkShellState extends State<HarkShell> {
   HarkTab _tab = HarkTab.home;
+  bool _onMenu = false;
+  bool _homeMenuOpen = false;
+  bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
+  final TextEditingController _input = TextEditingController();
+  final FocusNode _inputFocus = FocusNode();
   final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
 
   void _selectTab(HarkTab tab) {
     setState(() {
-      if (tab != HarkTab.projects) _lastCoreTab = tab;
       _tab = tab;
+      _onMenu = false;
+      _homeMenuOpen = false;
+      _attachOpen = false;
+      if (tab != HarkTab.projects) _lastCoreTab = tab;
     });
   }
 
-  void _openPreferences() {
-    if (_tab != HarkTab.projects) _lastCoreTab = _tab;
-    setState(() => _tab = HarkTab.projects);
-  }
+  void _openMenu() => setState(() {
+        _onMenu = true;
+        _homeMenuOpen = false;
+        _attachOpen = false;
+      });
 
-  void _leavePreferences() => setState(() => _tab = _lastCoreTab);
+  void _closeMenu() => setState(() {
+        _onMenu = false;
+        _tab = _lastCoreTab;
+      });
 
-  /// The glass input bar works on every screen: submitting from Home jumps to
-  /// the Chat tab and delivers the message to the assistant.
+  void _toggleAttach() => setState(() => _attachOpen = !_attachOpen);
+
+  /// The glass input bar works on every tab: submitting from Home/Projects
+  /// jumps to Chat and delivers the message to the assistant.
   void _sendFromInput(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    if (_tab != HarkTab.chat) {
+    _input.clear();
+    setState(() => _attachOpen = false);
+    if (_tab != HarkTab.chat || _onMenu) {
       _selectTab(HarkTab.chat);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _chatKey.currentState?.send(trimmed);
@@ -58,9 +78,62 @@ class _HarkShellState extends State<HarkShell> {
     }
   }
 
+  IconData get _leftIcon {
+    if (_onMenu) return Icons.arrow_back_ios_new;
+    switch (_tab) {
+      case HarkTab.home:
+        return Icons.add;
+      case HarkTab.chat:
+        return Icons.settings_outlined;
+      case HarkTab.projects:
+        return Icons.arrow_back_ios_new;
+    }
+  }
+
+  /// The left button is contextual: on Home it toggles the add-dropdown,
+  /// on Chat it opens the settings surface, on Projects it goes back
+  /// (wired into the project hierarchy), and the settings surface itself
+  /// gets a plain back button.
+  void _onLeftButton() {
+    if (_onMenu) {
+      _closeMenu();
+      return;
+    }
+    switch (_tab) {
+      case HarkTab.home:
+        setState(() => _homeMenuOpen = !_homeMenuOpen);
+        return;
+      case HarkTab.chat:
+        _openMenu();
+        return;
+      case HarkTab.projects:
+        // At the projects root there is nothing above to go back to.
+        break;
+    }
+  }
+
+  void _onAvatarTap() {
+    if (_onMenu) {
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) => const _AvatarSheet(),
+      );
+      return;
+    }
+    _openMenu();
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _inputFocus.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool onPreferences = _tab == HarkTab.projects;
+    final bool showInput = !_onMenu;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -71,22 +144,54 @@ class _HarkShellState extends State<HarkShell> {
             child: Column(
               children: [
                 _TopBar(
-                  selected: _tab,
+                  tab: _tab,
+                  onMenu: _onMenu,
+                  leftIcon: _leftIcon,
+                  onLeftButton: _onLeftButton,
                   onSelect: _selectTab,
-                  onMenu: _openPreferences,
-                  onBack: _leavePreferences,
+                  onAvatar: _onAvatarTap,
                 ),
                 Expanded(
-                  child: onPreferences
-                      ? const PreferencesScreen()
+                  child: _onMenu
+                      ? MenuScreen(onBack: _closeMenu)
                       : _tab == HarkTab.home
                       ? const HarkHome()
-                      : ChatScreen(key: _chatKey),
+                      : _tab == HarkTab.chat
+                      ? ChatScreen(
+                          key: _chatKey,
+                          searchOpen: false,
+                        )
+                      : const ProjectsSurface(),
                 ),
-                if (!onPreferences) BottomInputBar(onSend: _sendFromInput),
+                if (showInput)
+                  BottomInputBar(
+                    controller: _input,
+                    focusNode: _inputFocus,
+                    onSend: _sendFromInput,
+                    onAttach: _toggleAttach,
+                  ),
               ],
             ),
           ),
+          if (_attachOpen && !_onMenu)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 96,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _AttachMenu(onDismiss: _toggleAttach),
+              ),
+            ),
+          if (_homeMenuOpen && !_onMenu)
+            Positioned(
+              key: const ValueKey('home-menu-anchor'),
+              top: 76,
+              left: 16,
+              child: _HomeMenu(
+                onDismiss: () => setState(() => _homeMenuOpen = false),
+              ),
+            ),
         ],
       ),
     );
@@ -95,29 +200,29 @@ class _HarkShellState extends State<HarkShell> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.selected,
-    required this.onSelect,
+    required this.tab,
     required this.onMenu,
-    required this.onBack,
+    required this.leftIcon,
+    required this.onLeftButton,
+    required this.onSelect,
+    required this.onAvatar,
   });
 
-  final HarkTab selected;
+  final HarkTab tab;
+  final bool onMenu;
+  final IconData leftIcon;
+  final VoidCallback onLeftButton;
   final ValueChanged<HarkTab> onSelect;
-  final VoidCallback onMenu;
-  final VoidCallback onBack;
+  final VoidCallback onAvatar;
 
   @override
   Widget build(BuildContext context) {
-    final bool onPreferences = selected == HarkTab.projects;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GlassIconButton(
-            icon: onPreferences ? Icons.arrow_back_ios_new : Icons.menu,
-            onTap: onPreferences ? onBack : onMenu,
-          ),
+          GlassIconButton(key: const ValueKey('left-button'), icon: leftIcon, onTap: onLeftButton),
           GlassContainer(
             key: const ValueKey('nav-pill'),
             radius: 30,
@@ -138,15 +243,15 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  Widget _tabChip(String label, HarkTab tab) {
-    final bool isSelected = selected == tab;
+  Widget _tabChip(String label, HarkTab chipTab) {
+    final bool isSelected = !onMenu && tab == chipTab;
     return GestureDetector(
       key: ValueKey('tab-${label.toLowerCase()}'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => onSelect(tab),
+      onTap: () => onSelect(chipTab),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? Colors.black : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
@@ -154,8 +259,8 @@ class _TopBar extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 16,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected ? Colors.white : Colors.black54,
           ),
         ),
@@ -167,240 +272,323 @@ class _TopBar extends StatelessWidget {
 class _Avatar extends StatelessWidget {
   const _Avatar();
 
-  static const String _faceUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e'
-      '?auto=format&fit=crop&w=200&q=80';
+  Widget _fallback() => Container(
+        color: Colors.black87,
+        alignment: Alignment.center,
+        child: const Icon(Icons.person_outline, size: 24, color: Colors.white),
+      );
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      child: ClipOval(
-        child: Image.network(
-          _faceUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            color: Colors.black87,
-            alignment: Alignment.center,
-            child: const Text(
-              'S',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+    return ValueListenableBuilder<String?>(
+      valueListenable: avatarPath,
+      builder: (context, path, _) {
+        return GestureDetector(
+          key: const ValueKey('avatar'),
+          behavior: HitTestBehavior.opaque,
+          onTap: context
+              .findAncestorStateOfType<_HarkShellState>()
+              ?._onAvatarTap,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: ClipOval(
+              // No photo provided -> just the icon. Fully offline.
+              child: (path == null || path.isEmpty)
+                  ? _fallback()
+                  : Image.file(
+                      File(path),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _fallback(),
+                    ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-/// The pinned glass input bar. Hidden on the preferences screen.
-class BottomInputBar extends StatelessWidget {
-  const BottomInputBar({super.key, required this.onSend});
+/// Avatar actions (profile tapped while the settings surface is open):
+/// choose a real photo from the gallery (stored offline on the device) or
+/// remove it — the avatar then falls back to the person icon.
+class _AvatarSheet extends StatelessWidget {
+  const _AvatarSheet();
 
-  final ValueChanged<String> onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: GlassContainer(
-        key: const ValueKey('input-bar'),
-        radius: 30,
-        opacity: 0.35,
-        padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                textInputAction: TextInputAction.send,
-                onSubmitted: onSend,
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
-                decoration: const InputDecoration(
-                  hintText: 'Message Hark',
-                  hintStyle: TextStyle(fontSize: 16, color: Colors.black54),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const _InputIcon(icon: Icons.add),
-            const SizedBox(width: 12),
-            const _InputIcon(icon: Icons.mic_none),
-          ],
-        ),
-      ),
-    );
+  Future<void> _choose(BuildContext context) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/gork-avatar.jpg');
+      await file.writeAsBytes(await picked.readAsBytes());
+      await Locator.prefs.setString('profile.photoPath', file.path);
+      avatarPath.value = file.path;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load that image.')),
+        );
+      }
+    }
   }
-}
-
-class _InputIcon extends StatelessWidget {
-  const _InputIcon({required this.icon});
-
-  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {}, // attachments + voice land in a later movement
-      child: Icon(icon, size: 22, color: Colors.black87),
-    );
-  }
-}
-
-/// The Projects tab: System Preferences. One big glass card of rows.
-class PreferencesScreen extends StatelessWidget {
-  const PreferencesScreen({super.key});
-
-  static const String version = 'v1.1.0';
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'System Preferences',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Gork $version · glass shell',
-            style: TextStyle(fontSize: 14, color: Colors.black54),
-          ),
-          const SizedBox(height: 16),
-          GlassContainer(
-            radius: 16,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Align(
+          alignment: Alignment.topRight,
+          child: GlassContainer(
+            radius: 24,
+            opacity: 0.65,
+            width: 280,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                _row(Icons.palette_outlined, 'Theme', trailing: 'System'),
-                const _Divider(),
-                _row(Icons.storage_outlined, 'Data Management', trailing: 'On'),
-                const _Divider(),
-                _row(
-                  Icons.shield_outlined,
-                  'Security',
-                  trailing: 'On',
-                  onTap: () => _push(context, const VaultScreen()),
+                GlassMenuRow(
+                  key: const ValueKey('choose-photo'),
+                  icon: Icons.image_outlined,
+                  label: 'Choose photo...',
+                  trailing: const SizedBox.shrink(),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _choose(context);
+                  },
                 ),
-                const _Divider(),
-                _row(Icons.info_outline, 'About', trailing: version),
-                const _Divider(),
-                _row(
-                  Icons.key_outlined,
-                  'Providers',
-                  onTap: () => _push(context, const ProvidersScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.folder_outlined,
-                  'Projects',
-                  onTap: () => _push(context, const ProjectsScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.lock_outline,
-                  'Vault',
-                  onTap: () => _push(context, const VaultScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.schedule_outlined,
-                  'Tasks',
-                  onTap: () => _push(context, const TasksScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.inbox_outlined,
-                  'Inbox',
-                  onTap: () => _push(context, const InboxScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.dashboard_outlined,
-                  'Panels',
-                  onTap: () => _push(context, const PanelsScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.dns_outlined,
-                  'Cloud Computer',
-                  onTap: () => _push(context, const CloudComputerScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.extension_outlined,
-                  'Integrations',
-                  onTap: () => _push(context, const IntegrationsScreen()),
+                const Divider(color: Colors.black12, height: 1),
+                GlassMenuRow(
+                  key: const ValueKey('remove-photo'),
+                  icon: Icons.delete_outline,
+                  label: 'Remove photo',
+                  trailing: const SizedBox.shrink(),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Locator.prefs.remove('profile.photoPath');
+                    avatarPath.value = null;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Profile photo removed.')),
+                    );
+                  },
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The pinned glass input bar, pixel-matched: hint "Message Hark", + and mic
+/// on the right; the mic becomes a black send circle when there is text.
+class BottomInputBar extends StatelessWidget {
+  const BottomInputBar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onSend,
+    required this.onAttach,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onSend;
+  final VoidCallback onAttach;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final bool hasText = value.text.trim().isNotEmpty;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: GlassContainer(
+            key: const ValueKey('input-bar'),
+            radius: 30,
+            opacity: 0.35,
+            padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: onSend,
+                    // The message area auto-resizes with the text instead of
+                    // clipping long messages.
+                    minLines: 1,
+                    maxLines: 6,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      color: Colors.black87,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'Message Hark',
+                      hintStyle: TextStyle(
+                        fontSize: 17,
+                        color: Colors.black54,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  key: const ValueKey('attach-button'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onAttach,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.add, size: 24, color: Colors.black54),
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: hasText
+                      ? GestureDetector(
+                          key: const ValueKey('send-button'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onSend(controller.text),
+                          child: Container(
+                            key: const ValueKey('send-circle'),
+                            width: 44,
+                            height: 44,
+                            margin: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.black,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_upward,
+                              size: 22,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Padding(
+                          key: ValueKey('mic-icon'),
+                          padding: EdgeInsets.all(14),
+                          child: Icon(
+                            Icons.mic_none,
+                            size: 24,
+                            color: Colors.black54,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The + dropdown on Home: add a file, an image, or a new panel — a more
+/// opaque glass dropdown right under the left button, like the reference.
+class _HomeMenu extends StatelessWidget {
+  const _HomeMenu({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      key: const ValueKey('home-menu'),
+      radius: 24,
+      opacity: 0.6,
+      width: 220,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _row(context, Icons.insert_drive_file_outlined, 'Add file'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.image_outlined, 'Add image'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.dashboard_outlined, 'New panel'),
         ],
       ),
     );
   }
 
-  void _push(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-
-  Widget _row(
-    IconData icon,
-    String label, {
-    String? trailing,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: Colors.black87),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
+  Widget _row(BuildContext context, IconData icon, String label) {
+    return GlassMenuRow(
+      icon: icon,
+      label: label,
+      onTap: () {
+        onDismiss();
+        if (label == 'New panel') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PanelsScreen()),
+          );
+          return;
+        }
+        // File & image picking land with the project-resources movement.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$label attaches inside a project — open one first.',
             ),
-            const Spacer(),
-            if (trailing != null)
-              Text(
-                trailing,
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-class _Divider extends StatelessWidget {
-  const _Divider();
+/// The + attachment menu from the screenshots: Camera / Photos / Files in a
+/// more opaque glass dropdown above the input bar.
+class _AttachMenu extends StatelessWidget {
+  const _AttachMenu({required this.onDismiss});
+
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    return const Divider(color: Colors.black12, height: 1);
+    return GlassContainer(
+      key: const ValueKey('attach-menu'),
+      radius: 24,
+      opacity: 0.6,
+      width: 220,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _row(context, Icons.photo_camera_outlined, 'Camera'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.image_outlined, 'Photos'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.folder_outlined, 'Files'),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, IconData icon, String label) {
+    return GlassMenuRow(
+      icon: icon,
+      label: label,
+      onTap: () {
+        onDismiss();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label attachments land in the next movement.')),
+        );
+      },
+    );
   }
 }

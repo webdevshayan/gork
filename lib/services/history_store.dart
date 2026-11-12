@@ -7,12 +7,21 @@ class ChatTurn {
   final String role;
   final String content;
 
-  const ChatTurn(this.role, this.content);
+  /// Wall-clock epoch ms when the message was created (null for legacy turns).
+  /// Drives the date separators in the chat UI.
+  final int? time;
 
-  Map<String, dynamic> toJson() => {'role': role, 'content': content};
+  const ChatTurn(this.role, this.content, {this.time});
 
-  factory ChatTurn.fromJson(Map<String, dynamic> json) =>
-      ChatTurn(json['role'] as String, json['content'] as String);
+  Map<String, dynamic> toJson() => time == null
+      ? {'role': role, 'content': content}
+      : {'role': role, 'content': content, 'time': time};
+
+  factory ChatTurn.fromJson(Map<String, dynamic> json) => ChatTurn(
+        json['role'] as String,
+        json['content'] as String,
+        time: json['time'] as int?,
+      );
 }
 
 /// A saved conversation.
