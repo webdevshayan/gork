@@ -85,32 +85,34 @@ class Locator {
   static PanelsStore get panels => PanelsStore(prefs);
 
   static ToolRegistry get toolRegistry => ToolRegistry(
-        memory: memory,
-        projects: projects,
-        tasks: tasks,
-        panels: panels,
-        vault: vault,
-        weather: weather,
-        integrations: integrations,
-        handoff: handoff,
-      );
+    memory: memory,
+    projects: projects,
+    tasks: tasks,
+    panels: panels,
+    vault: vault,
+    weather: weather,
+    integrations: integrations,
+    handoff: handoff,
+  );
 
-  static AgentService get agent =>
-      AgentService(chat, toolRegistry, memory);
+  static AgentService get agent => AgentService(chat, toolRegistry, memory);
 
   static InboxService get inbox => InboxService(prefs, weather);
 
   static Integrations get integrations => Integrations(store, httpClient);
 
   static HandoffService get handoff => HandoffService(
-        client: httpClient,
-        prefs: prefs,
-        store: store,
-        tasks: tasks,
-      );
+    client: httpClient,
+    prefs: prefs,
+    store: store,
+    tasks: tasks,
+  );
 
   static double get ambientLat =>
-      prefs.getDouble('ambient.lat') ?? 24.8607; // Karachi default
-  static double get ambientLon =>
-      prefs.getDouble('ambient.lon') ?? 67.0011;
+      prefs.getDouble('ambient.lat') ?? 26.4195; // Sehwan Taluka default
+  static double get ambientLon => prefs.getDouble('ambient.lon') ?? 67.8622;
+
+  /// Human-readable label shown on the Home weather panel.
+  static String get locationLabel =>
+      prefs.getString('ambient.label') ?? 'Sehwan Taluka, PK';
 }

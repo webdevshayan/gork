@@ -1,13 +1,12 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
-import '../constants/design_tokens.dart';
 import '../providers/providers.dart';
 import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
-import '../widgets/g_button.dart';
-import '../widgets/g_card.dart';
-import '../widgets/screen.dart';
+import '../widgets/glass.dart';
 
 class _UiMessage {
   final String role;
@@ -16,18 +15,19 @@ class _UiMessage {
   const _UiMessage(this.role, this.content);
 }
 
-/// The chat screen: message list + input, connected to the unified chat().
+/// The Chat tab: glass bubbles on the ambient backdrop, connected to the
+/// unified chat(). The input lives in the shell's bottom bar, which calls
+/// [ChatScreenState.send].
 class ChatScreen extends StatefulWidget {
-  final String? conversationId;
-
   const ChatScreen({super.key, this.conversationId});
 
+  final String? conversationId;
+
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ChatScreenState createState() => ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _input = TextEditingController();
+class ChatScreenState extends State<ChatScreen> {
   final ScrollController _scroll = ScrollController();
   List<_UiMessage> _messages = [];
   String _conversationId = '';
@@ -67,28 +67,27 @@ class _ChatScreenState extends State<ChatScreen> {
       _title = conversation.title;
       _providerId = conversation.providerId;
       _messages = [
-        for (final m in conversation.messages) _UiMessage(m.role, m.content)
+        for (final m in conversation.messages) _UiMessage(m.role, m.content),
       ];
     }
     if (mounted) setState(() {});
   }
 
-  Future<void> _send() async {
-    final text = _input.text.trim();
+  /// Public send API — the shell's glass input bar drives this.
+  Future<void> send(String rawText) async {
+    final text = rawText.trim();
     if (text.isEmpty || _loading) return;
     if (_providerId == null) {
       setState(() => _error = 'No provider key yet. Add one in Providers.');
       return;
     }
 
-    _input.clear();
     setState(() {
       _messages.add(_UiMessage('user', text));
       _error = null;
       _loading = true;
       if (_conversationId.isEmpty) {
-        _conversationId =
-            DateTime.now().millisecondsSinceEpoch.toString();
+        _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
         _title = text.length > 40 ? '${text.substring(0, 40)}…' : text;
       }
     });
@@ -114,15 +113,15 @@ class _ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
     } finally {
-      await Locator.history.save(Conversation(
-        id: _conversationId,
-        title: _title,
-        providerId: _providerId!,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
-        messages: [
-          for (final m in _messages) ChatTurn(m.role, m.content),
-        ],
-      ));
+      await Locator.history.save(
+        Conversation(
+          id: _conversationId,
+          title: _title,
+          providerId: _providerId!,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+          messages: [for (final m in _messages) ChatTurn(m.role, m.content)],
+        ),
+      );
       _scrollToBottom();
     }
   }
@@ -140,12 +139,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickProvider() async {
-    final palette = paletteOf(context);
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: palette.surface,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
         return SafeArea(
@@ -155,12 +153,15 @@ class _ChatScreenState extends State<ChatScreen> {
             itemBuilder: (context, index) {
               final p = kProviders[index];
               return ListTile(
-                title: Text(p.name, style: TypeScale.body(color: palette.textPrimary)),
-                subtitle: Text(p.isCustom ? 'custom' : p.baseURL,
-                    style: TypeScale.caption(color: palette.textTertiary)),
-                trailing: _providerId == p.id
-                    ? Icon(Icons.check, color: palette.primary)
-                    : null,
+                title: Text(
+                  p.name,
+                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                ),
+                subtitle: Text(
+                  p.isCustom ? 'custom' : p.baseURL,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                trailing: _providerId == p.id ? const Icon(Icons.check) : null,
                 onTap: () {
                   setState(() => _providerId = p.id);
                   Locator.prefs.setString('chat.providerId', p.id);
@@ -180,152 +181,234 @@ class _ChatScreenState extends State<ChatScreen> {
       _conversationId = '';
       _title = 'New chat';
       _error = null;
+      _toolsUsed = [];
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final palette = paletteOf(context);
-    return Screen(
-      title: _title,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              GlassContainer(
+                radius: 30,
+                opacity: 0.35,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _pickProvider,
+                  child: Text(
+                    _providerId == null
+                        ? 'Pick provider'
+                        : kProviders
+                              .firstWhere((p) => p.id == _providerId)
+                              .name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GlassContainer(
+                radius: 30,
+                opacity: 0.35,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _newChat,
+                  child: const Text(
+                    'New chat',
+                    style: TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, color: Colors.black54),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_toolsUsed.isNotEmpty && !_loading)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                GButton(
-                  label: _providerId == null
-                      ? 'Pick provider'
-                      : kProviders.firstWhere((p) => p.id == _providerId).name,
-                  variant: ButtonVariant.secondary,
-                  onPressed: _pickProvider,
-                ),
-                const SizedBox(width: Spacing.sm),
-                GButton(
-                  label: 'New chat',
-                  variant: ButtonVariant.ghost,
-                  onPressed: _newChat,
-                ),
+                for (final tool in _toolsUsed)
+                  GlassActionChip(label: 'used: $tool'),
               ],
             ),
           ),
-          if (_toolsUsed.isNotEmpty && !_loading)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.sm),
-              child: Wrap(
-                spacing: Spacing.sm,
-                children: [
-                  for (final tool in _toolsUsed)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: Spacing.sm, vertical: Spacing.xs),
-                      decoration: BoxDecoration(
-                        color: palette.primary.withValues(alpha: 0.12),
-                        borderRadius:
-                            BorderRadius.circular(RadiusTokens.full),
-                      ),
-                      child: Text('used: $tool',
-                          style: TypeScale.caption(color: palette.primary)),
-                    ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: _messages.isEmpty
-                ? GCard(
-                    child: Text(
-                      'Say something. Your keys stay on this device.',
-                      style: TypeScale.body(color: palette.textSecondary),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scroll,
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final m = _messages[index];
-                      final isUser = m.role == 'user';
-                      return Align(
-                        alignment: isUser
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: Spacing.sm),
-                          padding: const EdgeInsets.all(Spacing.md),
-                          constraints: BoxConstraints(
-                            maxWidth:
-                                MediaQuery.of(context).size.width * 0.85,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isUser
-                                ? palette.primary
-                                : palette.surface,
-                            borderRadius: BorderRadius.circular(
-                              RadiusTokens.lg,
-                            ),
-                          ),
-                          child: SelectableText(
-                            m.content,
-                            style: TypeScale.body(
-                              color: isUser
-                                  ? palette.onPrimary
-                                  : palette.textPrimary,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.sm),
-              child: Text(
-                _error!,
-                style: TypeScale.caption(color: palette.error),
-              ),
-            ),
-          SafeArea(
-            top: false,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _input,
-                    minLines: 1,
-                    maxLines: 4,
-                    enabled: !_loading,
-                    style: TypeScale.body(color: palette.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Message gork…',
-                      filled: true,
-                      fillColor: palette.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(RadiusTokens.md),
-                        borderSide: BorderSide(color: palette.border),
-                      ),
-                    ),
-                    onSubmitted: (_) => _send(),
-                  ),
-                ),
-                const SizedBox(width: Spacing.sm),
-                GButton(
-                  label: _loading ? '…' : 'Send',
-                  onPressed: _loading ? null : _send,
-                ),
-              ],
+        Expanded(
+          child: _messages.isEmpty
+              ? _EmptyChat(error: _error)
+              : _buildMessages(),
+        ),
+        if (_error != null && _messages.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _error!,
+              style: const TextStyle(fontSize: 12, color: Color(0xFFB91C1C)),
             ),
           ),
-        ],
-      ),
+      ],
+    );
+  }
+
+  Widget _buildMessages() {
+    return ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.all(16),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final m = _messages[index];
+        return _Bubble(text: m.content, isUser: m.role == 'user');
+      },
     );
   }
 
   @override
   void dispose() {
-    _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+}
+
+/// Spec bubbles: AI = solid white, radius 16, left. User = glass
+/// white 0.4, radius 16, right (with its own backdrop blur).
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.text, required this.isUser});
+
+  final String text;
+  final bool isUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget bubble = Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isUser ? Colors.white.withValues(alpha: 0.4) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isUser
+            ? Border.all(color: Colors.white.withValues(alpha: 0.5))
+            : null,
+      ),
+      child: SelectableText(
+        text,
+        style: const TextStyle(fontSize: 16, color: Colors.black87),
+      ),
+    );
+
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
+        child: isUser
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: bubble,
+                ),
+              )
+            : bubble,
+      ),
+    );
+  }
+}
+
+/// Empty chat: the GitHub link preview card from the spec (small glass card,
+/// slightly rotated with a stacked shadow) + guidance.
+class _EmptyChat extends StatelessWidget {
+  const _EmptyChat({this.error});
+
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Transform.rotate(
+          angle: -0.02,
+          child: GlassContainer(
+            width: 260,
+            opacity: 0.4,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: Colors.black,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.code, size: 20, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'webdevshayan/gork',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        'Hark Pro clone · open source on GitHub',
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          error ??
+              'Say something below. Your keys stay on this device. '
+                  'gork builds panels and runs tools from chat.',
+          style: const TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Tip: pick a provider and add its key first.',
+            style: TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+        ],
+      ],
+    );
   }
 }

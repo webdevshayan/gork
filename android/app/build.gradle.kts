@@ -38,6 +38,15 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // Flutter engine .so files ship pre-stripped upstream. Keeping
+            // debug symbols for all native libs skips AGP's strip step, so
+            // the Android NDK is never needed to build this project.
+            keepDebugSymbols.add("**/*.so")
+        }
+    }
 }
 
 kotlin {
