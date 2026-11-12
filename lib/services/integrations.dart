@@ -4,6 +4,9 @@ import 'package:http/http.dart' as http;
 
 import 'github_service.dart';
 import 'secure_store.dart';
+import 'slack_service.dart';
+import 'spotify_service.dart';
+import 'strava_service.dart';
 
 /// Service integrations — BYO token, same philosophy as BYOK.
 ///
@@ -171,6 +174,24 @@ class Integrations {
     return GitHubService(client: client, token: () async => t);
   }
 
+  Future<SlackService?> slackService() async {
+    final t = await vault.token('slack');
+    if (t == null || t.isEmpty) return null;
+    return SlackService(client: client, token: () async => t);
+  }
+
+  Future<StravaService?> stravaService() async {
+    final t = await vault.token('strava');
+    if (t == null || t.isEmpty) return null;
+    return StravaService(client: client, token: () async => t);
+  }
+
+  Future<SpotifyService?> spotifyService() async {
+    final t = await vault.token('spotify');
+    if (t == null || t.isEmpty) return null;
+    return SpotifyService(client: client, token: () async => t);
+  }
+
   /// Null on success, error text otherwise. Fill cases per movement.
   /// [tokenOverride] lets the UI test a freshly pasted token before saving.
   Future<String?> testConnection(String id, {String? tokenOverride}) async {
@@ -182,6 +203,15 @@ class Integrations {
       switch (id) {
         case 'github':
           await GitHubService(client: client, token: () async => t).whoAmI();
+          break;
+        case 'slack':
+          await SlackService(client: client, token: () async => t).whoAmI();
+          break;
+        case 'strava':
+          await StravaService(client: client, token: () async => t).whoAmI();
+          break;
+        case 'spotify':
+          await SpotifyService(client: client, token: () async => t).whoAmI();
           break;
         default:
           return 'Token saved (no live test for $id yet)';
