@@ -65,3 +65,4 @@ Install: copy the APK to your Android phone and open it (allow
 | #10 | Agent tool loop + Inbox with real actions |
 | #11 | Release polish + first release APK |
 | #12 | Integration framework + GitHub integration (notifications, issues) |
+| #13 | Slack, Strava, Spotify integrations with agent tools |

@@ -2,6 +2,9 @@ import 'github_service.dart';
 import 'integrations.dart';
 import 'llm_client.dart';
 import 'locator.dart';
+import 'slack_service.dart';
+import 'spotify_service.dart';
+import 'strava_service.dart';
 import 'memory_store.dart';
 import 'panels_store.dart';
 import 'projects_store.dart';
@@ -110,6 +113,38 @@ class ToolRegistry {
           },
           'required': ['repo', 'title'],
         }),
+        ToolDef('slack_list_channels',
+            'List Slack channels the connected bot can see.', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('slack_post_message',
+            'Post a message to a Slack channel as the bot.', {
+          'type': 'object',
+          'properties': {
+            'channel': {
+              'type': 'string',
+              'description': 'channel name or ID, e.g. #general'
+            },
+            'text': {'type': 'string'}
+          },
+          'required': ['channel', 'text'],
+        }),
+        ToolDef('strava_recent_activities',
+            'List the user\u2019s recent Strava activities.', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('spotify_now_playing',
+            'Show the track currently playing on Spotify.', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('spotify_play_pause',
+            'Toggle play/pause on the active Spotify device.', {
+          'type': 'object',
+          'properties': {},
+        }),
       ];
 
   /// Execute a tool call, returning the text result for the model.
@@ -200,19 +235,20 @@ class ToolRegistry {
         }
 
       case 'github_notifications':
-        return _runGitHub('github_notifications',
-            (gh) => gh.notifications().then((l) => l.isEmpty
-                ? 'no unread notifications'
-                : l.join('\n')));
+        return _runTool<GitHubService>('github', 'github_notifications',
+            () => integrations!.githubService(), (gh) => gh.notifications()
+                .then((l) =>
+                    l.isEmpty ? 'no unread notifications' : l.join('\n')));
 
       case 'github_list_issues':
         final repo = (args['repo'] as String?)?.trim() ?? '';
         if (repo.isEmpty || !repo.contains('/')) {
           return 'error: repo must be owner/repo';
         }
-        return _runGitHub('github_list_issues',
-            (gh) => gh.openIssues(repo).then((l) =>
-                l.isEmpty ? 'no open issues in $repo' : l.join('\n')));
+        return _runTool<GitHubService>('github', 'github_list_issues',
+            () => integrations!.githubService(), (gh) => gh.openIssues(repo)
+                .then((l) =>
+                    l.isEmpty ? 'no open issues in $repo' : l.join('\n')));
 
       case 'github_create_issue':
         final cRepo = (args['repo'] as String?)?.trim() ?? '';
@@ -220,28 +256,62 @@ class ToolRegistry {
         if (cRepo.isEmpty || !cRepo.contains('/') || title.isEmpty) {
           return 'error: repo and title required';
         }
-        return _runGitHub('github_create_issue', (gh) => gh.createIssue(
+        return _runTool<GitHubService>('github', 'github_create_issue',
+            () => integrations!.githubService(), (gh) => gh.createIssue(
               cRepo,
               title: title,
               body: args['body'] as String? ?? '',
             ));
+
+      case 'slack_list_channels':
+        return _runTool<SlackService>('slack', 'slack_list_channels',
+            () => integrations!.slackService(),
+            (s) => s.channels().then((l) =>
+                l.isEmpty ? 'no channels visible' : l.join('\n')));
+
+      case 'slack_post_message':
+        final channel = (args['channel'] as String?)?.trim() ?? '';
+        final text = (args['text'] as String?)?.trim() ?? '';
+        if (channel.isEmpty || text.isEmpty) {
+          return 'error: channel and text required';
+        }
+        return _runTool<SlackService>('slack', 'slack_post_message',
+            () => integrations!.slackService(),
+            (s) => s.postMessage(channel: channel, text: text));
+
+      case 'strava_recent_activities':
+        return _runTool<StravaService>(
+            'strava', 'strava_recent_activities',
+            () => integrations!.stravaService(),
+            (s) => s.recentActivities().then((l) => l.isEmpty
+                ? 'no recent activities'
+                : l.join('\n')));
+
+      case 'spotify_now_playing':
+        return _runTool<SpotifyService>('spotify', 'spotify_now_playing',
+            () => integrations!.spotifyService(), (s) => s.nowPlaying());
+
+      case 'spotify_play_pause':
+        return _runTool<SpotifyService>('spotify', 'spotify_play_pause',
+            () => integrations!.spotifyService(), (s) => s.playPause());
 
       default:
         return 'error: unknown tool $name';
     }
   }
 
-  /// Run a GitHub tool; maps connection problems to friendly text.
-  Future<String> _runGitHub(
-      String tool, Future<String> Function(GitHubService gh) run) async {
+  /// Run an integration-backed tool; maps connection problems to friendly
+  /// text so the model can explain them to the user.
+  Future<String> _runTool<T>(String integrationId, String tool,
+      Future<T?> Function() make, Future<String> Function(T) run) async {
     final integ = integrations;
     if (integ == null) return 'error: integrations unavailable on this build';
-    final gh = await integ.githubService();
-    if (gh == null) {
-      return 'error: GitHub not connected — add a token in Integrations';
+    final T? service = await make();
+    if (service == null) {
+      return 'error: $integrationId not connected — add a token in Integrations';
     }
     try {
-      return await run(gh);
+      return await run(service);
     } on IntegrationException catch (e) {
       return 'error: ${e.message}';
     } catch (e) {
