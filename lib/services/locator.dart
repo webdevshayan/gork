@@ -6,6 +6,7 @@ import 'chat_service.dart';
 import 'cloud_computer_store.dart';
 import 'history_store.dart';
 import 'inbox_service.dart';
+import 'integrations.dart';
 import 'memory_store.dart';
 import 'notifications.dart';
 import 'panels_store.dart';
@@ -95,6 +96,8 @@ class Locator {
       AgentService(chat, toolRegistry, memory);
 
   static InboxService get inbox => InboxService(prefs, weather);
+
+  static Integrations get integrations => Integrations(store, httpClient);
 
   static double get ambientLat =>
       prefs.getDouble('ambient.lat') ?? 24.8607; // Karachi default

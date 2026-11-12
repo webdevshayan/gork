@@ -1,3 +1,5 @@
+import 'github_service.dart';
+import 'integrations.dart';
 import 'llm_client.dart';
 import 'locator.dart';
 import 'memory_store.dart';
@@ -16,6 +18,7 @@ class ToolRegistry {
   final PanelsStore panels;
   final VaultStore vault;
   final WeatherService weather;
+  final Integrations? integrations;
 
   ToolRegistry({
     required this.memory,
@@ -24,6 +27,7 @@ class ToolRegistry {
     required this.panels,
     required this.vault,
     required this.weather,
+    this.integrations,
   });
 
   List<ToolDef> get defs => const [
@@ -79,6 +83,32 @@ class ToolRegistry {
         ToolDef('get_weather', 'Current weather for the user\u2019s location.', {
           'type': 'object',
           'properties': {},
+        }),
+        ToolDef('github_notifications',
+            'List unread GitHub notifications for the connected account.', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('github_list_issues',
+            'List open issues of a GitHub repository (no pull requests).', {
+          'type': 'object',
+          'properties': {
+            'repo': {
+              'type': 'string',
+              'description': 'owner/repo, e.g. webdevshayan/gork'
+            }
+          },
+          'required': ['repo'],
+        }),
+        ToolDef('github_create_issue',
+            'Create an issue in a GitHub repository as the user.', {
+          'type': 'object',
+          'properties': {
+            'repo': {'type': 'string'},
+            'title': {'type': 'string'},
+            'body': {'type': 'string'}
+          },
+          'required': ['repo', 'title'],
         }),
       ];
 
@@ -169,8 +199,53 @@ class ToolRegistry {
           return 'weather unavailable: $e';
         }
 
+      case 'github_notifications':
+        return _runGitHub('github_notifications',
+            (gh) => gh.notifications().then((l) => l.isEmpty
+                ? 'no unread notifications'
+                : l.join('\n')));
+
+      case 'github_list_issues':
+        final repo = (args['repo'] as String?)?.trim() ?? '';
+        if (repo.isEmpty || !repo.contains('/')) {
+          return 'error: repo must be owner/repo';
+        }
+        return _runGitHub('github_list_issues',
+            (gh) => gh.openIssues(repo).then((l) =>
+                l.isEmpty ? 'no open issues in $repo' : l.join('\n')));
+
+      case 'github_create_issue':
+        final cRepo = (args['repo'] as String?)?.trim() ?? '';
+        final title = (args['title'] as String?)?.trim() ?? '';
+        if (cRepo.isEmpty || !cRepo.contains('/') || title.isEmpty) {
+          return 'error: repo and title required';
+        }
+        return _runGitHub('github_create_issue', (gh) => gh.createIssue(
+              cRepo,
+              title: title,
+              body: args['body'] as String? ?? '',
+            ));
+
       default:
         return 'error: unknown tool $name';
+    }
+  }
+
+  /// Run a GitHub tool; maps connection problems to friendly text.
+  Future<String> _runGitHub(
+      String tool, Future<String> Function(GitHubService gh) run) async {
+    final integ = integrations;
+    if (integ == null) return 'error: integrations unavailable on this build';
+    final gh = await integ.githubService();
+    if (gh == null) {
+      return 'error: GitHub not connected — add a token in Integrations';
+    }
+    try {
+      return await run(gh);
+    } on IntegrationException catch (e) {
+      return 'error: ${e.message}';
+    } catch (e) {
+      return 'error: $tool failed: $e';
     }
   }
 }
@@ -183,4 +258,5 @@ ToolRegistry buildAppToolRegistry() => ToolRegistry(
       panels: Locator.panels,
       vault: Locator.vault,
       weather: Locator.weather,
+      integrations: Locator.integrations,
     );

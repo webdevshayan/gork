@@ -6,6 +6,7 @@ import '../widgets/screen.dart';
 import 'chat_screen.dart';
 import 'cloud_computer_screen.dart';
 import 'inbox_screen.dart';
+import 'integrations_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
@@ -160,6 +161,15 @@ class HomeScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const InboxScreen()),
+            ),
+          ),
+          FeatureTile(
+            icon: Icons.extension_outlined,
+            label: 'Integrations',
+            subtitle: 'GitHub, Slack, Strava, Spotify, Gmail, PayPal — your tokens',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const IntegrationsScreen()),
             ),
           ),
         ],
