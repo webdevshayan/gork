@@ -71,3 +71,4 @@ Install: copy the APK to your Android phone and open it (allow
 | #15 | 24/7 Handoff: task sync with the daemon + shared-secret auth |
 | #16 | First-run onboarding wizard |
 | #17 | Release v1.0.0 |
+| #18 | v1.0.0 test & release report |
