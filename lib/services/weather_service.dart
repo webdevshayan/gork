@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
@@ -23,6 +24,52 @@ class WeatherNow {
 
   bool get isWet =>
       (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
+}
+
+/// Local solar sunset time (NOAA approximation — pure math, no network).
+/// Accurate to roughly ±2 minutes for mid latitudes.
+DateTime sunsetFor(double lat, double lon, DateTime dateUtc) {
+  double rad(double d) => d * math.pi / 180.0;
+  double deg(double d) => d * 180.0 / math.pi;
+
+  // Day-of-year.
+  final int n = dateUtc.difference(DateTime(dateUtc.year)).inDays + 1;
+  // Fractional year (radians).
+  final double gamma = 2.0 * math.pi / 365.0 * (n - 1);
+  // Equation of time (minutes) + declination (radians).
+  final double eqTime =
+      229.18 *
+      (0.000075 +
+          0.001868 * math.cos(gamma) -
+          0.032077 * math.sin(gamma) -
+          0.014615 * math.cos(2 * gamma) -
+          0.040849 * math.sin(2 * gamma));
+  final double decl =
+      0.006918 -
+      0.399912 * math.cos(gamma) +
+      0.070257 * math.sin(gamma) -
+      0.006758 * math.cos(2 * gamma) +
+      0.000907 * math.sin(2 * gamma) -
+      0.002697 * math.cos(3 * gamma) +
+      0.00148 * math.sin(3 * gamma);
+
+  // Hour angle for zenith 90.833 degrees (accounts for refraction + disc).
+  final double latR = rad(lat);
+  double cosOmega =
+      math.cos(rad(90.8333)) / (math.cos(latR) * math.cos(decl)) -
+      math.tan(latR) * math.tan(decl);
+  if (cosOmega > 1) cosOmega = 1; // polar day -> sunset at solar noon
+  if (cosOmega < -1) cosOmega = -1; // polar night
+  final double omega = math.acos(cosOmega); // radians
+
+  // Solar noon (minutes from UTC midnight) for this longitude.
+  final double solarNoon = 720 - 4.0 * lon - eqTime;
+  final double sunsetMinutes = solarNoon + 4.0 * deg(omega);
+  return DateTime.utc(
+    dateUtc.year,
+    dateUtc.month,
+    dateUtc.day,
+  ).add(Duration(minutes: sunsetMinutes.round()));
 }
 
 class WeatherService {

@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
 import 'chat_screen.dart';
-import 'cloud_computer_screen.dart';
-import 'tasks_screen.dart';
 import 'hark_home.dart';
-import 'inbox_screen.dart';
-import 'integrations_screen.dart';
+import 'menu_screen.dart';
 import 'panels_screen.dart';
-import 'projects_screen.dart';
-import 'providers_screen.dart';
-import 'vault_screen.dart';
+import 'projects_surface.dart';
 
 enum HarkTab { home, chat, projects }
 
-/// The Hark-style shell: ambient backdrop + floating glass UI.
-/// Top nav pill (Home / Chat / Projects), dynamic body, pinned bottom input.
+/// The glass shell, pixel-matched to the reference screenshots:
+/// ambient backdrop + top bar (context button / nav pill / avatar) + dynamic
+/// body + pinned bottom input. The left button changes per surface
+/// (Home = +, Chat = search, Projects/Menu = ☰); the ☰ opens the full
+/// profile/menu surface where no tab is selected.
 class HarkShell extends StatefulWidget {
   const HarkShell({super.key});
 
@@ -26,29 +25,62 @@ class HarkShell extends StatefulWidget {
 
 class _HarkShellState extends State<HarkShell> {
   HarkTab _tab = HarkTab.home;
+  bool _onMenu = false;
+  bool _searchOpen = false;
+  bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
+  final TextEditingController _input = TextEditingController();
+  final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _inputFocus = FocusNode();
   final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
 
   void _selectTab(HarkTab tab) {
     setState(() {
-      if (tab != HarkTab.projects) _lastCoreTab = tab;
       _tab = tab;
+      _onMenu = false;
+      _searchOpen = false;
+      _attachOpen = false;
+      if (tab != HarkTab.projects) _lastCoreTab = tab;
     });
   }
 
-  void _openPreferences() {
-    if (_tab != HarkTab.projects) _lastCoreTab = _tab;
-    setState(() => _tab = HarkTab.projects);
+  void _openMenu() => setState(() {
+        _onMenu = true;
+        _searchOpen = false;
+        _attachOpen = false;
+      });
+
+  void _closeMenu() => setState(() {
+        _onMenu = false;
+        _tab = _lastCoreTab;
+      });
+
+  void _toggleSearch() {
+    if (_tab != HarkTab.chat) {
+      _selectTab(HarkTab.chat);
+    }
+    setState(() {
+      _searchOpen = !_searchOpen;
+      _attachOpen = false;
+      if (_searchOpen) {
+        _searchCtrl.clear();
+        _chatKey.currentState?.search('');
+      } else {
+        _chatKey.currentState?.search(null);
+      }
+    });
   }
 
-  void _leavePreferences() => setState(() => _tab = _lastCoreTab);
+  void _toggleAttach() => setState(() => _attachOpen = !_attachOpen);
 
-  /// The glass input bar works on every screen: submitting from Home jumps to
-  /// the Chat tab and delivers the message to the assistant.
+  /// The glass input bar works on every tab: submitting from Home/Projects
+  /// jumps to Chat and delivers the message to the assistant.
   void _sendFromInput(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    if (_tab != HarkTab.chat) {
+    _input.clear();
+    setState(() => _attachOpen = false);
+    if (_tab != HarkTab.chat || _onMenu) {
       _selectTab(HarkTab.chat);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _chatKey.currentState?.send(trimmed);
@@ -58,9 +90,63 @@ class _HarkShellState extends State<HarkShell> {
     }
   }
 
+  IconData get _leftIcon {
+    if (_onMenu) return Icons.segment;
+    switch (_tab) {
+      case HarkTab.home:
+        return Icons.add;
+      case HarkTab.chat:
+        return Icons.search;
+      case HarkTab.projects:
+        return Icons.segment;
+    }
+  }
+
+  void _onLeftButton() {
+    if (_onMenu) {
+      _closeMenu();
+      return;
+    }
+    switch (_tab) {
+      case HarkTab.home:
+        // "+" on Home = create a new panel, same as the pill below the card.
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PanelsScreen()),
+        );
+        return;
+      case HarkTab.chat:
+        _toggleSearch();
+        return;
+      case HarkTab.projects:
+        _openMenu();
+        return;
+    }
+  }
+
+  void _onAvatarTap() {
+    if (_onMenu) {
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) => const _AvatarSheet(),
+      );
+      return;
+    }
+    _openMenu();
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _searchCtrl.dispose();
+    _inputFocus.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool onPreferences = _tab == HarkTab.projects;
+    final bool showInput = !_onMenu;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -71,22 +157,51 @@ class _HarkShellState extends State<HarkShell> {
             child: Column(
               children: [
                 _TopBar(
-                  selected: _tab,
+                  tab: _tab,
+                  onMenu: _onMenu,
+                  leftIcon: _leftIcon,
+                  onLeftButton: _onLeftButton,
                   onSelect: _selectTab,
-                  onMenu: _openPreferences,
-                  onBack: _leavePreferences,
+                  onAvatar: _onAvatarTap,
                 ),
                 Expanded(
-                  child: onPreferences
-                      ? const PreferencesScreen()
+                  child: _onMenu
+                      ? MenuScreen(onBack: _closeMenu)
                       : _tab == HarkTab.home
                       ? const HarkHome()
-                      : ChatScreen(key: _chatKey),
+                      : _tab == HarkTab.chat
+                      ? ChatScreen(
+                          key: _chatKey,
+                          searchOpen: _searchOpen,
+                        )
+                      : const ProjectsSurface(),
                 ),
-                if (!onPreferences) BottomInputBar(onSend: _sendFromInput),
+                if (showInput)
+                  !_searchOpen
+                      ? BottomInputBar(
+                          controller: _input,
+                          focusNode: _inputFocus,
+                          onSend: _sendFromInput,
+                          onAttach: _toggleAttach,
+                        )
+                      : _SearchBar(
+                          controller: _searchCtrl,
+                          onClose: _toggleSearch,
+                          onChanged: (q) => _chatKey.currentState?.search(q),
+                        ),
               ],
             ),
           ),
+          if (_attachOpen && !_searchOpen)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 96,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _AttachMenu(onDismiss: _toggleAttach),
+              ),
+            ),
         ],
       ),
     );
@@ -95,29 +210,29 @@ class _HarkShellState extends State<HarkShell> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.selected,
-    required this.onSelect,
+    required this.tab,
     required this.onMenu,
-    required this.onBack,
+    required this.leftIcon,
+    required this.onLeftButton,
+    required this.onSelect,
+    required this.onAvatar,
   });
 
-  final HarkTab selected;
+  final HarkTab tab;
+  final bool onMenu;
+  final IconData leftIcon;
+  final VoidCallback onLeftButton;
   final ValueChanged<HarkTab> onSelect;
-  final VoidCallback onMenu;
-  final VoidCallback onBack;
+  final VoidCallback onAvatar;
 
   @override
   Widget build(BuildContext context) {
-    final bool onPreferences = selected == HarkTab.projects;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GlassIconButton(
-            icon: onPreferences ? Icons.arrow_back_ios_new : Icons.menu,
-            onTap: onPreferences ? onBack : onMenu,
-          ),
+          GlassIconButton(key: const ValueKey('left-button'), icon: leftIcon, onTap: onLeftButton),
           GlassContainer(
             key: const ValueKey('nav-pill'),
             radius: 30,
@@ -138,15 +253,15 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  Widget _tabChip(String label, HarkTab tab) {
-    final bool isSelected = selected == tab;
+  Widget _tabChip(String label, HarkTab chipTab) {
+    final bool isSelected = !onMenu && tab == chipTab;
     return GestureDetector(
       key: ValueKey('tab-${label.toLowerCase()}'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => onSelect(tab),
+      onTap: () => onSelect(chipTab),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? Colors.black : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
@@ -154,8 +269,8 @@ class _TopBar extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 16,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected ? Colors.white : Colors.black54,
           ),
         ),
@@ -171,29 +286,103 @@ class _Avatar extends StatelessWidget {
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e'
       '?auto=format&fit=crop&w=200&q=80';
 
+  Widget _fallback() => Container(
+        color: Colors.black87,
+        alignment: Alignment.center,
+        child: const Text(
+          'S',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      child: ClipOval(
-        child: Image.network(
-          _faceUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            color: Colors.black87,
-            alignment: Alignment.center,
-            child: const Text(
-              'S',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: photoRemoved,
+      builder: (context, removed, _) {
+        return GestureDetector(
+          key: const ValueKey('avatar'),
+          behavior: HitTestBehavior.opaque,
+          onTap: context
+              .findAncestorStateOfType<_HarkShellState>()
+              ?._onAvatarTap,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: ClipOval(
+              child: removed
+                  ? _fallback()
+                  : Image.network(
+                      _faceUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _fallback(),
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Avatar actions on the menu surface: choose / remove the profile photo.
+class _AvatarSheet extends StatelessWidget {
+  const _AvatarSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Align(
+          alignment: Alignment.topRight,
+          child: GlassContainer(
+            radius: 24,
+            opacity: 0.65,
+            width: 280,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GlassMenuRow(
+                  key: const ValueKey('choose-photo'),
+                  icon: Icons.image_outlined,
+                  label: 'Choose photo...',
+                  trailing: const SizedBox.shrink(),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Photo picker arrives with the attachments movement.',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(color: Colors.black12, height: 1),
+                GlassMenuRow(
+                  key: const ValueKey('remove-photo'),
+                  icon: Icons.delete_outline,
+                  label: 'Remove photo',
+                  trailing: const SizedBox.shrink(),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Locator.prefs.setBool('profile.photoRemoved', true);
+                    photoRemoved.value = true;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Profile photo removed.')),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ),
@@ -202,205 +391,247 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// The pinned glass input bar. Hidden on the preferences screen.
+/// The pinned glass input bar, pixel-matched: hint "Message Hark", + and mic
+/// on the right; the mic becomes a black send circle when there is text.
 class BottomInputBar extends StatelessWidget {
-  const BottomInputBar({super.key, required this.onSend});
+  const BottomInputBar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onSend,
+    required this.onAttach,
+  });
 
+  final TextEditingController controller;
+  final FocusNode focusNode;
   final ValueChanged<String> onSend;
+  final VoidCallback onAttach;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final bool hasText = value.text.trim().isNotEmpty;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: GlassContainer(
+            key: const ValueKey('input-bar'),
+            radius: 30,
+            opacity: 0.35,
+            padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: onSend,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      color: Colors.black87,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'Message Hark',
+                      hintStyle: TextStyle(
+                        fontSize: 17,
+                        color: Colors.black54,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  key: const ValueKey('attach-button'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onAttach,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.add, size: 24, color: Colors.black54),
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: hasText
+                      ? GestureDetector(
+                          key: const ValueKey('send-button'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onSend(controller.text),
+                          child: Container(
+                            key: const ValueKey('send-circle'),
+                            width: 44,
+                            height: 44,
+                            margin: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.black,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_upward,
+                              size: 22,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Padding(
+                          key: ValueKey('mic-icon'),
+                          padding: EdgeInsets.all(14),
+                          child: Icon(
+                            Icons.mic_none,
+                            size: 24,
+                            color: Colors.black54,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Search bar replacing the input bar (Chat tab, 🔍): frosted pill with the
+/// query + clear button, plus a round close button on the right.
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.onClose,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onClose;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: GlassContainer(
-        key: const ValueKey('input-bar'),
-        radius: 30,
-        opacity: 0.35,
-        padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                textInputAction: TextInputAction.send,
-                onSubmitted: onSend,
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
-                decoration: const InputDecoration(
-                  hintText: 'Message Hark',
-                  hintStyle: TextStyle(fontSize: 16, color: Colors.black54),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
-                ),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: GlassContainer(
+              key: const ValueKey('search-bar'),
+              radius: 30,
+              opacity: 0.45,
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, size: 22, color: Colors.black54),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      autofocus: true,
+                      onChanged: onChanged,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        color: Colors.black87,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'Search',
+                        hintStyle: TextStyle(
+                          fontSize: 17,
+                          color: Colors.black54,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: controller,
+                    builder: (context, value, _) {
+                      if (value.text.isEmpty) return const SizedBox.shrink();
+                      return GestureDetector(
+                        key: const ValueKey('search-clear'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          controller.clear();
+                          onChanged('');
+                        },
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          margin: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
-            const _InputIcon(icon: Icons.add),
-            const SizedBox(width: 12),
-            const _InputIcon(icon: Icons.mic_none),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InputIcon extends StatelessWidget {
-  const _InputIcon({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {}, // attachments + voice land in a later movement
-      child: Icon(icon, size: 22, color: Colors.black87),
-    );
-  }
-}
-
-/// The Projects tab: System Preferences. One big glass card of rows.
-class PreferencesScreen extends StatelessWidget {
-  const PreferencesScreen({super.key});
-
-  static const String version = 'v1.1.0';
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'System Preferences',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Gork $version · glass shell',
-            style: TextStyle(fontSize: 14, color: Colors.black54),
-          ),
-          const SizedBox(height: 16),
-          GlassContainer(
-            radius: 16,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Column(
-              children: [
-                _row(Icons.palette_outlined, 'Theme', trailing: 'System'),
-                const _Divider(),
-                _row(Icons.storage_outlined, 'Data Management', trailing: 'On'),
-                const _Divider(),
-                _row(
-                  Icons.shield_outlined,
-                  'Security',
-                  trailing: 'On',
-                  onTap: () => _push(context, const VaultScreen()),
-                ),
-                const _Divider(),
-                _row(Icons.info_outline, 'About', trailing: version),
-                const _Divider(),
-                _row(
-                  Icons.key_outlined,
-                  'Providers',
-                  onTap: () => _push(context, const ProvidersScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.folder_outlined,
-                  'Projects',
-                  onTap: () => _push(context, const ProjectsScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.lock_outline,
-                  'Vault',
-                  onTap: () => _push(context, const VaultScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.schedule_outlined,
-                  'Tasks',
-                  onTap: () => _push(context, const TasksScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.inbox_outlined,
-                  'Inbox',
-                  onTap: () => _push(context, const InboxScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.dashboard_outlined,
-                  'Panels',
-                  onTap: () => _push(context, const PanelsScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.dns_outlined,
-                  'Cloud Computer',
-                  onTap: () => _push(context, const CloudComputerScreen()),
-                ),
-                const _Divider(),
-                _row(
-                  Icons.extension_outlined,
-                  'Integrations',
-                  onTap: () => _push(context, const IntegrationsScreen()),
-                ),
-              ],
-            ),
+          const SizedBox(width: 8),
+          GlassIconButton(
+            key: const ValueKey('search-close'),
+            icon: Icons.close,
+            onTap: () {
+              controller.clear();
+              onChanged('');
+              onClose();
+            },
           ),
         ],
       ),
     );
   }
-
-  void _push(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-
-  Widget _row(
-    IconData icon,
-    String label, {
-    String? trailing,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: Colors.black87),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
-            ),
-            const Spacer(),
-            if (trailing != null)
-              Text(
-                trailing,
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-class _Divider extends StatelessWidget {
-  const _Divider();
+/// The + attachment menu from the screenshots: Camera / Photos / Files in a
+/// more opaque glass dropdown above the input bar.
+class _AttachMenu extends StatelessWidget {
+  const _AttachMenu({required this.onDismiss});
+
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    return const Divider(color: Colors.black12, height: 1);
+    return GlassContainer(
+      key: const ValueKey('attach-menu'),
+      radius: 24,
+      opacity: 0.6,
+      width: 220,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _row(context, Icons.photo_camera_outlined, 'Camera'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.image_outlined, 'Photos'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.folder_outlined, 'Files'),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, IconData icon, String label) {
+    return GlassMenuRow(
+      icon: icon,
+      label: label,
+      onTap: () {
+        onDismiss();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label attachments land in the next movement.')),
+        );
+      },
+    );
   }
 }

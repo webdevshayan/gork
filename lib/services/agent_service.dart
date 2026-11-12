@@ -11,7 +11,9 @@ class AgentResult {
   const AgentResult(this.content, this.toolsUsed);
 }
 
-/// The agent loop: chat + tool calls. Up to 3 tool rounds per user message.
+/// The agent loop: chat + tool calls. Up to 6 tool rounds per user message
+/// (raised from 3 so multi-step jobs complete in one go), plus one final
+/// iteration reserved for the answer itself.
 ///
 /// The OpenAI-compatible protocol is used properly (assistant tool_calls +
 /// tool role messages). For Anthropic, whose protocol differs, the tool
@@ -28,7 +30,7 @@ class AgentService {
     required String providerId,
     required String userText,
     List<ChatMessage> priorMessages = const [],
-    int maxRounds = 3,
+    int maxRounds = 6,
   }) async {
     final systemText = 'You are gork, the user\u2019s personal AI assistant '
         'running on their Android phone. Be direct and concrete. '
@@ -44,7 +46,9 @@ class AgentService {
 
     final toolsUsed = <String>[];
 
-    for (var round = 0; round < maxRounds; round++) {
+    // maxRounds = tool rounds; one extra iteration is always reserved for
+    // the final answer so the budget never eats the reply.
+    for (var round = 0; round <= maxRounds; round++) {
       final reply = await _chat.chat(
         providerId: providerId,
         messages: messages,
@@ -53,6 +57,10 @@ class AgentService {
 
       if (!reply.wantsTool) {
         return AgentResult(reply.content, toolsUsed);
+      }
+
+      if (round == maxRounds) {
+        break; // budget exhausted mid-tool-call — stop safely below
       }
 
       for (final call in reply.toolCalls) {

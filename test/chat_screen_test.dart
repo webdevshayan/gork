@@ -61,7 +61,7 @@ void main() {
       final BoxDecoration userDecoration =
           userContainer.decoration! as BoxDecoration;
       expect(userDecoration.color, Colors.white.withValues(alpha: 0.4));
-      expect(userDecoration.borderRadius, BorderRadius.circular(16));
+      expect(userDecoration.borderRadius, BorderRadius.circular(32));
 
       final replyFinder = find.text('mock reply');
       expect(replyFinder, findsOneWidget);
@@ -71,7 +71,7 @@ void main() {
       final BoxDecoration aiDecoration =
           aiContainer.decoration! as BoxDecoration;
       expect(aiDecoration.color, Colors.white);
-      expect(aiDecoration.borderRadius, BorderRadius.circular(16));
+      expect(aiDecoration.borderRadius, BorderRadius.circular(32));
     },
   );
 
@@ -83,11 +83,8 @@ void main() {
     await chatKey.currentState!.send('hello gork');
     await tester.pumpAndSettle();
 
-    // One match in the bubble, one in the header (title = first message).
-    expect(find.text('hello gork'), findsNWidgets(2));
+    expect(find.text('hello gork'), findsOneWidget);
     expect(find.text('mock reply'), findsOneWidget);
-    expect(find.textContaining('OpenAI'), findsWidgets);
-
     // History persisted.
     final conversation = Locator.history.latest!;
     expect(conversation.providerId, 'openai');
@@ -136,8 +133,7 @@ void main() {
 
     expect(find.textContaining('LlmException 401'), findsOneWidget);
     // The user message stays visible for context.
-    // One in the bubble, one in the header title.
-    expect(find.text('hi'), findsNWidgets(2));
+    expect(find.text('hi'), findsOneWidget);
   });
 
   testWidgets('restores the latest conversation on open', (tester) async {
@@ -156,16 +152,41 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Old chat'), findsOneWidget);
     expect(find.text('old message'), findsOneWidget);
   });
 
-  testWidgets('empty chat shows the GitHub link preview card', (tester) async {
+  testWidgets('empty chat shows the intro and the fanned preview stack',
+      (tester) async {
     await bindServices(withKey: true);
     await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
     await tester.pumpAndSettle();
 
-    expect(find.text('webdevshayan/gork'), findsOneWidget);
+    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
+    expect(find.textContaining('gork PR #19'), findsOneWidget);
     expect(find.textContaining('open source'), findsOneWidget);
+  });
+
+  testWidgets('search(null) leaves search mode; search(q) filters hits',
+      (tester) async {
+    await bindServices(withKey: true);
+    await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
+    await tester.pumpAndSettle();
+
+    await chatKey.currentState!.send('find the zip file');
+    await tester.pumpAndSettle();
+
+    chatKey.currentState!.search('zip');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('find the zip file'), findsOneWidget);
+    expect(find.textContaining('mock reply'), findsNothing);
+
+    chatKey.currentState!.search('nothing-matches');
+    await tester.pumpAndSettle();
+    expect(find.text('No results for "nothing-matches".'), findsOneWidget);
+
+    chatKey.currentState!.search(null);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('mock reply'), findsOneWidget,
+        reason: 'search(null) leaves search mode and shows the full thread');
   });
 }
