@@ -74,3 +74,9 @@ Install: copy the APK to your Android phone and open it (allow
 | #18 | v1.0.0 test & release report |
 | #19 | Hark Pro glass UI rebuild: ambient backdrop + glass shell (nav pill, bottom input), spec-exact Home / Chat / System Preferences |
 | #20 | Daemon self-hosts anywhere: Termux + proot + no-systemd backends (gork-daemonctl), missing bin entrypoint fixed, /health-gated honest installs |
+| #21 | Navigation corrections: contextual left button (+ dropdown / settings / back), profile-driven settings, offline avatar (person icon), auto-resizing input |
+| #22 | Offline ambient backdrop (bundled sky, no black flash) + contrast overlays (white in light, black in dark) + new glass-g launcher icon |
+| #23 | Projects are folders: chats + files + images live inside, shell-scoped conversations |
+| #24 | Safe markdown for AI responses: CommonMark + GFM, zero web views, HTML inert, no fetches |
+| #25 | gork CLI: configure LLMs, tasks, secrets and everything from the terminal — no file editing |
+| #20 | Daemon self-hosts anywhere: Termux + proot + no-systemd backends (gork-daemonctl), missing bin entrypoint fixed, /health-gated honest installs |

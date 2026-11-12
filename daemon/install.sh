@@ -190,6 +190,17 @@ UNIT
   $SUDO systemctl restart gork-daemon
   sleep 2
   $SUDO systemctl is-active --quiet gork-daemon
+
+  # gork CLI — configure everything from the terminal, no file editing.
+  if [ -w /usr/local/bin ] || [ "$(id -u)" -eq 0 ]; then
+    $SUDO tee /usr/local/bin/gork >/dev/null <<GORKCLI
+#!/usr/bin/env bash
+# gork CLI wrapper (systemd install)
+GORK_HOME=/etc/gork-daemon exec $dart_bin run $src/bin/gork_cli.dart "\$@"
+GORKCLI
+    $SUDO chmod 0755 /usr/local/bin/gork
+    echo "-- gork CLI installed: /usr/local/bin/gork"
+  fi
 }
 
 install_termux_services() { # $1 = daemon src dir
@@ -237,6 +248,15 @@ install_ctl() { # $1 = daemon src dir ; returns 0 iff daemon verified running
   install -m 0755 "$src/gork-daemonctl" "$bindir/gork-daemonctl" 2>/dev/null \
     || { cp "$src/gork-daemonctl" "$bindir/gork-daemonctl" && chmod 0755 "$bindir/gork-daemonctl"; }
 
+  # gork CLI — configure LLMs, tasks and everything from the terminal.
+  cat > "$bindir/gork" <<GORKCLI
+#!/usr/bin/env bash
+# gork CLI wrapper (ctl install)
+GORK_HOME="$home" exec dart run "$src/bin/gork_cli.dart" "\$@"
+GORKCLI
+  chmod 0755 "$bindir/gork"
+  echo "-- gork CLI installed: $bindir/gork (try: gork llm providers)"
+
   if [ "${GORK_NO_START:-0}" = "1" ]; then
     echo "-- GORK_NO_START=1: installed but not started."
     return 0
@@ -278,7 +298,8 @@ print_summary() { # $1 backend $2 src-dir $3 config-file
     systemd)
       echo "   logs   : journalctl -u gork-daemon -f"
       echo "   restart: sudo systemctl restart gork-daemon   (after editing config)"
-      echo "   status : systemctl status gork-daemon" ;;
+      echo "   status : systemctl status gork-daemon"
+      echo "   cli    : gork config list   (or: gork llm providers)" ;;
     termux-services)
       echo "   logs   : tail -f $HOME/.gork-daemon/gork-daemon.log"
       echo "   restart: sv restart gork-daemon   (after editing config)"
@@ -286,7 +307,8 @@ print_summary() { # $1 backend $2 src-dir $3 config-file
     *)
       echo "   logs   : gork-daemonctl logs"
       echo "   restart: gork-daemonctl restart   (after editing config)"
-      echo "   status : gork-daemonctl status" ;;
+      echo "   status : gork-daemonctl status"
+      echo "   cli    : gork config list   (or: gork llm providers)" ;;
   esac
 }
 
