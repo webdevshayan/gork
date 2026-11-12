@@ -4,7 +4,7 @@ import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 import '../widgets/g_button.dart';
 import '../widgets/screen.dart';
-import 'home_screen.dart';
+import 'hark_shell.dart';
 import 'providers_screen.dart';
 
 /// First-run onboarding: three pages, then the flag is set forever.
@@ -27,7 +27,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _next() async {
     if (_page < _pages - 1) {
       await _controller.nextPage(
-          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     } else {
       await Locator.prefs.setBool('onboarding.done', true);
       widget.onFinished();
@@ -36,7 +38,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _openProviders() async {
     await Navigator.push(
-        context, MaterialPageRoute(builder: (_) => const ProvidersScreen()));
+      context,
+      MaterialPageRoute(builder: (_) => const ProvidersScreen()),
+    );
     if (mounted) setState(() {});
   }
 
@@ -56,11 +60,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: PageView(
               controller: _controller,
               onPageChanged: (i) => setState(() => _page = i),
-              children: [
-                _welcome(palette),
-                _setup(palette),
-                _done(palette),
-              ],
+              children: [_welcome(palette), _setup(palette), _done(palette)],
             ),
           ),
           Padding(
@@ -73,8 +73,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       label: 'Back',
                       variant: ButtonVariant.ghost,
                       onPressed: () => _controller.previousPage(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOut),
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                      ),
                       expands: true,
                     ),
                   ),
@@ -95,72 +96,73 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _welcome(Palette palette) => Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('gork', style: TypeScale.display(color: palette.textPrimary)),
-            const SizedBox(height: Spacing.md),
-            Text(
-              'Your personal AI assistant. Bring your own key — '
-              'everything stays on your phone.',
-              style: TypeScale.body(color: palette.textSecondary),
-            ),
-          ],
+    padding: const EdgeInsets.all(Spacing.xl),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('gork', style: TypeScale.display(color: palette.textPrimary)),
+        const SizedBox(height: Spacing.md),
+        Text(
+          'Your personal AI assistant. Bring your own key — '
+          'everything stays on your phone.',
+          style: TypeScale.body(color: palette.textSecondary),
         ),
-      );
+      ],
+    ),
+  );
 
   Widget _setup(Palette palette) => Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Connect a provider',
-                style: TypeScale.title(color: palette.textPrimary)),
-            const SizedBox(height: Spacing.md),
-            Text(
-              'Pick OpenAI, OpenRouter, Gemini, Anthropic or your own '
-              'OpenAI-compatible endpoint, and paste your API key. '
-              'Keys are encrypted on this device only.',
-              style: TypeScale.body(color: palette.textSecondary),
-            ),
-            const SizedBox(height: Spacing.md),
-            Text(
-              'You can also connect GitHub, Slack, Strava, Spotify, Gmail '
-              'and PayPal later from Integrations.',
-              style: TypeScale.bodySmall(color: palette.textTertiary),
-            ),
-            const SizedBox(height: Spacing.lg),
-            GButton(
-              label: 'Open Providers',
-              variant: ButtonVariant.secondary,
-              onPressed: _openProviders,
-              expands: true,
-            ),
-          ],
+    padding: const EdgeInsets.all(Spacing.xl),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Connect a provider',
+          style: TypeScale.title(color: palette.textPrimary),
         ),
-      );
+        const SizedBox(height: Spacing.md),
+        Text(
+          'Pick OpenAI, OpenRouter, Gemini, Anthropic or your own '
+          'OpenAI-compatible endpoint, and paste your API key. '
+          'Keys are encrypted on this device only.',
+          style: TypeScale.body(color: palette.textSecondary),
+        ),
+        const SizedBox(height: Spacing.md),
+        Text(
+          'You can also connect GitHub, Slack, Strava, Spotify, Gmail '
+          'and PayPal later from Integrations.',
+          style: TypeScale.bodySmall(color: palette.textTertiary),
+        ),
+        const SizedBox(height: Spacing.lg),
+        GButton(
+          label: 'Open Providers',
+          variant: ButtonVariant.secondary,
+          onPressed: _openProviders,
+          expands: true,
+        ),
+      ],
+    ),
+  );
 
   Widget _done(Palette palette) => Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('You are set',
-                style: TypeScale.title(color: palette.textPrimary)),
-            const SizedBox(height: Spacing.md),
-            Text(
-              'Chat, Projects, Tasks, Panels, Inbox and Cloud Computer '
-              'are all on the home screen. gork works 24/7 when you '
-              'connect the companion daemon.',
-              style: TypeScale.body(color: palette.textSecondary),
-            ),
-          ],
+    padding: const EdgeInsets.all(Spacing.xl),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('You are set', style: TypeScale.title(color: palette.textPrimary)),
+        const SizedBox(height: Spacing.md),
+        Text(
+          'Chat, Projects, Tasks, Panels, Inbox and Cloud Computer '
+          'are all on the home screen. gork works 24/7 when you '
+          'connect the companion daemon.',
+          style: TypeScale.body(color: palette.textSecondary),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 /// Decides between onboarding and home based on the saved flag.
@@ -172,14 +174,11 @@ class OnboardingGate extends StatefulWidget {
 }
 
 class _OnboardingGateState extends State<OnboardingGate> {
-  late bool _done =
-      Locator.prefs.getBool('onboarding.done') ?? false;
+  late bool _done = Locator.prefs.getBool('onboarding.done') ?? false;
 
   @override
   Widget build(BuildContext context) {
-    if (_done) return const HomeScreen();
-    return OnboardingScreen(
-      onFinished: () => setState(() => _done = true),
-    );
+    if (_done) return const HarkShell();
+    return OnboardingScreen(onFinished: () => setState(() => _done = true));
   }
 }

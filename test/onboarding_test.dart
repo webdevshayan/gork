@@ -1,26 +1,57 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/services/locator.dart';
+import 'package:gork/services/secure_store.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Blocks raw Image.network calls so the glass shell uses its offline
+/// fallbacks — keeps these tests deterministic.
+class _BlockedOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => _BlockedClient();
+}
+
+class _BlockedClient implements HttpClient {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('network disabled in widget tests');
+}
+
 void main() {
+  setUpAll(() {
+    HttpOverrides.global = _BlockedOverrides();
+  });
+
+  tearDownAll(() {
+    HttpOverrides.global = null;
+  });
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     Locator.reset();
-    Locator.bind(prefs: await SharedPreferences.getInstance());
+    Locator.bind(
+      prefs: await SharedPreferences.getInstance(),
+      store: InMemorySecureStore(),
+      // Fail-fast weather: no real sockets, no pending timeout timers.
+      httpClient: MockClient((request) async => http.Response('offline', 500)),
+    );
   });
 
   testWidgets('first launch shows onboarding, not home', (tester) async {
     await tester.pumpWidget(const GorkApp());
     await tester.pumpAndSettle();
 
-    expect(
-        find.textContaining('Bring your own key'), findsOneWidget);
-    expect(find.text('gork: your personal AI assistant'), findsNothing);
+    expect(find.textContaining('Bring your own key'), findsOneWidget);
+    expect(find.text('Shayan Ali Jalb'), findsNothing);
   });
 
-  testWidgets('walking through the pages sets the flag and lands on home',
-      (tester) async {
+  testWidgets('walking through the pages sets the flag and lands on home', (
+    tester,
+  ) async {
     await tester.pumpWidget(const GorkApp());
     await tester.pumpAndSettle();
 
@@ -35,7 +66,8 @@ void main() {
     await tester.tap(find.text('Start using gork'));
     await tester.pumpAndSettle();
 
-    expect(find.text('gork: your personal AI assistant'), findsOneWidget);
+    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
+    expect(find.text('Message Hark'), findsOneWidget);
     expect(Locator.prefs.getBool('onboarding.done'), isTrue);
   });
 
@@ -47,7 +79,7 @@ void main() {
     await tester.pumpWidget(const GorkApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('gork: your personal AI assistant'), findsOneWidget);
+    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
     expect(find.text('Start using gork'), findsNothing);
   });
 }

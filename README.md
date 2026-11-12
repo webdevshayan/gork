@@ -72,3 +72,4 @@ Install: copy the APK to your Android phone and open it (allow
 | #16 | First-run onboarding wizard |
 | #17 | Release v1.0.0 |
 | #18 | v1.0.0 test & release report |
+| #19 | Hark Pro glass UI rebuild: ambient backdrop + glass shell (nav pill, bottom input), spec-exact Home / Chat / System Preferences |
