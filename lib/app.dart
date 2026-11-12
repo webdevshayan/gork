@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'constants/ambient.dart';
 import 'constants/design_tokens.dart';
-import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 
 /// Ambient scope: exposes phase + wet-weather flag down the tree.
 class AmbientScope extends InheritedWidget {
@@ -72,7 +72,7 @@ class GorkApp extends StatelessWidget {
             theme: _theme(palette, Brightness.light),
             darkTheme: _theme(palette, Brightness.dark),
             themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-            home: const HomeScreen(),
+            home: const OnboardingGate(),
           );
         }));
       },
