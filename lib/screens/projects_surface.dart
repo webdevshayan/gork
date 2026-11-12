@@ -5,12 +5,15 @@ import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import 'projects_screen.dart';
 
-/// Projects tab, matching the reference's project conversation surface: a
-/// project chip on the first card, the workspace's notes rendered as
-/// assistant-style white bubbles, files as preview cards, and an
-/// "Open workspace" pill. With no projects it offers creation instead.
+/// Projects tab: projects are FOLDERS — each folder holds its own chats and
+/// shared resources (files, images, notes). This surface lists the folders;
+/// tapping one opens the workspace detail where chats and resources live.
 class ProjectsSurface extends StatelessWidget {
-  const ProjectsSurface({super.key});
+  const ProjectsSurface({super.key, this.onOpenChat});
+
+  /// Called when the user opens (or creates) a chat inside a project — the
+  /// shell switches to the Chat tab with that conversation.
+  final ValueChanged<String>? onOpenChat;
 
   void _push(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -22,174 +25,85 @@ class ProjectsSurface extends StatelessWidget {
     if (projects.isEmpty) {
       return _EmptyProjects(onCreate: () => _push(context, const ProjectsScreen()));
     }
-    final active = projects.first;
     return ListView(
+      key: const ValueKey('projects-folder-list'),
       padding: const EdgeInsets.all(16),
       children: [
-        _BubbleChip(title: active.title),
-        const SizedBox(height: 8),
-        if (active.notes.isNotEmpty)
-          _Bubble(text: active.notes)
-        else
-          const _Bubble(text: 'This workspace has no notes yet. Open it and '
-              'add notes — the assistant can read them as context.'),
-        const SizedBox(height: 16),
-        for (final file in active.files.take(3))
+        for (final project in projects)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _FilePreviewCard(file: file),
-          ),
-        const SizedBox(height: 8),
-        GlassContainer(
-          radius: 30,
-          opacity: 0.35,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _push(context, const ProjectsScreen()),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.folder_outlined, size: 20, color: Colors.black87),
-                SizedBox(width: 10),
-                Text(
-                  'Open workspace',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
+            child: _FolderCard(
+              project: project,
+              onTap: () => _push(
+                context,
+                ProjectDetailScreen(projectId: project.id, onOpenChat: onOpenChat),
+              ),
             ),
           ),
-        ),
       ],
     );
   }
 }
 
-/// The floating project chip that sits on top of the first bubble in the
-/// reference (e.g. "School Project").
-class _BubbleChip extends StatelessWidget {
-  const _BubbleChip({required this.title});
+/// A folder card in the projects list: folder glyph, title, and what is
+/// inside (chats / files / images).
+class _FolderCard extends StatelessWidget {
+  const _FolderCard({required this.project, required this.onTap});
 
-  final String title;
+  final Project project;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GlassContainer(
-        key: const ValueKey('project-chip'),
-        radius: 24,
-        opacity: 0.65,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.folder_outlined, size: 16, color: Colors.black87),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
+    return GestureDetector(
+      key: ValueKey('folder-${project.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(32),
-          ),
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 16, color: Colors.black87),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FilePreviewCard extends StatelessWidget {
-  const _FilePreviewCard({required this.file});
-
-  final ProjectFile file;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.description_outlined,
-                  size: 16, color: Colors.black54),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  file.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+        child: Row(
+          children: [
+            const Icon(Icons.folder_outlined, size: 26, color: Colors.black87),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${project.chats.length} chats · '
+                    '${project.files.length} files · '
+                    '${project.images.length} images',
+                    style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            file.content,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-        ],
+            ),
+            const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
+          ],
+        ),
       ),
     );
   }
@@ -223,7 +137,8 @@ class _EmptyProjects extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Projects are workspaces with notes and files for one goal.',
+              'Projects are folders that hold chats, notes, files and '
+              'images for one goal.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.black54),
             ),

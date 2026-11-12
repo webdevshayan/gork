@@ -15,12 +15,48 @@ class ProjectFile {
       ProjectFile(json['name'] as String, json['content'] as String);
 }
 
-/// A long-running workspace with its own notes and files.
+/// An image resource inside a project (stored on the device, never networked).
+class ProjectImage {
+  final String name;
+  final String path;
+
+  const ProjectImage(this.name, this.path);
+
+  Map<String, dynamic> toJson() => {'name': name, 'path': path};
+
+  factory ProjectImage.fromJson(Map<String, dynamic> json) => ProjectImage(
+        json['name'] as String,
+        json['path'] as String,
+      );
+}
+
+/// One chat that lives inside a project folder. Projects are folders of
+/// chats plus shared resources (files, images, notes).
+class ProjectChat {
+  final String id;
+  final String title;
+  final int createdAt;
+
+  const ProjectChat(this.id, this.title, this.createdAt);
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'title': title, 'createdAt': createdAt};
+
+  factory ProjectChat.fromJson(Map<String, dynamic> json) => ProjectChat(
+        json['id'] as String,
+        json['title'] as String,
+        json['createdAt'] as int,
+      );
+}
+
+/// A long-running workspace with its own notes, files, images and chats.
 class Project {
   final String id;
   final String title;
   final String notes;
   final List<ProjectFile> files;
+  final List<ProjectImage> images;
+  final List<ProjectChat> chats;
   final int createdAt;
   final int updatedAt;
 
@@ -29,16 +65,27 @@ class Project {
     required this.title,
     required this.notes,
     required this.files,
+    this.images = const [],
+    this.chats = const [],
     required this.createdAt,
     required this.updatedAt,
   });
 
-  Project copyWith({String? title, String? notes, List<ProjectFile>? files, int? updatedAt}) =>
+  Project copyWith({
+    String? title,
+    String? notes,
+    List<ProjectFile>? files,
+    List<ProjectImage>? images,
+    List<ProjectChat>? chats,
+    int? updatedAt,
+  }) =>
       Project(
         id: id,
         title: title ?? this.title,
         notes: notes ?? this.notes,
         files: files ?? this.files,
+        images: images ?? this.images,
+        chats: chats ?? this.chats,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -48,6 +95,8 @@ class Project {
         'title': title,
         'notes': notes,
         'files': [for (final f in files) f.toJson()],
+        'images': [for (final i in images) i.toJson()],
+        'chats': [for (final c in chats) c.toJson()],
         'createdAt': createdAt,
         'updatedAt': updatedAt,
       };
@@ -59,6 +108,14 @@ class Project {
         files: [
           for (final f in (json['files'] as List? ?? []))
             ProjectFile.fromJson(f as Map<String, dynamic>)
+        ],
+        images: [
+          for (final i in (json['images'] as List? ?? []))
+            ProjectImage.fromJson(i as Map<String, dynamic>)
+        ],
+        chats: [
+          for (final c in (json['chats'] as List? ?? []))
+            ProjectChat.fromJson(c as Map<String, dynamic>)
         ],
         createdAt: json['createdAt'] as int,
         updatedAt: json['updatedAt'] as int,

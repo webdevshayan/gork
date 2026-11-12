@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../constants/design_tokens.dart';
 import '../services/locator.dart';
@@ -175,11 +179,21 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 }
 
-/// Detail view: notes + files for one project.
+/// Detail view: chats + notes + files + images for one project. Projects
+/// are folders: every chat below belongs to this folder and shares its
+/// resources as context.
 class ProjectDetailScreen extends StatefulWidget {
   final String projectId;
 
-  const ProjectDetailScreen({super.key, required this.projectId});
+  /// Called when a project chat is opened or created — the shell switches
+  /// to the Chat tab with that conversation id.
+  final ValueChanged<String>? onOpenChat;
+
+  const ProjectDetailScreen({
+    super.key,
+    required this.projectId,
+    this.onOpenChat,
+  });
 
   @override
   State<ProjectDetailScreen> createState() => _ProjectDetailScreenState();
@@ -269,6 +283,60 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     _refresh();
   }
 
+  Future<void> _newChat() async {
+    final project = _project;
+    if (project == null) return;
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final chats = [
+      ...project.chats,
+      ProjectChat(id, 'New chat', DateTime.now().millisecondsSinceEpoch),
+    ];
+    await Locator.projects.save(project.copyWith(
+      chats: chats,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    ));
+    _refresh();
+    widget.onOpenChat?.call(id);
+  }
+
+  Future<void> _openChat(String chatId) async {
+    widget.onOpenChat?.call(chatId);
+  }
+
+  Future<void> _addImage() async {
+    final project = _project;
+    if (project == null) return;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+      final dir = await getApplicationSupportDirectory();
+      final imagesDir = Directory('${dir.path}/project-images');
+      if (!imagesDir.existsSync()) imagesDir.createSync(recursive: true);
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File('${imagesDir.path}/$stamp.jpg');
+      await file.writeAsBytes(await picked.readAsBytes());
+      final images = [
+        ...project.images,
+        ProjectImage('image-$stamp.jpg', file.path),
+      ];
+      await Locator.projects.save(project.copyWith(
+        images: images,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ));
+      _refresh();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not add that image.')),
+        );
+      }
+    }
+  }
+
   Future<void> _showFile(ProjectFile file) async {
     final palette = paletteOf(context);
     await showModalBottomSheet<void>(
@@ -324,6 +392,51 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             ),
           ),
           const SizedBox(height: Spacing.md),
+          // ---- Chats: this project's own conversations ----------------
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Chats',
+                  style: TypeScale.heading(color: palette.textPrimary)),
+              GButton(
+                key: const ValueKey('new-project-chat'),
+                label: 'New chat',
+                onPressed: _newChat,
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          if (project.chats.isEmpty)
+            Text('No chats in this folder yet.',
+                style: TypeScale.bodySmall(color: palette.textTertiary)),
+          for (final chat in project.chats)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.sm),
+              child: GCard(
+                child: InkWell(
+                  key: ValueKey('open-chat-${chat.id}'),
+                  borderRadius: BorderRadius.circular(RadiusTokens.lg),
+                  onTap: () => _openChat(chat.id),
+                  child: Row(
+                    children: [
+                      Icon(Icons.chat_bubble_outline,
+                          size: 20, color: palette.primary),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(
+                          Locator.history.byId(chat.id)?.title ?? chat.title,
+                          style: TypeScale.body(color: palette.textPrimary),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 18, color: palette.textTertiary),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: Spacing.md),
+          // ---- Files (text resources) ---------------------------------
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -360,6 +473,51 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     ],
                   ),
                 ),
+              ),
+            ),
+          const SizedBox(height: Spacing.md),
+          // ---- Images (visual resources) ------------------------------
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Images',
+                  style: TypeScale.heading(color: palette.textPrimary)),
+              GButton(
+                label: 'Add image',
+                onPressed: _addImage,
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          if (project.images.isEmpty)
+            Text('No images yet.',
+                style: TypeScale.bodySmall(color: palette.textTertiary)),
+          if (project.images.isNotEmpty)
+            SizedBox(
+              height: 96,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: project.images.length,
+                separatorBuilder: (_, __) => const SizedBox(width: Spacing.sm),
+                itemBuilder: (context, index) {
+                  final image = project.images[index];
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(RadiusTokens.lg),
+                    child: Image.file(
+                      File(image.path),
+                      width: 96,
+                      height: 96,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 96,
+                        height: 96,
+                        color: palette.surface,
+                        child: Icon(Icons.broken_image_outlined,
+                            color: palette.textTertiary),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           const SizedBox(height: Spacing.lg),

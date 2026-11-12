@@ -69,6 +69,11 @@ class ChatScreenState extends State<ChatScreen> {
   @override
   void didUpdateWidget(covariant ChatScreen old) {
     super.didUpdateWidget(old);
+    if (widget.conversationId != old.conversationId) {
+      // The shell switched conversations (e.g. a chat opened from inside a
+      // project folder) — restore that thread, not the previous one.
+      _restore();
+    }
     if (!widget.searchOpen && old.searchOpen) {
       _searchQuery = null;
       if (mounted) setState(() {});
