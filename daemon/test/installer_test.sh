@@ -208,6 +208,36 @@ test_ctl_start_refuses_stale_port_owner() {
   kill "$stale" 2>/dev/null || true
 }
 
+
+test_ctl_installs_gork_cli_wrapper() {
+  local home="$TMP/ctlcli" port=18803; mkdir -p "$home"
+  # Simulate a successful ctl install (start in background with our fake).
+  GORK_HOME="$home" GORK_SRC_DIR="$DAEMON" GORK_PORT=$port GORK_HEALTH_TIMEOUT=3 \
+    GORK_DAEMON_CMD='true' bash -c "true"
+  # The wrapper contract: the installer writes a gork CLI next to the ctl.
+  # Exercise the real code path by sourcing install.sh and calling install_ctl
+  # with the daemon started by the fake (GORK_NO_START keeps it short).
+  GORK_INSTALLER_TEST=1 HOME="$TMP/fakehome-cli" bash -c "
+    mkdir -p '$TMP/fakehome-cli'
+    export PATH=\"$FAKEBIN:\$PATH\"
+    source '$INSTALLER'
+    GORK_NO_START=1 install_ctl '$DAEMON'
+  " >/dev/null 2>&1
+  # The bindir depends on what is writable in the environment (system-level
+  # /usr/local/bin vs user-level ~/.local/bin) — accept either, like the
+  # installer does.
+  local wrapper=""
+  if [ -x /usr/local/bin/gork ]; then wrapper=/usr/local/bin/gork;
+  elif [ -x "$TMP/fakehome-cli/.local/bin/gork" ]; then wrapper="$TMP/fakehome-cli/.local/bin/gork"; fi
+  [ -n "$wrapper" ] && pass "gork CLI wrapper installed + executable ($wrapper)" \
+    || fail "gork CLI wrapper missing"
+  grep -q "GORK_HOME=" "$wrapper" && pass "wrapper pins GORK_HOME" \
+    || fail "wrapper does not pin GORK_HOME"
+  grep -q "gork_cli.dart" "$wrapper" && pass "wrapper points at the CLI entrypoint" \
+    || fail "wrapper does not point at gork_cli.dart"
+  rm -f /usr/local/bin/gork
+}
+
 # ---- end-to-end with the real daemon ----------------------------------------
 
 echo "# end-to-end (real dart daemon)"
@@ -238,6 +268,7 @@ for t in test_no_systemd_dir_means_ctl test_real_systemd_detected \
          test_ctl_start_stop_status_with_fake_daemon \
          test_ctl_start_reports_failure_honestly \
          test_ctl_start_reports_dead_port_honestly \
+         test_ctl_installs_gork_cli_wrapper \
          test_ctl_start_refuses_stale_port_owner \
          test_real_daemon_boots_and_answers_health; do
   echo "## $t"

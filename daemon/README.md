@@ -87,6 +87,23 @@ silently shadowing it; if the daemon dies, you get the last log lines.
   script is added automatically; otherwise a `@reboot` cron line is used when
   crontab exists.
 
+## CLI — configure everything from the terminal
+
+The installer ships a `gork` command next to `gork-daemonctl`. No file
+editing, ever:
+
+```bash
+gork llm providers                 # real OpenAI-compatible presets
+gork llm set openai                # writes BASE_URL + MODEL to config
+gork config set GORK_API_KEY sk-...   # your key, stays on this box
+gork llm test                      # live 1-token call: proves it works
+gork tasks add "Morning brief" "summarize my inbox" 60
+gork tasks list | remove <id> | run
+gork status                        # liveness + task count
+gork secret                        # the pairing secret for the phone app
+gork config list                   # everything, masked
+```
+
 ## REST API
 
 | Method | Path       | What                       |
