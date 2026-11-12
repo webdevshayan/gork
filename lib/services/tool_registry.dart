@@ -1,5 +1,6 @@
 import 'github_service.dart';
 import 'gmail_service.dart';
+import 'handoff_service.dart';
 import 'integrations.dart';
 import 'llm_client.dart';
 import 'locator.dart';
@@ -24,6 +25,7 @@ class ToolRegistry {
   final VaultStore vault;
   final WeatherService weather;
   final Integrations? integrations;
+  final HandoffService? handoff;
 
   ToolRegistry({
     required this.memory,
@@ -33,6 +35,7 @@ class ToolRegistry {
     required this.vault,
     required this.weather,
     this.integrations,
+    this.handoff,
   });
 
   List<ToolDef> get defs => const [
@@ -161,6 +164,20 @@ class ToolRegistry {
               'description': 'look back this many days (1-31)'
             }
           },
+        }),
+        ToolDef('daemon_status', 'Check whether the 24/7 companion daemon on the user\u2019s VPS is alive.', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('daemon_sync',
+            'Sync the task list with the companion daemon (push then pull).', {
+          'type': 'object',
+          'properties': {},
+        }),
+        ToolDef('daemon_run',
+            'Ask the companion daemon to run its due tasks right now.', {
+          'type': 'object',
+          'properties': {},
         }),
       ];
 
@@ -326,8 +343,37 @@ class ToolRegistry {
                 ? 'no transactions in the last $days days'
                 : l.join('\n')));
 
+      case 'daemon_status':
+        return _runDaemon('daemon_status', (h) => h.ping());
+
+      case 'daemon_sync':
+        return _runDaemon('daemon_sync', (h) async =>
+            '${await h.pushTasks()}; ${await h.pullTasks()}');
+
+      case 'daemon_run':
+        return _runDaemon('daemon_run', (h) => h.triggerRun());
+
       default:
         return 'error: unknown tool $name';
+    }
+  }
+
+  /// Run a handoff (companion daemon) tool.
+  Future<String> _runDaemon(
+      String tool, Future<String> Function(HandoffService h) run) async {
+    final h = handoff;
+    if (h == null || !h.configured) {
+      return 'error: daemon not configured — set its URL in Cloud Computer';
+    }
+    try {
+      return await run(h);
+    } on IntegrationException catch (e) {
+      if (e.status == 401) {
+        return 'error: daemon rejected the secret — check it in Cloud Computer';
+      }
+      return 'error: ${e.message}';
+    } catch (e) {
+      return 'error: $tool failed: $e';
     }
   }
 
@@ -360,4 +406,5 @@ ToolRegistry buildAppToolRegistry() => ToolRegistry(
       vault: Locator.vault,
       weather: Locator.weather,
       integrations: Locator.integrations,
+      handoff: Locator.handoff,
     );
