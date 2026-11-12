@@ -63,7 +63,7 @@ void main() {
       expect(userDecoration.color, Colors.white.withValues(alpha: 0.4));
       expect(userDecoration.borderRadius, BorderRadius.circular(32));
 
-      final replyFinder = find.text('mock reply');
+      final replyFinder = find.text('mock reply', findRichText: true);
       expect(replyFinder, findsOneWidget);
       final Container aiContainer = tester.firstWidget<Container>(
         find.ancestor(of: replyFinder, matching: find.byType(Container)),
@@ -84,7 +84,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hello gork'), findsOneWidget);
-    expect(find.text('mock reply'), findsOneWidget);
+    expect(find.text('mock reply', findRichText: true), findsOneWidget);
     // History persisted.
     final conversation = Locator.history.latest!;
     expect(conversation.providerId, 'openai');
@@ -161,9 +161,15 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
     await tester.pumpAndSettle();
 
-    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
-    expect(find.textContaining('gork PR #19'), findsOneWidget);
-    expect(find.textContaining('open source'), findsOneWidget);
+    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
+    expect(find.textContaining('gork PR #19', findRichText: true), findsOneWidget);
+    // It sits below the fanned stack — scroll to it.
+    await tester.scrollUntilVisible(
+      find.textContaining('open source', findRichText: true),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('open source', findRichText: true), findsOneWidget);
   });
 
   testWidgets('search(null) leaves search mode; search(q) filters hits',
@@ -178,7 +184,7 @@ void main() {
     chatKey.currentState!.search('zip');
     await tester.pumpAndSettle();
     expect(find.textContaining('find the zip file'), findsOneWidget);
-    expect(find.textContaining('mock reply'), findsNothing);
+    expect(find.textContaining('mock reply', findRichText: true), findsNothing);
 
     chatKey.currentState!.search('nothing-matches');
     await tester.pumpAndSettle();
@@ -186,7 +192,7 @@ void main() {
 
     chatKey.currentState!.search(null);
     await tester.pumpAndSettle();
-    expect(find.textContaining('mock reply'), findsOneWidget,
+    expect(find.textContaining('mock reply', findRichText: true), findsOneWidget,
         reason: 'search(null) leaves search mode and shows the full thread');
   });
 }
