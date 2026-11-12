@@ -7,6 +7,7 @@ import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
 import '../widgets/glass.dart';
+import '../widgets/markdown_view.dart';
 
 class _UiMessage {
   final String role;
@@ -452,10 +453,13 @@ class _Bubble extends StatelessWidget {
             ? Border.all(color: Colors.white.withValues(alpha: 0.5))
             : null,
       ),
-      child: SelectableText(
-        text,
-        style: const TextStyle(fontSize: 16, color: Colors.black87),
-      ),
+      child: isUser
+          ? SelectableText(
+              text,
+              style: const TextStyle(fontSize: 16, color: Colors.black87),
+            )
+          // Assistant bubbles render safe markdown (no web view, no network).
+          : MarkdownView(text),
     );
 
     return Align(

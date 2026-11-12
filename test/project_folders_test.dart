@@ -104,7 +104,7 @@ void main() {
     // New chat -> shell switches to the Chat tab with the new conversation.
     await tester.tap(find.byKey(const ValueKey('new-project-chat')));
     await tester.pumpAndSettle();
-    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget,
+    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget,
         reason: 'the chat tab opened an empty project chat');
 
     // The message lands in the PROJECT chat, not the global latest.
@@ -156,9 +156,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('open-chat-projchat-1')));
     await tester.pumpAndSettle();
     expect(find.text('help me outline my essay'), findsOneWidget);
-    expect(find.text('Sure — here is an outline.'), findsOneWidget);
+    expect(find.text('Sure — here is an outline.', findRichText: true), findsOneWidget);
     // And the global latest thread did NOT leak in.
-    expect(find.text("Hey Shayan, I'm gork."), findsNothing);
+    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsNothing);
   });
 
   testWidgets('workspace detail has its own back affordance', (tester) async {

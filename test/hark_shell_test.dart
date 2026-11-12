@@ -145,7 +145,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
     expect(find.text('Shayan Ali Jalb'), findsNothing);
-    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
+    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
   });
 
   testWidgets('nav pill highlights the active tab and switches screens', (
@@ -161,9 +161,9 @@ void main() {
     expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.white);
     expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black54);
     // Empty chat: seeded intro + the fanned GitHub link-preview stack.
-    expect(find.text("Hey Shayan, I'm gork."), findsOneWidget);
-    expect(find.textContaining('gork PR #19', skipOffstage: false),
-        findsOneWidget);
+    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
+    expect(find.textContaining('gork PR #19', skipOffstage: false,
+        findRichText: true), findsOneWidget);
     expect(
       find.text('Message Hark'),
       findsOneWidget,
