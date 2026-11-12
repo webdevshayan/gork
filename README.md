@@ -64,3 +64,4 @@ Install: copy the APK to your Android phone and open it (allow
 | #9 | Panels + live weather + ambient theming |
 | #10 | Agent tool loop + Inbox with real actions |
 | #11 | Release polish + first release APK |
+| #12 | Integration framework + GitHub integration (notifications, issues) |
