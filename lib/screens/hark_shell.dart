@@ -1,4 +1,9 @@
+import 'dart:io';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
@@ -26,11 +31,10 @@ class HarkShell extends StatefulWidget {
 class _HarkShellState extends State<HarkShell> {
   HarkTab _tab = HarkTab.home;
   bool _onMenu = false;
-  bool _searchOpen = false;
+  bool _homeMenuOpen = false;
   bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
   final TextEditingController _input = TextEditingController();
-  final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
   final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
 
@@ -38,7 +42,7 @@ class _HarkShellState extends State<HarkShell> {
     setState(() {
       _tab = tab;
       _onMenu = false;
-      _searchOpen = false;
+      _homeMenuOpen = false;
       _attachOpen = false;
       if (tab != HarkTab.projects) _lastCoreTab = tab;
     });
@@ -46,7 +50,7 @@ class _HarkShellState extends State<HarkShell> {
 
   void _openMenu() => setState(() {
         _onMenu = true;
-        _searchOpen = false;
+        _homeMenuOpen = false;
         _attachOpen = false;
       });
 
@@ -54,22 +58,6 @@ class _HarkShellState extends State<HarkShell> {
         _onMenu = false;
         _tab = _lastCoreTab;
       });
-
-  void _toggleSearch() {
-    if (_tab != HarkTab.chat) {
-      _selectTab(HarkTab.chat);
-    }
-    setState(() {
-      _searchOpen = !_searchOpen;
-      _attachOpen = false;
-      if (_searchOpen) {
-        _searchCtrl.clear();
-        _chatKey.currentState?.search('');
-      } else {
-        _chatKey.currentState?.search(null);
-      }
-    });
-  }
 
   void _toggleAttach() => setState(() => _attachOpen = !_attachOpen);
 
@@ -91,17 +79,21 @@ class _HarkShellState extends State<HarkShell> {
   }
 
   IconData get _leftIcon {
-    if (_onMenu) return Icons.segment;
+    if (_onMenu) return Icons.arrow_back_ios_new;
     switch (_tab) {
       case HarkTab.home:
         return Icons.add;
       case HarkTab.chat:
-        return Icons.search;
+        return Icons.settings_outlined;
       case HarkTab.projects:
-        return Icons.segment;
+        return Icons.arrow_back_ios_new;
     }
   }
 
+  /// The left button is contextual: on Home it toggles the add-dropdown,
+  /// on Chat it opens the settings surface, on Projects it goes back
+  /// (wired into the project hierarchy), and the settings surface itself
+  /// gets a plain back button.
   void _onLeftButton() {
     if (_onMenu) {
       _closeMenu();
@@ -109,18 +101,14 @@ class _HarkShellState extends State<HarkShell> {
     }
     switch (_tab) {
       case HarkTab.home:
-        // "+" on Home = create a new panel, same as the pill below the card.
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PanelsScreen()),
-        );
+        setState(() => _homeMenuOpen = !_homeMenuOpen);
         return;
       case HarkTab.chat:
-        _toggleSearch();
-        return;
-      case HarkTab.projects:
         _openMenu();
         return;
+      case HarkTab.projects:
+        // At the projects root there is nothing above to go back to.
+        break;
     }
   }
 
@@ -139,7 +127,6 @@ class _HarkShellState extends State<HarkShell> {
   @override
   void dispose() {
     _input.dispose();
-    _searchCtrl.dispose();
     _inputFocus.dispose();
     super.dispose();
   }
@@ -172,27 +159,21 @@ class _HarkShellState extends State<HarkShell> {
                       : _tab == HarkTab.chat
                       ? ChatScreen(
                           key: _chatKey,
-                          searchOpen: _searchOpen,
+                          searchOpen: false,
                         )
                       : const ProjectsSurface(),
                 ),
                 if (showInput)
-                  !_searchOpen
-                      ? BottomInputBar(
-                          controller: _input,
-                          focusNode: _inputFocus,
-                          onSend: _sendFromInput,
-                          onAttach: _toggleAttach,
-                        )
-                      : _SearchBar(
-                          controller: _searchCtrl,
-                          onClose: _toggleSearch,
-                          onChanged: (q) => _chatKey.currentState?.search(q),
-                        ),
+                  BottomInputBar(
+                    controller: _input,
+                    focusNode: _inputFocus,
+                    onSend: _sendFromInput,
+                    onAttach: _toggleAttach,
+                  ),
               ],
             ),
           ),
-          if (_attachOpen && !_searchOpen)
+          if (_attachOpen && !_onMenu)
             Positioned(
               left: 16,
               right: 16,
@@ -200,6 +181,15 @@ class _HarkShellState extends State<HarkShell> {
               child: Align(
                 alignment: Alignment.centerRight,
                 child: _AttachMenu(onDismiss: _toggleAttach),
+              ),
+            ),
+          if (_homeMenuOpen && !_onMenu)
+            Positioned(
+              key: const ValueKey('home-menu-anchor'),
+              top: 76,
+              left: 16,
+              child: _HomeMenu(
+                onDismiss: () => setState(() => _homeMenuOpen = false),
               ),
             ),
         ],
@@ -282,28 +272,17 @@ class _TopBar extends StatelessWidget {
 class _Avatar extends StatelessWidget {
   const _Avatar();
 
-  static const String _faceUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e'
-      '?auto=format&fit=crop&w=200&q=80';
-
   Widget _fallback() => Container(
         color: Colors.black87,
         alignment: Alignment.center,
-        child: const Text(
-          'S',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        child: const Icon(Icons.person_outline, size: 24, color: Colors.white),
       );
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: photoRemoved,
-      builder: (context, removed, _) {
+    return ValueListenableBuilder<String?>(
+      valueListenable: avatarPath,
+      builder: (context, path, _) {
         return GestureDetector(
           key: const ValueKey('avatar'),
           behavior: HitTestBehavior.opaque,
@@ -318,10 +297,11 @@ class _Avatar extends StatelessWidget {
               border: Border.all(color: Colors.white, width: 2),
             ),
             child: ClipOval(
-              child: removed
+              // No photo provided -> just the icon. Fully offline.
+              child: (path == null || path.isEmpty)
                   ? _fallback()
-                  : Image.network(
-                      _faceUrl,
+                  : Image.file(
+                      File(path),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _fallback(),
                     ),
@@ -333,9 +313,33 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// Avatar actions on the menu surface: choose / remove the profile photo.
+/// Avatar actions (profile tapped while the settings surface is open):
+/// choose a real photo from the gallery (stored offline on the device) or
+/// remove it — the avatar then falls back to the person icon.
 class _AvatarSheet extends StatelessWidget {
   const _AvatarSheet();
+
+  Future<void> _choose(BuildContext context) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/gork-avatar.jpg');
+      await file.writeAsBytes(await picked.readAsBytes());
+      await Locator.prefs.setString('profile.photoPath', file.path);
+      avatarPath.value = file.path;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load that image.')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -358,13 +362,7 @@ class _AvatarSheet extends StatelessWidget {
                   trailing: const SizedBox.shrink(),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Photo picker arrives with the attachments movement.',
-                        ),
-                      ),
-                    );
+                    _choose(context);
                   },
                 ),
                 const Divider(color: Colors.black12, height: 1),
@@ -375,8 +373,8 @@ class _AvatarSheet extends StatelessWidget {
                   trailing: const SizedBox.shrink(),
                   onTap: () {
                     Navigator.pop(context);
-                    Locator.prefs.setBool('profile.photoRemoved', true);
-                    photoRemoved.value = true;
+                    Locator.prefs.remove('profile.photoPath');
+                    avatarPath.value = null;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Profile photo removed.')),
                     );
@@ -428,6 +426,10 @@ class BottomInputBar extends StatelessWidget {
                     focusNode: focusNode,
                     textInputAction: TextInputAction.send,
                     onSubmitted: onSend,
+                    // The message area auto-resizes with the text instead of
+                    // clipping long messages.
+                    minLines: 1,
+                    maxLines: 6,
                     style: const TextStyle(
                       fontSize: 17,
                       color: Colors.black87,
@@ -497,100 +499,55 @@ class BottomInputBar extends StatelessWidget {
   }
 }
 
-/// Search bar replacing the input bar (Chat tab, 🔍): frosted pill with the
-/// query + clear button, plus a round close button on the right.
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({
-    required this.controller,
-    required this.onClose,
-    required this.onChanged,
-  });
+/// The + dropdown on Home: add a file, an image, or a new panel — a more
+/// opaque glass dropdown right under the left button, like the reference.
+class _HomeMenu extends StatelessWidget {
+  const _HomeMenu({required this.onDismiss});
 
-  final TextEditingController controller;
-  final VoidCallback onClose;
-  final ValueChanged<String> onChanged;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-      child: Row(
+    return GlassContainer(
+      key: const ValueKey('home-menu'),
+      radius: 24,
+      opacity: 0.6,
+      width: 220,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: GlassContainer(
-              key: const ValueKey('search-bar'),
-              radius: 30,
-              opacity: 0.45,
-              padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, size: 22, color: Colors.black54),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      autofocus: true,
-                      onChanged: onChanged,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        color: Colors.black87,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'Search',
-                        hintStyle: TextStyle(
-                          fontSize: 17,
-                          color: Colors.black54,
-                        ),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: controller,
-                    builder: (context, value, _) {
-                      if (value.text.isEmpty) return const SizedBox.shrink();
-                      return GestureDetector(
-                        key: const ValueKey('search-clear'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          controller.clear();
-                          onChanged('');
-                        },
-                        child: Container(
-                          width: 26,
-                          height: 26,
-                          margin: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.black,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GlassIconButton(
-            key: const ValueKey('search-close'),
-            icon: Icons.close,
-            onTap: () {
-              controller.clear();
-              onChanged('');
-              onClose();
-            },
-          ),
+          _row(context, Icons.insert_drive_file_outlined, 'Add file'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.image_outlined, 'Add image'),
+          const Divider(color: Colors.black12, height: 1),
+          _row(context, Icons.dashboard_outlined, 'New panel'),
         ],
       ),
+    );
+  }
+
+  Widget _row(BuildContext context, IconData icon, String label) {
+    return GlassMenuRow(
+      icon: icon,
+      label: label,
+      onTap: () {
+        onDismiss();
+        if (label == 'New panel') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PanelsScreen()),
+          );
+          return;
+        }
+        // File & image picking land with the project-resources movement.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$label attaches inside a project — open one first.',
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -135,11 +135,15 @@ class GlassMenuRow extends StatelessWidget {
               Icon(icon, size: 22, color: Colors.black87),
               const SizedBox(width: 16),
             ],
-            Text(
-              label,
-              style: const TextStyle(fontSize: 17, color: Colors.black87),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 17, color: Colors.black87),
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: 12),
             trailing ??
                 const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
           ],

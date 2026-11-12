@@ -99,9 +99,16 @@ class ChatScreenState extends State<ChatScreen> {
 
     Conversation? conversation;
     if (widget.conversationId != null) {
+      // An explicit conversation (e.g. a chat opened from inside a project)
+      // never falls back to the global latest conversation.
       conversation = Locator.history.byId(widget.conversationId!);
+      if (conversation == null) {
+        _conversationId = widget.conversationId!;
+        _title = 'New chat';
+      }
+    } else {
+      conversation = Locator.history.latest;
     }
-    conversation ??= Locator.history.latest;
 
     if (conversation != null) {
       _conversationId = conversation.id;

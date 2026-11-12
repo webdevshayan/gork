@@ -2,13 +2,20 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../services/locator.dart';
+
 /// Theme override chosen on the Theme page (Auto/System/Light/Dark).
 /// 'Dark' dims the ambient backdrop; the other modes leave it untouched.
 final ValueNotifier<String?> themeSetting = ValueNotifier<String?>(null);
 
-/// True after "Remove photo" on the avatar sheet — the avatar falls back to
-/// the initial letter.
-final ValueNotifier<bool> photoRemoved = ValueNotifier<bool>(false);
+/// Path of the user's chosen profile photo (null = show the person icon).
+/// The photo lives on the device only — nothing networked.
+final ValueNotifier<String?> avatarPath = ValueNotifier<String?>(null);
+
+/// Restores the persisted profile photo path. Called once from main().
+Future<void> initProfilePhoto() async {
+  avatarPath.value = Locator.prefs.getString('profile.photoPath');
+}
 
 /// Full-screen blurred ambient sky/ocean photo. Every glass surface blurs
 /// whatever is behind it, so this sits at the bottom of the shell Stack.
