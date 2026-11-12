@@ -12,6 +12,7 @@ import 'chat_screen.dart';
 import 'hark_home.dart';
 import 'menu_screen.dart';
 import 'panels_screen.dart';
+import 'projects_screen.dart';
 import 'projects_surface.dart';
 
 enum HarkTab { home, chat, projects }
@@ -34,6 +35,7 @@ class _HarkShellState extends State<HarkShell> {
   bool _homeMenuOpen = false;
   bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
+  String? _chatConversationId;
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
   final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
@@ -90,10 +92,23 @@ class _HarkShellState extends State<HarkShell> {
     }
   }
 
-  /// The left button is contextual: on Home it toggles the add-dropdown,
-  /// on Chat it opens the settings surface, on Projects it goes back
-  /// (wired into the project hierarchy), and the settings surface itself
-  /// gets a plain back button.
+  /// Opens a chat that lives inside a project folder: any pushed workspace
+  /// detail is dismissed and the shell switches to the Chat tab carrying
+  /// that conversation.
+  void _openProjectChat(String conversationId) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    setState(() {
+      _chatConversationId = conversationId;
+      _tab = HarkTab.chat;
+      _onMenu = false;
+      _homeMenuOpen = false;
+      _attachOpen = false;
+      _lastCoreTab = HarkTab.chat;
+    });
+  }
+
   void _onLeftButton() {
     if (_onMenu) {
       _closeMenu();
@@ -107,8 +122,11 @@ class _HarkShellState extends State<HarkShell> {
         _openMenu();
         return;
       case HarkTab.projects:
-        // At the projects root there is nothing above to go back to.
-        break;
+        // Back: leave a pushed workspace detail if one is open.
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        return;
     }
   }
 
@@ -159,9 +177,12 @@ class _HarkShellState extends State<HarkShell> {
                       : _tab == HarkTab.chat
                       ? ChatScreen(
                           key: _chatKey,
+                          // Changing the conversation makes ChatScreen
+                          // restore its own thread via didUpdateWidget.
+                          conversationId: _chatConversationId,
                           searchOpen: false,
                         )
-                      : const ProjectsSurface(),
+                      : ProjectsSurface(onOpenChat: _openProjectChat),
                 ),
                 if (showInput)
                   BottomInputBar(
@@ -539,12 +560,19 @@ class _HomeMenu extends StatelessWidget {
           );
           return;
         }
-        // File & image picking land with the project-resources movement.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$label attaches inside a project — open one first.',
-            ),
+        final projects = Locator.projects.all();
+        if (projects.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Create a project first.')),
+          );
+          return;
+        }
+        // Resources live in the project folder — open the most recent one.
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ProjectDetailScreen(projectId: projects.first.id),
           ),
         );
       },
