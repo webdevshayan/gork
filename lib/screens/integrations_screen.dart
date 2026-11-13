@@ -86,50 +86,40 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                           style: TypeScale.bodySmall(color: testColor)),
                       const SizedBox(height: Spacing.md),
                     ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GButton(
-                            label: 'Save token',
-                            onPressed: () async {
-                              final t = tokenController.text.trim();
-                              if (t.isEmpty) return;
-                              await Locator.integrations.vault
-                                  .setToken(def.id, t);
-                              await _refresh();
-                              if (sheetContext.mounted) {
-                                Navigator.pop(sheetContext);
-                              }
-                            },
-                            expands: true,
-                          ),
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: GButton(
-                            label: 'Test',
-                            variant: ButtonVariant.secondary,
-                            onPressed: () async {
-                              setSheetState(() {
-                                testResult = 'Testing…';
-                                testColor = palette.textSecondary;
-                              });
-                              final result = await Locator.integrations
-                                  .testConnection(def.id,
-                                      tokenOverride: tokenController.text);
-                              setSheetState(() {
-                                testResult = (result == null)
-                                    ? 'Connection OK — token works.'
-                                    : 'Failed: $result';
-                                testColor =
-                                    result == null ? palette.success : palette.error;
-                              });
-                            },
-                            expands: true,
-                          ),
-                        ),
-                      ],
+                    // One-click connect: ONE button that saves, verifies and
+                    // closes. If verification fails nothing is stored and the
+                    // sheet stays open with the honest error.
+                    GButton(
+                      label: 'Connect',
+                      onPressed: () async {
+                        final t = tokenController.text.trim();
+                        if (t.isEmpty) return;
+                        setSheetState(() {
+                          testResult = 'Verifying…';
+                          testColor = palette.textSecondary;
+                        });
+                        final result = await Locator.integrations
+                            .testConnection(def.id, tokenOverride: t);
+                        if (result != null) {
+                          setSheetState(() {
+                            testResult = 'Failed: $result';
+                            testColor = palette.error;
+                          });
+                          return;
+                        }
+                        await Locator.integrations.vault.setToken(def.id, t);
+                        await _refresh();
+                        if (sheetContext.mounted) {
+                          Navigator.pop(sheetContext);
+                        }
+                      },
+                      expands: true,
                     ),
+                    const SizedBox(height: Spacing.sm),
+                    Text('One-time setup — it stays connected until you '
+                        'remove it. No expiry, no re-auth prompts.',
+                        style:
+                            TypeScale.caption(color: palette.textTertiary)),
                     if (_connected[def.id] == true) ...[
                       const SizedBox(height: Spacing.sm),
                       GButton(
@@ -201,7 +191,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                           const SizedBox(height: Spacing.xs),
                           Text(
                             connected
-                                ? 'Connected — token on this device'
+                                ? 'Connected — one-time setup, stays until '
+                                    'you remove it'
                                 : def.tokenLabel,
                             style: TypeScale.caption(
                               color: connected

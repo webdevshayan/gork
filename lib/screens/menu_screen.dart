@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../constants/design_tokens.dart';
 import '../constants/version.dart';
+import '../services/handoff_service.dart';
+import '../services/locator.dart';
 import '../widgets/glass.dart';
+import 'cloud_computer_screen.dart';
 import 'integrations_screen.dart';
 import 'providers_screen.dart';
 import 'search_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
 import 'updates_screen.dart';
-import 'vault_screen.dart';
+import 'wallet_screen.dart';
 
-/// The profile/menu surface (opened from the avatar), pixel-matched to the
-/// reference: big identity header, the "gork pro" plan card, a card of rows
-/// (Profile / Scheduled Tasks / Accounts / Wallet), a Security card, and the
-/// Search pill that opens the chat search. No tab is selected here.
+/// The profile/menu surface (opened from the avatar): big identity header,
+/// the gork wordmark card, a card of rows (Profile / Scheduled Tasks /
+/// Accounts / Wallet), a Security card, the AI Providers row, the
+/// Sync-to-daemon action and the Search pill. No upsell, no plan rows.
 class MenuScreen extends StatelessWidget {
   const MenuScreen({super.key, this.onBack, this.onOpenChat});
 
@@ -29,6 +33,30 @@ class MenuScreen extends StatelessWidget {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
+  Future<void> _syncToDaemon(BuildContext context) async {
+    final HandoffService handoff = Locator.handoff;
+    if (!handoff.configured) {
+      _push(context, const CloudComputerScreen());
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Syncing config to the daemon…')));
+    try {
+      final summary = await handoff.pushConfig();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(summary)));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Sync failed: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -39,16 +67,34 @@ class MenuScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 40,
             fontWeight: FontWeight.w600,
-            color: Colors.black87,
+            color: GlassColors.text,
           ),
         ),
         const SizedBox(height: 6),
         const Text(
           _kEmail,
-          style: TextStyle(fontSize: 16, color: Colors.black54),
+          style: TextStyle(fontSize: 16, color: GlassColors.textDim),
         ),
         const SizedBox(height: 24),
-        _ProCard(onUpgrade: () => _push(context, const ProvidersScreen())),
+        GlassContainer(
+          radius: 28,
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              const Text(
+                'gork',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: GlassColors.text,
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.auto_awesome, size: 20,
+                  color: GlassColors.textDim),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
         GlassContainer(
           radius: 28,
@@ -61,26 +107,26 @@ class MenuScreen extends StatelessWidget {
                 label: 'Profile',
                 onTap: () => _push(context, const ThemePage()),
               ),
-              const Divider(color: Colors.black12, height: 1),
+              const Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(
                 key: const ValueKey('menu-tasks'),
                 icon: Icons.schedule_outlined,
                 label: 'Scheduled Tasks',
                 onTap: () => _push(context, const TasksScreen()),
               ),
-              const Divider(color: Colors.black12, height: 1),
+              const Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(
                 key: const ValueKey('menu-accounts'),
                 icon: Icons.link,
                 label: 'Accounts',
                 onTap: () => _push(context, const IntegrationsScreen()),
               ),
-              const Divider(color: Colors.black12, height: 1),
+              const Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(
                 key: const ValueKey('menu-wallet'),
                 icon: Icons.account_balance_wallet_outlined,
                 label: 'Wallet',
-                onTap: () => _push(context, const VaultScreen()),
+                onTap: () => _push(context, const WalletScreen()),
               ),
             ],
           ),
@@ -93,7 +139,29 @@ class MenuScreen extends StatelessWidget {
             key: const ValueKey('menu-security'),
             icon: Icons.shield_outlined,
             label: 'Security',
-            onTap: () => _push(context, const VaultScreen()),
+            onTap: () => _push(context, const WalletScreen()),
+          ),
+        ),
+        const SizedBox(height: 16),
+        GlassContainer(
+          radius: 28,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: GlassMenuRow(
+            key: const ValueKey('menu-providers'),
+            icon: Icons.key_outlined,
+            label: 'AI Providers',
+            onTap: () => _push(context, const ProvidersScreen()),
+          ),
+        ),
+        const SizedBox(height: 16),
+        GlassContainer(
+          radius: 28,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: GlassMenuRow(
+            key: const ValueKey('menu-sync'),
+            icon: Icons.sync_outlined,
+            label: 'Sync to daemon',
+            onTap: () => _syncToDaemon(context),
           ),
         ),
         const SizedBox(height: 16),
@@ -111,7 +179,7 @@ class MenuScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black45,
+                      color: GlassColors.textFaint,
                     ),
                   ),
             onTap: () => _push(context, const UpdatesScreen()),
@@ -120,7 +188,6 @@ class MenuScreen extends StatelessWidget {
         const SizedBox(height: 24),
         GlassContainer(
           radius: 30,
-          opacity: 0.35,
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: GestureDetector(
             key: const ValueKey('menu-search'),
@@ -133,137 +200,18 @@ class MenuScreen extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Row(
                 children: [
-                  Icon(Icons.search, size: 20, color: Colors.black54),
+                  Icon(Icons.search, size: 20, color: GlassColors.textDim),
                   SizedBox(width: 12),
                   Text(
                     'Search',
-                    style: TextStyle(fontSize: 17, color: Colors.black54),
+                    style: TextStyle(fontSize: 17, color: GlassColors.textDim),
                   ),
                 ],
               ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        const Text(
-          'free & open source — your keys, your data',
-          style: TextStyle(fontSize: 12, color: Colors.black38),
-          textAlign: TextAlign.center,
-        ),
       ],
-    );
-  }
-}
-
-/// The plan card: wordmark + Upgrade (goes to BYOK providers), honest free
-/// messaging in the reference's orange accent, and usage rows.
-class _ProCard extends StatelessWidget {
-  const _ProCard({required this.onUpgrade});
-
-  final VoidCallback onUpgrade;
-
-  static const Color kOrange = Color(0xFFEA580C);
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      key: const ValueKey('pro-card'),
-      radius: 28,
-      opacity: 0.45,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'gork',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'pro',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontStyle: FontStyle.italic,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.black54,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                key: const ValueKey('upgrade-button'),
-                behavior: HitTestBehavior.opaque,
-                onTap: onUpgrade,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: const Text(
-                    'Upgrade',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Free and open source. Bring your own key — no monthly limits.",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: kOrange,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 8,
-            decoration: BoxDecoration(
-              color: kOrange,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Row(
-            children: [
-              Text(
-                'Resets',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              Spacer(),
-              Text(
-                'Never — your keys, your limits',
-                style: TextStyle(fontSize: 15, color: Colors.black54),
-              ),
-            ],
-          ),
-          const Divider(color: Colors.black12, height: 24),
-          GlassMenuRow(
-            key: const ValueKey('menu-usage'),
-            icon: Icons.data_usage_outlined,
-            label: 'Usage and plan',
-            onTap: onUpgrade,
-          ),
-        ],
-      ),
     );
   }
 }

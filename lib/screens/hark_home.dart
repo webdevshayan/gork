@@ -5,6 +5,7 @@ import '../services/panels_store.dart';
 import '../services/weather_service.dart';
 import '../widgets/glass.dart';
 import 'panels_screen.dart';
+import '../constants/design_tokens.dart';
 
 /// Home tab, pixel-matched to the reference: live weather card (outer glass
 /// card + two more-opaque inner tiles: conditions / sunset), the
@@ -132,7 +133,7 @@ class _WeatherCard extends StatelessWidget {
                 const Icon(
                   Icons.cloud_outlined,
                   size: 20,
-                  color: Colors.black87,
+                  color: GlassColors.text,
                 ),
                 const SizedBox(width: 10),
                 Text(
@@ -140,7 +141,7 @@ class _WeatherCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+                    color: GlassColors.text,
                   ),
                 ),
               ],
@@ -157,7 +158,7 @@ class _WeatherCard extends StatelessWidget {
                     conditions,
                     style: const TextStyle(
                       fontSize: 16,
-                      color: Colors.black54,
+                      color: GlassColors.textDim,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -166,7 +167,7 @@ class _WeatherCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 34,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                   ),
                 ],
@@ -182,7 +183,7 @@ class _WeatherCard extends StatelessWidget {
                 children: [
                   const Text(
                     'Sunset',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
+                    style: TextStyle(fontSize: 16, color: GlassColors.textDim),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -190,7 +191,7 @@ class _WeatherCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 34,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                   ),
                 ],
@@ -221,14 +222,14 @@ class _CreatePanelButton extends StatelessWidget {
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add, size: 20, color: Colors.black87),
+            Icon(Icons.add, size: 20, color: GlassColors.text),
             SizedBox(width: 10),
             Text(
               'Create a new panel',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w500,
-                color: Colors.black87,
+                color: GlassColors.text,
               ),
             ),
           ],
@@ -259,18 +260,18 @@ class _ManualPanelRow extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: GlassColors.text,
                   ),
                 ),
                 if (panel.manualValue.isNotEmpty)
                   Text(
                     panel.manualValue,
-                    style: const TextStyle(fontSize: 14, color: Colors.black54),
+                    style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
                   ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
+          const Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
         ],
       ),
     );

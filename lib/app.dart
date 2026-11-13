@@ -62,16 +62,14 @@ class GorkApp extends StatelessWidget {
         final wet = ambient.wetWeather;
         return AmbientScope(phase: phase, wet: wet, child: Builder(builder: (context) {
           final scope = AmbientScope.of(context);
-          final isDark =
-              MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-          final base = isDark ? Palette.dark : Palette.light;
+          // Movement 34: the whole app is dark glass — one theme everywhere.
           final palette =
-              ambientPalette(base, scope.phase, wet: scope.wet);
+              ambientPalette(Palette.dark, scope.phase, wet: scope.wet);
           return MaterialApp(
             title: 'gork',
-            theme: _theme(palette, Brightness.light),
+            theme: _theme(palette, Brightness.dark),
             darkTheme: _theme(palette, Brightness.dark),
-            themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+            themeMode: ThemeMode.dark,
             home: const OnboardingGate(),
           );
         }));

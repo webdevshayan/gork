@@ -8,16 +8,18 @@ import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 
-/// Encrypted vault: passwords, logins, card details. Everything lives in the
-/// device keystore; copying to clipboard is one tap.
-class VaultScreen extends StatefulWidget {
-  const VaultScreen({super.key});
+/// The Wallet: exchanges, on-chain accounts, card details and logins the
+/// user keeps for their own AI. Everything is encrypted on this device only;
+/// each wallet carries an explicit AI-access toggle — nothing is shared with
+/// the AI until the user flips it on.
+class WalletScreen extends StatefulWidget {
+  const WalletScreen({super.key});
 
   @override
-  State<VaultScreen> createState() => _VaultScreenState();
+  State<WalletScreen> createState() => _WalletScreenState();
 }
 
-class _VaultScreenState extends State<VaultScreen> {
+class _WalletScreenState extends State<WalletScreen> {
   List<VaultEntry> _entries = [];
   final Set<String> _revealed = {};
 
@@ -35,7 +37,7 @@ class _VaultScreenState extends State<VaultScreen> {
 
   Future<void> _createOrEdit([VaultEntry? existing]) async {
     final titleController = TextEditingController(text: existing?.title);
-    final usernameController = TextEditingController(text: existing?.username);
+    final addressController = TextEditingController(text: existing?.username);
     final secretController = TextEditingController(text: existing?.secret);
     final notesController = TextEditingController(text: existing?.notes);
     final palette = paletteOf(context);
@@ -59,23 +61,23 @@ class _VaultScreenState extends State<VaultScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(existing == null ? 'New vault entry' : 'Edit entry',
+              Text(existing == null ? 'New wallet' : 'Edit wallet',
                   style: TypeScale.title(color: palette.textPrimary)),
               const SizedBox(height: Spacing.md),
               TextField(
                 controller: titleController,
                 style: TypeScale.body(color: palette.textPrimary),
                 decoration: const InputDecoration(
-                  hintText: 'Name (e.g. GitHub login)',
+                  hintText: 'Name (e.g. Metamask, Binance)',
                   border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: Spacing.sm),
               TextField(
-                controller: usernameController,
+                controller: addressController,
                 style: TypeScale.body(color: palette.textPrimary),
                 decoration: const InputDecoration(
-                  hintText: 'Username or email',
+                  hintText: 'Address / account / login',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -87,7 +89,7 @@ class _VaultScreenState extends State<VaultScreen> {
                 enableSuggestions: false,
                 style: TypeScale.code(color: palette.textPrimary),
                 decoration: const InputDecoration(
-                  hintText: 'Password / secret / card number',
+                  hintText: 'Seed phrase / private key / card number',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -102,7 +104,7 @@ class _VaultScreenState extends State<VaultScreen> {
               ),
               const SizedBox(height: Spacing.lg),
               GButton(
-                label: 'Save entry',
+                label: 'Save wallet',
                 expands: true,
                 onPressed: () {
                   final title = titleController.text.trim();
@@ -112,10 +114,11 @@ class _VaultScreenState extends State<VaultScreen> {
                   Locator.vault.save(VaultEntry(
                     id: existing?.id ?? now.toString(),
                     title: title,
-                    username: usernameController.text.trim(),
+                    username: addressController.text.trim(),
                     secret: secret,
                     notes: notesController.text.trim(),
                     createdAt: existing?.createdAt ?? now,
+                    aiAccess: existing?.aiAccess ?? false,
                   ));
                   Navigator.pop(context);
                 },
@@ -128,12 +131,28 @@ class _VaultScreenState extends State<VaultScreen> {
     _refresh();
   }
 
+  Future<void> _toggleAiAccess(VaultEntry e) async {
+    await Locator.vault.save(
+      VaultEntry(
+        id: e.id,
+        title: e.title,
+        username: e.username,
+        secret: e.secret,
+        notes: e.notes,
+        createdAt: e.createdAt,
+        aiAccess: !e.aiAccess,
+      ),
+    );
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = paletteOf(context);
     return Screen(
-      title: 'Vault',
+      title: 'Wallet',
       fab: FloatingActionButton(
+        key: const ValueKey('wallet-add'),
         backgroundColor: palette.primary,
         foregroundColor: palette.onPrimary,
         child: const Icon(Icons.add),
@@ -142,7 +161,8 @@ class _VaultScreenState extends State<VaultScreen> {
       body: _entries.isEmpty
           ? GCard(
               child: Text(
-                'Vault is empty. Entries are encrypted on this device only.',
+                'No wallets yet. Wallets are encrypted on this device only — '
+                'flip AI access on a wallet to let your AI use it.',
                 style: TypeScale.body(color: palette.textSecondary),
               ),
             )
@@ -160,7 +180,7 @@ class _VaultScreenState extends State<VaultScreen> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.lock_outline,
+                            Icon(Icons.account_balance_wallet_outlined,
                                 size: 20, color: palette.primary),
                             const SizedBox(width: Spacing.sm),
                             Expanded(
@@ -180,6 +200,59 @@ class _VaultScreenState extends State<VaultScreen> {
                         Text(
                           revealed ? e.secret : '••••••••••••',
                           style: TypeScale.code(color: palette.textPrimary),
+                        ),
+                        const SizedBox(height: Spacing.sm),
+                        // The AI-access switch: the user's explicit,
+                        // per-wallet grant. Off by default, always honest.
+                        Row(
+                          children: [
+                            GestureDetector(
+                              key: ValueKey('ai-access-${e.id}'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _toggleAiAccess(e),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: e.aiAccess
+                                      ? palette.success.withValues(alpha: 0.15)
+                                      : palette.surfaceElevated,
+                                  borderRadius:
+                                      BorderRadius.circular(RadiusTokens.md),
+                                  border: Border.all(
+                                    color: e.aiAccess
+                                        ? palette.success
+                                        : palette.border,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      e.aiAccess
+                                          ? Icons.check_circle_outline
+                                          : Icons.do_not_disturb_on_outlined,
+                                      size: 16,
+                                      color: e.aiAccess
+                                          ? palette.success
+                                          : palette.textTertiary,
+                                    ),
+                                    const SizedBox(width: Spacing.sm),
+                                    Text(
+                                      e.aiAccess
+                                          ? 'AI access on'
+                                          : 'AI access off',
+                                      style: TypeScale.bodySmall(
+                                        color: e.aiAccess
+                                            ? palette.success
+                                            : palette.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: Spacing.md),
                         Row(

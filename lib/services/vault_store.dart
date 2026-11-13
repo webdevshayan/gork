@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import '../services/secure_store.dart';
 
-/// One entry in the encrypted vault: passwords, logins, card details.
+/// One entry in the encrypted store. Since Movement 34 it is a WALLET: the
+/// wallets (exchanges, on-chain accounts, card details, logins) the user
+/// keeps — each with an explicit AI-access toggle the user controls.
 class VaultEntry {
   final String id;
   final String title;
@@ -11,6 +13,10 @@ class VaultEntry {
   final String notes;
   final int createdAt;
 
+  /// Whether the user has granted their own AI access to this wallet.
+  /// Defaults to false: nothing is shared until the user says so.
+  final bool aiAccess;
+
   const VaultEntry({
     required this.id,
     required this.title,
@@ -18,6 +24,7 @@ class VaultEntry {
     required this.secret,
     required this.notes,
     required this.createdAt,
+    this.aiAccess = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +34,7 @@ class VaultEntry {
         'secret': secret,
         'notes': notes,
         'createdAt': createdAt,
+        'aiAccess': aiAccess,
       };
 
   factory VaultEntry.fromJson(Map<String, dynamic> json) => VaultEntry(
@@ -36,6 +44,7 @@ class VaultEntry {
         secret: json['secret'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
         createdAt: json['createdAt'] as int,
+        aiAccess: json['aiAccess'] as bool? ?? false,
       );
 }
 

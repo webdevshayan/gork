@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gork/screens/projects_screen.dart';
-import 'package:gork/screens/vault_screen.dart';
+import 'package:gork/screens/wallet_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
 
@@ -56,20 +56,20 @@ void main() {
 
   testWidgets('vault entry: create, hidden by default, reveal, copy',
       (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: VaultScreen()));
+    await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Vault is empty'), findsOneWidget);
+    expect(find.textContaining('No wallets yet'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.widgetWithText(TextField, 'Name (e.g. GitHub login)').first,
+        find.widgetWithText(TextField, 'Name (e.g. Metamask, Binance)').first,
         'Mail login');
     await tester.enterText(
-        find.widgetWithText(TextField, 'Password / secret / card number').first,
+        find.widgetWithText(TextField, 'Seed phrase / private key / card number').first,
         's3cret!');
-    await tester.tap(find.text('Save entry'));
+    await tester.tap(find.text('Save wallet'));
     await tester.pumpAndSettle();
 
     expect(find.text('Mail login'), findsOneWidget);

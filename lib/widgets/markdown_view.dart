@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
+import '../constants/design_tokens.dart';
 
 /// Safe, offline markdown rendering for assistant bubbles.
 ///
@@ -18,7 +19,7 @@ class MarkdownView extends StatelessWidget {
   /// what to do — by default the URL is simply presented, never opened).
   final ValueChanged<String>? onLinkTap;
 
-  static const Color _ink = Colors.black87;
+  static const Color _ink = GlassColors.text;
   static const Color _accent = Color(0xFF0B57D0);
 
   @override
@@ -73,7 +74,7 @@ class MarkdownView extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 6),
           padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
           decoration: const BoxDecoration(
-            border: Border(left: BorderSide(color: Colors.black26, width: 3)),
+            border: Border(left: BorderSide(color: GlassColors.textFaint, width: 3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,7 +115,7 @@ class MarkdownView extends StatelessWidget {
       case 'hr':
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
-          child: Divider(color: Colors.black26),
+          child: Divider(color: GlassColors.textFaint),
         );
       case 'img':
       case 'image':
@@ -220,7 +221,7 @@ class MarkdownView extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Table(
-        border: TableBorder.all(color: Colors.black26),
+        border: TableBorder.all(color: GlassColors.textFaint),
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         columnWidths: const {0: IntrinsicColumnWidth()},
         children: rows,
@@ -236,17 +237,17 @@ class MarkdownView extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(color: GlassColors.divider),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.image_outlined, size: 18, color: Colors.black54),
+          const Icon(Icons.image_outlined, size: 18, color: GlassColors.textDim),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               alt,
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
+              style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
             ),
           ),
         ],
@@ -291,7 +292,7 @@ class MarkdownView extends StatelessWidget {
         return TextSpan(
           style: const TextStyle(
             decoration: TextDecoration.lineThrough,
-            color: Colors.black45,
+            color: GlassColors.textDim,
           ),
           children: _inline(context, node.children ?? []),
         );

@@ -36,10 +36,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, 'ghp_test_token');
-    await tester.tap(find.text('Save token'));
+    await tester.tap(find.text('Connect'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connected — token on this device'), findsOneWidget);
+    expect(find.textContaining('one-time setup'), findsOneWidget);
   });
 
   testWidgets('test connection reports success for a good token',
@@ -51,9 +51,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, 'ghp_test_token');
-    await tester.tap(find.text('Test'));
+    await tester.tap(find.text('Connect'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connection OK — token works.'), findsOneWidget);
+    // verification happens inside the Connect action: the sheet closes on
+    // success and the token is stored.
+    expect(find.byType(TextField), findsNothing);
+    expect((await Locator.integrations.vault.token('github')), 'ghp_test_token');
   });
 }

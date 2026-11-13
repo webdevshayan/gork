@@ -12,7 +12,8 @@ import 'projects_screen.dart';
 import 'providers_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
-import 'vault_screen.dart';
+import 'wallet_screen.dart';
+import '../constants/design_tokens.dart';
 
 /// Chat search from the reference: a glass query field over the ambient sky,
 /// hits across conversations (title + matched snippet + date), quick feature
@@ -35,7 +36,7 @@ class _SearchScreenState extends State<SearchScreen> {
     _Jump('Inbox', Icons.inbox_outlined, InboxScreen()),
     _Jump('Panels', Icons.dashboard_outlined, PanelsScreen()),
     _Jump('Projects', Icons.folder_outlined, ProjectsScreen()),
-    _Jump('Vault', Icons.lock_outline, VaultScreen()),
+    _Jump('Wallet', Icons.account_balance_wallet_outlined, WalletScreen()),
     _Jump('Cloud Computer', Icons.dns_outlined, CloudComputerScreen()),
     _Jump('Integrations', Icons.extension_outlined, IntegrationsScreen()),
     _Jump('Scheduled Tasks', Icons.schedule_outlined, TasksScreen()),
@@ -103,7 +104,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                   ),
                 ),
@@ -120,15 +121,15 @@ class _SearchScreenState extends State<SearchScreen> {
                       controller: _field,
                       onChanged: (q) => setState(() => _query = q),
                       style: const TextStyle(
-                          fontSize: 17, color: Colors.black87),
+                          fontSize: 17, color: GlassColors.text),
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search,
-                            size: 20, color: Colors.black54),
+                            size: 20, color: GlassColors.textDim),
                         suffixIcon: _query.isEmpty
                             ? null
                             : IconButton(
                                 icon: const Icon(Icons.close,
-                                    size: 18, color: Colors.black54),
+                                    size: 18, color: GlassColors.textDim),
                                 onPressed: () {
                                   _field.clear();
                                   setState(() => _query = '');
@@ -136,7 +137,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               ),
                         hintText: 'Search your chats',
                         hintStyle: const TextStyle(
-                            fontSize: 16, color: Colors.black54),
+                            fontSize: 16, color: GlassColors.textDim),
                         border: InputBorder.none,
                       ),
                     ),
@@ -165,7 +166,7 @@ class _SearchScreenState extends State<SearchScreen> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Colors.black45,
+          color: GlassColors.textDim,
         ),
       ),
       const SizedBox(height: 8),
@@ -192,14 +193,14 @@ class _SearchScreenState extends State<SearchScreen> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Colors.black45,
+          color: GlassColors.textDim,
         ),
       ),
       const SizedBox(height: 8),
       if (recents.isEmpty)
         const Text(
           'No chats yet — say something to gork and it will show up here.',
-          style: TextStyle(fontSize: 14, color: Colors.black54),
+          style: TextStyle(fontSize: 14, color: GlassColors.textDim),
         ),
       for (final conv in recents)
         Padding(
@@ -222,7 +223,7 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.all(20),
           child: Text(
             'No results for "${_query.trim()}".',
-            style: const TextStyle(fontSize: 16, color: Colors.black54),
+            style: const TextStyle(fontSize: 16, color: GlassColors.textDim),
           ),
         ),
       ];
@@ -288,14 +289,14 @@ class _HitCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                   ),
                 ),
                 Text(
                   date,
                   style: const TextStyle(
-                      fontSize: 12, color: Colors.black45),
+                      fontSize: 12, color: GlassColors.textDim),
                 ),
               ],
             ),
@@ -304,12 +305,12 @@ class _HitCard extends StatelessWidget {
               snippet,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
+              style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
             ),
             const SizedBox(height: 6),
             const Align(
               alignment: Alignment.centerRight,
-              child: Icon(Icons.chevron_right, size: 18, color: Colors.black45),
+              child: Icon(Icons.chevron_right, size: 18, color: GlassColors.textDim),
             ),
           ],
         ),

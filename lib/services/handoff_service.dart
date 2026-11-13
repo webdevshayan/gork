@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../providers/providers.dart';
 import 'integrations.dart';
 import 'secure_store.dart';
 import 'tasks_store.dart';
@@ -130,5 +131,54 @@ class HandoffService {
     final data = await _call('POST', '/run') as Map<String, dynamic>;
     final ran = (data['ran'] as num?)?.toInt() ?? 0;
     return '$ran due task(s) executed on the daemon';
+  }
+
+  /// Push the phone's config to the daemon in one action: the first
+  /// provider that has a key (api key, base URL, model), every connected
+  /// connector token, and the ntfy topic. The daemon writes them into its
+  /// config.env and applies the LLM config live — no file editing on the
+  /// VPS, ever.
+  Future<String> pushConfig() async {
+    final base = url;
+    if (base == null) {
+      throw const IntegrationException(
+          'Daemon not configured — set its URL in Cloud Computer');
+    }
+
+    // LLM: the first provider (in registry order) that has a key saved.
+    final config = <String, String>{};
+    for (final p in kProviders) {
+      final key = await store.read('apikey.${p.id}');
+      if (key != null && key.isNotEmpty) {
+        config['GORK_API_KEY'] = key;
+        config['GORK_BASE_URL'] = p.baseURL;
+        config['GORK_MODEL'] = p.defaultModel;
+        break;
+      }
+    }
+
+    // Connectors: every integration with a stored token.
+    final connectors = <String, String>{};
+    for (final i in kIntegrations) {
+      final token = await store.read(IntegrationVault.keyFor(i.id));
+      if (token != null && token.isNotEmpty) {
+        connectors[i.id] = token;
+      }
+    }
+
+    // ntfy topic rides along so scheduled pushes land on this phone.
+    final topic = ntfyTopic;
+    if (topic != null && topic.isNotEmpty) {
+      config['NTFY_TOPIC'] = topic;
+    }
+
+    if (config.isEmpty && connectors.isEmpty) {
+      return 'nothing to sync — save a provider key or connect a service first';
+    }
+
+    final data = await _call('POST', '/config',
+        body: {'config': config, 'connectors': connectors}) as Map<String, dynamic>;
+    final saved = (data['saved'] as List? ?? []).length;
+    return 'synced $saved key(s) to the daemon';
   }
 }

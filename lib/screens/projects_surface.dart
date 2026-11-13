@@ -4,6 +4,7 @@ import '../services/locator.dart';
 import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import 'projects_screen.dart';
+import '../constants/design_tokens.dart';
 
 /// Projects tab: projects are FOLDERS — each folder holds its own chats and
 /// shared resources (files, images, notes). This surface lists the folders;
@@ -75,7 +76,7 @@ class _FolderCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.folder_outlined, size: 26, color: Colors.black87),
+            const Icon(Icons.folder_outlined, size: 26, color: GlassColors.text),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -88,7 +89,7 @@ class _FolderCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -96,12 +97,12 @@ class _FolderCard extends StatelessWidget {
                     '${project.chats.length} chats · '
                     '${project.files.length} files · '
                     '${project.images.length} images',
-                    style: const TextStyle(fontSize: 13, color: Colors.black54),
+                    style: const TextStyle(fontSize: 13, color: GlassColors.textDim),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
+            const Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
           ],
         ),
       ),
@@ -125,14 +126,14 @@ class _EmptyProjects extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.folder_outlined, size: 28, color: Colors.black87),
+            const Icon(Icons.folder_outlined, size: 28, color: GlassColors.text),
             const SizedBox(height: 12),
             const Text(
               'No projects yet',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: GlassColors.text,
               ),
             ),
             const SizedBox(height: 8),
@@ -140,7 +141,7 @@ class _EmptyProjects extends StatelessWidget {
               'Projects are folders that hold chats, notes, files and '
               'images for one goal.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black54),
+              style: TextStyle(fontSize: 14, color: GlassColors.textDim),
             ),
             const SizedBox(height: 16),
             GlassContainer(
@@ -154,14 +155,14 @@ class _EmptyProjects extends StatelessWidget {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add, size: 18, color: Colors.black87),
+                    Icon(Icons.add, size: 18, color: GlassColors.text),
                     SizedBox(width: 8),
                     Text(
                       'Create a project',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                        color: GlassColors.text,
                       ),
                     ),
                   ],

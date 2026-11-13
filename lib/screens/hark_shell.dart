@@ -15,6 +15,7 @@ import 'menu_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'projects_surface.dart';
+import '../constants/design_tokens.dart';
 
 enum HarkTab { home, chat, projects }
 
@@ -336,7 +337,9 @@ class _TopBar extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.black : Colors.transparent,
+          // dark theme: the selected pill flips to a light chip with dark
+          // text so it reads on dark glass.
+          color: isSelected ? GlassColors.text : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
         ),
         child: Text(
@@ -344,7 +347,7 @@ class _TopBar extends StatelessWidget {
           style: TextStyle(
             fontSize: 16,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.black54,
+            color: isSelected ? Colors.black : GlassColors.textDim,
           ),
         ),
       ),
@@ -356,7 +359,7 @@ class _Avatar extends StatelessWidget {
   const _Avatar();
 
   Widget _fallback() => Container(
-        color: Colors.black87,
+        color: GlassColors.text,
         alignment: Alignment.center,
         child: const Icon(Icons.person_outline, size: 24, color: Colors.white),
       );
@@ -448,7 +451,7 @@ class _AvatarSheet extends StatelessWidget {
                     _choose(context);
                   },
                 ),
-                const Divider(color: Colors.black12, height: 1),
+                const Divider(color: GlassColors.divider, height: 1),
                 GlassMenuRow(
                   key: const ValueKey('remove-photo'),
                   icon: Icons.delete_outline,
@@ -499,9 +502,10 @@ class BottomInputBar extends StatelessWidget {
           child: GlassContainer(
             key: const ValueKey('input-bar'),
             radius: 30,
-            opacity: 0.35,
+            strong: true,
             padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
                   child: TextField(
@@ -515,13 +519,13 @@ class BottomInputBar extends StatelessWidget {
                     maxLines: 6,
                     style: const TextStyle(
                       fontSize: 17,
-                      color: Colors.black87,
+                      color: GlassColors.text,
                     ),
                     decoration: const InputDecoration(
                       hintText: 'Message Hark',
                       hintStyle: TextStyle(
                         fontSize: 17,
-                        color: Colors.black54,
+                        color: GlassColors.textDim,
                       ),
                       border: InputBorder.none,
                       isDense: true,
@@ -535,7 +539,7 @@ class BottomInputBar extends StatelessWidget {
                   onTap: onAttach,
                   child: const Padding(
                     padding: EdgeInsets.all(10),
-                    child: Icon(Icons.add, size: 24, color: Colors.black54),
+                    child: Icon(Icons.add, size: 24, color: GlassColors.textDim),
                   ),
                 ),
                 AnimatedSwitcher(
@@ -551,15 +555,16 @@ class BottomInputBar extends StatelessWidget {
                             key: const ValueKey('send-circle'),
                             width: 44,
                             height: 44,
-                            margin: const EdgeInsets.all(4),
+                            margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
                             decoration: const BoxDecoration(
-                              color: Colors.black,
+                              // dark theme: light circle, dark arrow.
+                              color: GlassColors.text,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
                               Icons.arrow_upward,
                               size: 22,
-                              color: Colors.white,
+                              color: Colors.black,
                             ),
                           ),
                         )
@@ -569,7 +574,7 @@ class BottomInputBar extends StatelessWidget {
                           child: Icon(
                             Icons.mic_none,
                             size: 24,
-                            color: Colors.black54,
+                            color: GlassColors.textDim,
                           ),
                         ),
                 ),
@@ -600,9 +605,9 @@ class _HomeMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _row(context, Icons.insert_drive_file_outlined, 'Add file'),
-          const Divider(color: Colors.black12, height: 1),
+          const Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.image_outlined, 'Add image'),
-          const Divider(color: Colors.black12, height: 1),
+          const Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.dashboard_outlined, 'New panel'),
         ],
       ),
@@ -662,9 +667,9 @@ class _AttachMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _row(context, Icons.photo_camera_outlined, 'Camera', AttachKind.camera),
-          const Divider(color: Colors.black12, height: 1),
+          const Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.image_outlined, 'Photos', AttachKind.photos),
-          const Divider(color: Colors.black12, height: 1),
+          const Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.folder_outlined, 'Files', AttachKind.files),
         ],
       ),
