@@ -38,3 +38,4 @@ The README stays clean — the receipts live here.
 | #30 | NDK-free release builds: official repos first, Aliyun before central, no gradle daemon |
 | #31 | Attachments speak: text files feed the agent their real content — binaries and images stay honest markers |
 | #32 | Images see: vision payloads ride to multimodal providers — base64 parts for OpenAI-compatible and Anthropic, honest markers when a file can't load |
+| #33 | Update from within: GitHub releases check + APK download + honest system-installer handoff |
