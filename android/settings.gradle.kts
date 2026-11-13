@@ -26,6 +26,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories {
         google()
+        maven("https://storage.googleapis.com/download.flutter.io") // engine artifacts live here, not on Central
         maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
