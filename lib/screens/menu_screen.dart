@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../constants/version.dart';
 import '../widgets/glass.dart';
 import 'integrations_screen.dart';
 import 'providers_screen.dart';
 import 'search_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
+import 'updates_screen.dart';
 import 'vault_screen.dart';
 
 /// The profile/menu surface (opened from the avatar), pixel-matched to the
@@ -92,6 +94,27 @@ class MenuScreen extends StatelessWidget {
             icon: Icons.shield_outlined,
             label: 'Security',
             onTap: () => _push(context, const VaultScreen()),
+          ),
+        ),
+        const SizedBox(height: 16),
+        GlassContainer(
+          radius: 28,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: GlassMenuRow(
+            key: const ValueKey('menu-updates'),
+            icon: Icons.system_update_outlined,
+            label: 'Updates',
+            trailing: kAppVersion == 'dev'
+                ? null
+                : Text(
+                    'v$kAppVersion',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black45,
+                    ),
+                  ),
+            onTap: () => _push(context, const UpdatesScreen()),
           ),
         ),
         const SizedBox(height: 24),

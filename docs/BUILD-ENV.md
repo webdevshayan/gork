@@ -57,3 +57,13 @@ This project builds Android APKs only.
   binutils here is x86-64-only.
 - `core library desugaring` is enabled (required by flutter_local_notifications).
 - Minimum SDK is 23 (`flutter_secure_storage` requirement).
+
+## Toolchain notes (re-verified 2026-11-13)
+
+- cmdline-tools 19.0 deprecates the `sdkmanager` binary — the shim now warns
+  and delegates to the bundled `android` CLI. Licenses and package installs
+  still work through it; the warning is noise.
+- The NDK stays a stub (`source.properties` only, revision
+  28.2.13676358 — Flutter 3.50's pin in `FlutterExtension.kt`), with
+  `llvm-strip`/`llvm-objcopy` shims running over an extracted llvm-19
+  (Debian `llvm-19` + `libllvm19` debs, `LD_LIBRARY_PATH` set in the shim).
