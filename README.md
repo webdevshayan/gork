@@ -1,82 +1,135 @@
+<div align="center">
+
 # gork
 
-A free, open-source personal AI assistant for Android — an open-source
-alternative inspired by Hark Pro. Built in public, one pull request at a time.
+**A free, open-source personal AI operating system for Android.**
 
-## Principles
+One chat that knows your life. Projects that hold your work. A daemon that
+runs 24/7 on hardware you own. Bring your own API key — there are no accounts,
+no servers, no subscriptions.
 
-- **BYOK** — bring your own API key (OpenAI, OpenRouter, Gemini, Anthropic,
-  or any OpenAI-compatible endpoint). Keys stay on the device, encrypted in
-  the Android keystore. Nothing is sent to our servers (there are none).
-- **Every merged PR is a small, working, tested step.** No APK ships until
-  the whole test suite passes.
-- **Android APK only** — no accounts, no payments, no app store.
-- **24/7 via your own VPS** — the companion daemon runs on hardware you own.
+[Download the APK](https://github.com/webdevshayan/gork/releases) ·
+[Self-host the daemon](#self-host-the-247-daemon) ·
+[Contributing](#contributing)
 
-## Features (v1.0.0)
+![Release](https://img.shields.io/github/v/release/webdevshayan/gork?style=flat-square&color=black)
+![Platform](https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square)
+![Built with](https://img.shields.io/badge/built_with-Flutter-02569B?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)
+
+</div>
+
+---
+
+## Why gork exists
+
+The best AI assistants today rent you access to *your own context*. Your
+history lives in someone else's cloud, your automations run on their schedule,
+and the moment the subscription ends, the memory of your life walks out the
+door with them.
+
+gork is the opposite bet. **Your keys never leave your phone** (encrypted in
+the Android keystore), **your history lives in your device storage**, and the
+piece that needs to run 24/7 — the companion daemon — runs on a VPS or a Termux
+box *you* control, reachable through a shared secret only your phone knows.
+The app talks to whatever OpenAI-compatible endpoint you point it at: OpenAI,
+OpenRouter, Gemini, Anthropic, a local llama.cpp server, anything.
+
+And it is built in public, one *movement* at a time: every pull request is a
+small, working, fully tested step, merged only when the whole suite is green.
+No roadmap theater — the [movement log](docs/BUILD_LOG.md) is the roadmap.
+
+## What's inside
 
 | Area | What works today |
 |---|---|
-| Chat | Full chat UI over one unified LLM client; history persisted; provider picker |
-| BYOK providers | 5 providers per spec table; per-provider namespaced secure keys; Test Connection |
-| Agent | Tool calling loop (up to 3 rounds, OpenAI tool protocol): memory, projects, tasks, panels, vault, weather |
+| Chat | Glass chat UI, safe markdown answers (CommonMark + GFM, no web view, HTML inert), persisted history, provider picker |
+| Attachments | The + menu really attaches: Camera, Photos and Files land in the thread and mirror into the project folder |
+| Agent | Tool-calling loop (memory, projects, tasks, panels, vault, weather) — up to 3 rounds on the OpenAI tool protocol |
 | Memory | Cross-session facts, injected into every conversation |
-| Projects | Workspaces with notes and text files |
+| Projects | Folders that hold their own chats plus shared resources — files, images, notes |
+| Search | The menu Search pill opens real chat search — hits across conversations, feature jumps, recent threads |
 | Vault | Encrypted secrets with reveal/copy, keystore-backed |
-| Scheduled tasks | Timed prompts, results as local notifications |
-| Cloud Computer | AgentVPS (self-hosted) / Browser Use Cloud / openbrowse, with health check |
-| Daemon | Dart companion server: `/health`, task CRUD, scheduler, ntfy push, systemd installer |
-| Panels | Mini-dashboards: live Open-Meteo weather panel (no key) + manual panels |
-| Inbox | Proactive suggestions from live signals; sensitive actions confirm first |
-| Ambient UI | Time-of-day accent shifts + weather-aware tint, contrast-checked |
-| Integrations | GitHub, Slack, Strava, Spotify, Gmail, PayPal — BYO token, agent tools for each |
+| Scheduled tasks | Timed prompts, results delivered as local notifications |
+| Integrations | GitHub, Slack, Strava, Spotify, Gmail, PayPal — BYO token, each an agent tool |
+| Panels | Mini-dashboards: live Open-Meteo weather (no key) + manual panels |
+| Daemon | Dart companion server for 24/7 operation: REST + scheduler + ntfy push, installs anywhere (systemd, Termux, plain ctl) |
+| CLI | `gork` — configure LLMs, secrets, ports and tasks entirely from the terminal |
 
-## Test suite
+The interface follows one rule: **every pixel answers to the reference
+design.** Frosted glass over an offline ambient sky (bundled asset — nothing
+fetched), white wash in light mode, dark scrim in dark mode, a black pill for
+the active tab, and no black flash on cold start.
 
-Every PR runs `flutter test` (125+ tests: units, widget flows, mocked HTTP,
-WCAG contrast checks) and `dart test` for the daemon.
+## Get the app
 
-## The APK
+Grab the latest APK from the
+[Releases page](https://github.com/webdevshayan/gork/releases) and open it on
+your phone (allow *install unknown apps* for your file manager when prompted).
 
-Download the latest release APK from the
-[Releases page](https://github.com/webdevshayan/gork/releases), or build it:
+Or build it yourself:
 
 ```bash
+git clone https://github.com/webdevshayan/gork.git
+cd gork
+flutter pub get
+flutter test            # every commit ships green
 flutter build apk --release
 # build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Install: copy the APK to your Android phone and open it (allow
-"install unknown apps" for your file manager when prompted).
+## Self-host the 24/7 daemon
 
-## Build log
+The daemon is what lets a phone assistant actually *do* things while you
+sleep. It installs itself — detecting systemd, Termux/runit, or falling back
+to a plain pidfile controller — and health-gates every success message, so a
+broken install fails honestly instead of pretending.
 
-| PR | What landed |
-|---|---|
-| bootstrap | README + build environment report (`flutter doctor` ✓ Android) |
-| #1 | Flutter app skeleton + first passing test (red → green) |
-| #2 | Design system: tokens (spacing/colors/typography/radius/elevation) + Screen/Button/Card |
-| #3 | BYOK core: provider table, secure vault, unified LLM client |
-| #4 | App shell + Providers settings + Test Connection |
-| #5 | Chat UI + persisted history + persistent memory |
-| #6 | Projects workspaces + encrypted Vault |
-| #7 | Scheduled tasks + scheduler + local notifications |
-| #8 | Cloud Computer settings + companion daemon |
-| #9 | Panels + live weather + ambient theming |
-| #10 | Agent tool loop + Inbox with real actions |
-| #11 | Release polish + first release APK |
-| #12 | Integration framework + GitHub integration (notifications, issues) |
-| #13 | Slack, Strava, Spotify integrations with agent tools |
-| #14 | Gmail + PayPal integrations (unread mail, transactions) |
-| #15 | 24/7 Handoff: task sync with the daemon + shared-secret auth |
-| #16 | First-run onboarding wizard |
-| #17 | Release v1.0.0 |
-| #18 | v1.0.0 test & release report |
-| #19 | Hark Pro glass UI rebuild: ambient backdrop + glass shell (nav pill, bottom input), spec-exact Home / Chat / System Preferences |
-| #20 | Daemon self-hosts anywhere: Termux + proot + no-systemd backends (gork-daemonctl), missing bin entrypoint fixed, /health-gated honest installs |
-| #21 | Navigation corrections: contextual left button (+ dropdown / settings / back), profile-driven settings, offline avatar (person icon), auto-resizing input |
-| #22 | Offline ambient backdrop (bundled sky, no black flash) + contrast overlays (white in light, black in dark) + new glass-g launcher icon |
-| #23 | Projects are folders: chats + files + images live inside, shell-scoped conversations |
-| #24 | Safe markdown for AI responses: CommonMark + GFM, zero web views, HTML inert, no fetches |
-| #25 | gork CLI: configure LLMs, tasks, secrets and everything from the terminal — no file editing |
-| #20 | Daemon self-hosts anywhere: Termux + proot + no-systemd backends (gork-daemonctl), missing bin entrypoint fixed, /health-gated honest installs |
+```bash
+curl -fsSL https://raw.githubusercontent.com/webdevshayan/gork/main/daemon/install.sh | bash
+```
+
+Then configure everything from the terminal — **no file editing, ever**:
+
+```bash
+gork llm providers                      # see the supported endpoints
+gork llm set openrouter                 # base URL + model, one command
+gork config set GORK_API_KEY sk-...     # your key, stored 0600-local
+gork llm test                           # ok (openrouter/gpt-oss-120b @ ...)
+gork tasks add "Morning brief" "summarize my inbox" 60
+gork status                             # daemon liveness + task count
+gork secret                             # pairing secret for the phone app
+```
+
+Pairs with the app through **Cloud Computer → AgentVPS** using that secret.
+Full details, including Termux and no-systemd boxes, live in
+[`daemon/README.md`](daemon/README.md).
+
+## Privacy & security
+
+- **Keys**: encrypted in the Android keystore, per-provider namespaced. Never
+  logged, never synced.
+- **Network**: the only traffic is you → your LLM endpoint and you → the
+  integrations you configure. The ambient backdrop is a bundled asset.
+- **Daemon**: local REST API guarded by a shared secret (`/health` is the one
+  unauthenticated liveness endpoint, by design).
+- **Markdown**: rendered with a hand-built widget tree on the `markdown`
+  parser — no web view exists in the app, so no script can ever execute and
+  nothing is ever fetched from an answer.
+
+## Contributing
+
+gork moves in movements, and the bar is simple:
+
+1. Branch from `main`.
+2. Write the failing test first, then make it pass.
+3. `flutter test` (app) and `dart test` (daemon) must be fully green.
+4. One pull request, one concern; it squash-merges and the branch is deleted.
+
+The [movement log](docs/BUILD_LOG.md) shows what a finished movement looks
+like. If you are fixing a bug, the regression test *is* the pull request —
+everything else is commentary.
+
+## License
+
+[MIT](LICENSE) — © Shayan Ali Jalbani. Do anything; attribution appreciated.
