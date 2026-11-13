@@ -1,0 +1,332 @@
+import 'package:flutter/material.dart';
+
+import '../services/history_store.dart';
+import '../services/locator.dart';
+import '../widgets/ambient_backdrop.dart';
+import '../widgets/glass.dart';
+import 'cloud_computer_screen.dart';
+import 'inbox_screen.dart';
+import 'integrations_screen.dart';
+import 'panels_screen.dart';
+import 'projects_screen.dart';
+import 'providers_screen.dart';
+import 'tasks_screen.dart';
+import 'theme_page.dart';
+import 'vault_screen.dart';
+
+/// Chat search from the reference: a glass query field over the ambient sky,
+/// hits across conversations (title + matched snippet + date), quick feature
+/// jumps and recent chats while the query is empty. Opening a hit hands the
+/// conversation id to the shell, which lands it in the Chat tab.
+class SearchScreen extends StatefulWidget {
+  const SearchScreen({super.key, required this.onOpenChat});
+
+  final ValueChanged<String> onOpenChat;
+
+  @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final TextEditingController _field = TextEditingController();
+  String _query = '';
+
+  static const List<_Jump> _jumps = [
+    _Jump('Inbox', Icons.inbox_outlined, InboxScreen()),
+    _Jump('Panels', Icons.dashboard_outlined, PanelsScreen()),
+    _Jump('Projects', Icons.folder_outlined, ProjectsScreen()),
+    _Jump('Vault', Icons.lock_outline, VaultScreen()),
+    _Jump('Cloud Computer', Icons.dns_outlined, CloudComputerScreen()),
+    _Jump('Integrations', Icons.extension_outlined, IntegrationsScreen()),
+    _Jump('Scheduled Tasks', Icons.schedule_outlined, TasksScreen()),
+    _Jump('Providers', Icons.key_outlined, ProvidersScreen()),
+    _Jump('Theme', Icons.palette_outlined, ThemePage()),
+  ];
+
+  List<_Hit> _hits(String query) {
+    final lower = query.toLowerCase();
+    final out = <_Hit>[];
+    for (final conv in Locator.history.all()) {
+      for (final m in conv.messages) {
+        final index = m.content.toLowerCase().indexOf(lower);
+        if (index < 0) continue;
+        final start = index > 40 ? index - 40 : 0;
+        final end = index + query.length + 60 < m.content.length
+            ? index + query.length + 60
+            : m.content.length;
+        var snippet =
+            m.content.substring(start, end).replaceAll('\n', ' ').trim();
+        if (start > 0) snippet = '…$snippet';
+        if (end < m.content.length) snippet = '$snippet…';
+        out.add(_Hit(conv, snippet));
+        break; // one card per conversation — the thread itself follows.
+      }
+    }
+    return out;
+  }
+
+  String _dateLabel(int ms) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June', 'July',
+      'August', 'September', 'October', 'November', 'December',
+    ];
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${months[d.month - 1]} ${d.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool empty = _query.trim().isEmpty;
+    final hits = empty ? const <_Hit>[] : _hits(_query.trim());
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const AmbientBackdrop(),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: GlassIconButton(
+                    icon: Icons.u_turn_left,
+                    onTap: () => Navigator.pop(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'Search',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GlassContainer(
+                    key: const ValueKey('search-field'),
+                    radius: 30,
+                    opacity: 0.45,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: TextField(
+                      autofocus: true,
+                      controller: _field,
+                      onChanged: (q) => setState(() => _query = q),
+                      style: const TextStyle(
+                          fontSize: 17, color: Colors.black87),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search,
+                            size: 20, color: Colors.black54),
+                        suffixIcon: _query.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close,
+                                    size: 18, color: Colors.black54),
+                                onPressed: () {
+                                  _field.clear();
+                                  setState(() => _query = '');
+                                },
+                              ),
+                        hintText: 'Search your chats',
+                        hintStyle: const TextStyle(
+                            fontSize: 16, color: Colors.black54),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: empty ? _emptyState() : _hitList(hits),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _emptyState() {
+    final recents = Locator.history.all().take(5).toList();
+    return [
+      const Text(
+        'Jump to',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.black45,
+        ),
+      ),
+      const SizedBox(height: 8),
+      GlassContainer(
+        radius: 28,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            for (final jump in _jumps)
+              GlassMenuRow(
+                icon: jump.icon,
+                label: jump.label,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => jump.screen),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      const Text(
+        'Recent',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.black45,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (recents.isEmpty)
+        const Text(
+          'No chats yet — say something to gork and it will show up here.',
+          style: TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+      for (final conv in recents)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _HitCard(
+            title: conv.title,
+            date: _dateLabel(conv.updatedAt),
+            snippet: '${conv.messages.length} messages',
+            onTap: () => widget.onOpenChat(conv.id),
+          ),
+        ),
+    ];
+  }
+
+  List<Widget> _hitList(List<_Hit> hits) {
+    if (hits.isEmpty) {
+      return [
+        GlassContainer(
+          radius: 24,
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'No results for "${_query.trim()}".',
+            style: const TextStyle(fontSize: 16, color: Colors.black54),
+          ),
+        ),
+      ];
+    }
+    return [
+      for (final hit in hits)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _HitCard(
+            title: hit.conversation.title,
+            date: _dateLabel(hit.conversation.updatedAt),
+            snippet: hit.snippet,
+            onTap: () => widget.onOpenChat(hit.conversation.id),
+          ),
+        ),
+    ];
+  }
+}
+
+/// One search card: conversation title, date, and the matched context.
+class _HitCard extends StatelessWidget {
+  const _HitCard({
+    required this.title,
+    required this.date,
+    required this.snippet,
+    required this.onTap,
+  });
+
+  final String title;
+  final String date;
+  final String snippet;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                Text(
+                  date,
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.black45),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              snippet,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+            const SizedBox(height: 6),
+            const Align(
+              alignment: Alignment.centerRight,
+              child: Icon(Icons.chevron_right, size: 18, color: Colors.black45),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Jump {
+  const _Jump(this.label, this.icon, this.screen);
+  final String label;
+  final IconData icon;
+  final Widget screen;
+}
+
+class _Hit {
+  const _Hit(this.conversation, this.snippet);
+  final Conversation conversation;
+  final String snippet;
+}

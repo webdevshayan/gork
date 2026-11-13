@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/glass.dart';
-import 'cloud_computer_screen.dart';
-import 'inbox_screen.dart';
 import 'integrations_screen.dart';
-import 'panels_screen.dart';
-import 'projects_screen.dart';
 import 'providers_screen.dart';
+import 'search_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
 import 'vault_screen.dart';
 
-/// The profile/menu surface (opened with ☰), pixel-matched to the reference:
-/// big identity header, the "gork pro" plan card, a card of rows
+/// The profile/menu surface (opened from the avatar), pixel-matched to the
+/// reference: big identity header, the "gork pro" plan card, a card of rows
 /// (Profile / Scheduled Tasks / Accounts / Wallet), a Security card, and the
-/// Search pill that opens a feature palette. No tab is selected here.
+/// Search pill that opens the chat search. No tab is selected here.
 class MenuScreen extends StatelessWidget {
-  const MenuScreen({super.key, this.onBack});
+  const MenuScreen({super.key, this.onBack, this.onOpenChat});
 
   final VoidCallback? onBack;
+
+  /// Hands a conversation id to the shell (opened from the Search surface).
+  final ValueChanged<String>? onOpenChat;
 
   static const String _kName = 'Shayan Ali Jalb';
   static const String _kEmail = 'shayanalibuilds@gmail.com';
@@ -102,7 +102,10 @@ class MenuScreen extends StatelessWidget {
           child: GestureDetector(
             key: const ValueKey('menu-search'),
             behavior: HitTestBehavior.opaque,
-            onTap: () => _openFeaturePalette(context),
+            onTap: () => _push(
+              context,
+              SearchScreen(onOpenChat: onOpenChat ?? (_) {}),
+            ),
             child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Row(
@@ -120,19 +123,11 @@ class MenuScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          'gork v1.2.0 · free & open source',
+          'free & open source — your keys, your data',
           style: TextStyle(fontSize: 12, color: Colors.black38),
           textAlign: TextAlign.center,
         ),
       ],
-    );
-  }
-
-  void _openFeaturePalette(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black26,
-      builder: (context) => const _FeaturePalette(),
     );
   }
 }
@@ -248,113 +243,4 @@ class _ProCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The Search pill opens this palette: every feature screen in the app,
-/// filtered live as you type.
-class _FeaturePalette extends StatefulWidget {
-  const _FeaturePalette();
-
-  @override
-  State<_FeaturePalette> createState() => _FeaturePaletteState();
-}
-
-class _FeaturePaletteState extends State<_FeaturePalette> {
-  String _query = '';
-
-  static const List<_PaletteEntry> _entries = [
-    _PaletteEntry('Inbox', Icons.inbox_outlined, 'inbox'),
-    _PaletteEntry('Panels', Icons.dashboard_outlined, 'panels'),
-    _PaletteEntry('Projects', Icons.folder_outlined, 'projects'),
-    _PaletteEntry('Vault', Icons.lock_outline, 'vault'),
-    _PaletteEntry('Cloud Computer', Icons.dns_outlined, 'cloud'),
-    _PaletteEntry('Integrations', Icons.extension_outlined, 'integrations'),
-    _PaletteEntry('Scheduled Tasks', Icons.schedule_outlined, 'tasks'),
-    _PaletteEntry('Providers', Icons.key_outlined, 'providers'),
-    _PaletteEntry('Theme', Icons.palette_outlined, 'theme'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final hits = _entries
-        .where((e) => e.label.toLowerCase().contains(_query.toLowerCase()))
-        .toList();
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: GlassContainer(
-        radius: 28,
-        opacity: 0.75,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                autofocus: true,
-                onChanged: (q) => setState(() => _query = q),
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search, color: Colors.black54),
-                  hintText: 'Search gork',
-                  hintStyle: TextStyle(color: Colors.black54),
-                  border: InputBorder.none,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final e in hits)
-                      GlassMenuRow(
-                        icon: e.icon,
-                        label: e.label,
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          _navigate(context, e.route);
-                        },
-                      ),
-                    if (hits.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'Nothing found.',
-                          style: TextStyle(color: Colors.black54),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _navigate(BuildContext context, String route) {
-    final screens = {
-      'inbox': const InboxScreen(),
-      'panels': const PanelsScreen(),
-      'projects': const ProjectsScreen(),
-      'vault': const VaultScreen(),
-      'cloud': const CloudComputerScreen(),
-      'integrations': const IntegrationsScreen(),
-      'tasks': const TasksScreen(),
-      'providers': const ProvidersScreen(),
-      'theme': const ThemePage(),
-    };
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screens[route]!),
-    );
-  }
-}
-
-class _PaletteEntry {
-  const _PaletteEntry(this.label, this.icon, this.route);
-
-  final String label;
-  final IconData icon;
-  final String route;
 }

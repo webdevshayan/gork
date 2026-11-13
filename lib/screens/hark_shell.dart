@@ -227,7 +227,10 @@ class _HarkShellState extends State<HarkShell> {
                 ),
                 Expanded(
                   child: _onMenu
-                      ? MenuScreen(onBack: _closeMenu)
+                      ? MenuScreen(
+                          onBack: _closeMenu,
+                          onOpenChat: _openProjectChat,
+                        )
                       : _tab == HarkTab.home
                       ? const HarkHome()
                       : _tab == HarkTab.chat
