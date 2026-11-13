@@ -1,10 +1,9 @@
 allprojects {
     repositories {
-        // repo.maven.apache.org rate-limits some networks (HTTP 429);
-        // Aliyun mirrors Central + Google and is listed first.
+        google()
+        maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
-        google()
         mavenCentral()
     }
 }
@@ -12,10 +11,22 @@ allprojects {
 subprojects {
     buildscript {
         repositories {
+            google()
+            maven("https://maven.aliyun.com/repository/central")
             maven("https://maven.aliyun.com/repository/public")
             maven("https://maven.aliyun.com/repository/google")
-            google()
             mavenCentral()
+        }
+    }
+    afterEvaluate {
+        // Plugins compiled against older SDKs (file_picker pins android-34)
+        // fail the AAR metadata check when a transitive dependency needs a
+        // newer one — align every library module with the app's compileSdk.
+        extensions.findByName("android")?.let { ext ->
+            if (ext is com.android.build.gradle.LibraryExtension) {
+                val current = ext.compileSdk
+                if (current == null || current < 36) ext.compileSdk = 36
+            }
         }
     }
 }

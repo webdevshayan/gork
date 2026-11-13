@@ -11,10 +11,13 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        maven("https://maven.aliyun.com/repository/central") // central mirror; repo.maven.apache.org rate-limits some networks
+        google()
+        // Aliyun mirrors before mavenCentral: repo.maven.apache.org 429s this
+        // network; Aliyun serves the same artifacts and stays up.
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
-        google()
         mavenCentral()
         gradlePluginPortal()
     }
@@ -22,10 +25,10 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-        maven("https://maven.aliyun.com/repository/central") // central mirror
+        google()
+        maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
-        google()
         mavenCentral()
     }
 }

@@ -8,6 +8,17 @@ android {
     namespace = "dev.shayan.gork"
     compileSdk = flutter.compileSdkVersion
 
+    // The Flutter plugin forces an NDK download via a synthetic empty CMake
+    // build. Nothing in this app compiles native code, the engine .so files
+    // ship pre-stripped upstream, and the packaging block below keeps debug
+    // symbols — so AGP never needs to strip and the NDK is never needed.
+    // This runs after the plugin's own finalizeDsl and clears that path.
+    androidComponents {
+        finalizeDsl { extension ->
+            extension.externalNativeBuild.cmake.path = null
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
