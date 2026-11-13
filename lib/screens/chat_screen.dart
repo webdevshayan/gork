@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import '../providers/providers.dart';
 import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
+import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import '../widgets/markdown_view.dart';
 
@@ -13,8 +15,9 @@ class _UiMessage {
   final String role;
   final String content;
   final int? time;
+  final ChatAttachment? attachment;
 
-  const _UiMessage(this.role, this.content, {this.time});
+  const _UiMessage(this.role, this.content, {this.time, this.attachment});
 }
 
 /// The Chat tab, pixel-matched to the reference screenshots:
@@ -119,10 +122,14 @@ class ChatScreenState extends State<ChatScreen> {
     if (conversation != null) {
       _conversationId = conversation.id;
       _title = conversation.title;
-      _providerId = conversation.providerId;
+      // 'none' marks conversations that were never tied to a provider
+      // (attachment-only threads) — treat them as "no key yet".
+      _providerId =
+          conversation.providerId == 'none' ? null : conversation.providerId;
       _messages = [
         for (final m in conversation.messages)
-          _UiMessage(m.role, m.content, time: m.time),
+          _UiMessage(m.role, m.content,
+              time: m.time, attachment: m.attachment),
       ];
     }
     if (mounted) setState(() {});
@@ -160,7 +167,13 @@ class ChatScreenState extends State<ChatScreen> {
         userText: text,
         priorMessages: [
           for (final m in _messages.take(_messages.length - 1))
-            ChatMessage(m.role, m.content),
+            ChatMessage(
+              m.role,
+              m.attachment == null
+                  ? m.content
+                  // Attachments travel into the model as inert context.
+                  : '[${m.attachment!.kind} attached: ${m.attachment!.name}]',
+            ),
         ],
       );
       setState(() {
@@ -177,20 +190,90 @@ class ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
     } finally {
-      await Locator.history.save(
-        Conversation(
-          id: _conversationId,
-          title: _title,
-          providerId: _providerId!,
-          updatedAt: DateTime.now().millisecondsSinceEpoch,
-          messages: [
-            for (final m in _messages)
-              ChatTurn(m.role, m.content, time: m.time),
-          ],
-        ),
-      );
+      await _persist();
       _scrollToBottom();
     }
+  }
+
+  /// An image picked from the + menu lands here as a thread message. When
+  /// the conversation lives in a project folder, the resource mirrors into
+  /// that folder — projects host their files and images at the project level.
+  Future<void> attachImage(String path, {String? name}) {
+    return _attach(ChatAttachment('image', path, name ?? path.split('/').last));
+  }
+
+  /// A picked file (document, note, anything) lands the same way.
+  Future<void> attachFile(String path, String name) {
+    return _attach(ChatAttachment('file', path, name));
+  }
+
+  Future<void> _attach(ChatAttachment attachment) async {
+    setState(() {
+      _error = null;
+      if (_conversationId.isEmpty) {
+        _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
+        _title = attachment.name;
+      }
+      _messages.add(
+        _UiMessage('user', '',
+            time: DateTime.now().millisecondsSinceEpoch,
+            attachment: attachment),
+      );
+    });
+    _scrollToBottom();
+
+    // Mirror into the owning project folder (best effort — the thread keeps
+    // the attachment even when the folder write fails).
+    try {
+      final project = Locator.projects.projectOfChat(_conversationId);
+      if (project != null) {
+        if (attachment.kind == 'image') {
+          await Locator.projects.save(project.copyWith(
+            images: [
+              ...project.images,
+              ProjectImage(attachment.name, attachment.path),
+            ],
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+        } else {
+          String content = '';
+          try {
+            // Text resources are small; a sync read keeps the mirror atomic
+            // and avoids leaving the message loop mid-attach.
+            content = File(attachment.path).readAsStringSync();
+          } catch (_) {
+            // Binary file — the folder card stores the path only.
+          }
+          await Locator.projects.save(project.copyWith(
+            files: [
+              ...project.files,
+              ProjectFile(attachment.name, content),
+            ],
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+        }
+      }
+    } catch (_) {}
+    await _persist();
+  }
+
+  /// Writes the thread to history. Attachment-only threads save with the
+  /// 'none' provider marker so they restore cleanly.
+  Future<void> _persist() async {
+    if (_conversationId.isEmpty) return;
+    await Locator.history.save(
+      Conversation(
+        id: _conversationId,
+        title: _title,
+        providerId: _providerId ?? 'none',
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        messages: [
+          for (final m in _messages)
+            ChatTurn(m.role, m.content,
+                time: m.time, attachment: m.attachment),
+        ],
+      ),
+    );
   }
 
   /// Live search — the shell's search bar drives this. Empty string shows
@@ -308,7 +391,11 @@ class ChatScreenState extends State<ChatScreen> {
       } else if (prev == null && m.time != null) {
         widgets.add(_separator(_dayLabel(m.time!)));
       }
-      widgets.add(_Bubble(text: m.content, isUser: m.role == 'user'));
+      widgets.add(_Bubble(
+        text: m.content,
+        isUser: m.role == 'user',
+        attachment: m.attachment,
+      ));
       final bool answered = m.role == 'user' &&
           source.indexWhere((x) => x.role == 'assistant', i) > i;
       if (answered) {
@@ -434,41 +521,190 @@ class ChatScreenState extends State<ChatScreen> {
 }
 
 /// Reference bubbles: AI = solid white, radius 32, left. User = glass
-/// white 0.4 + backdrop blur, radius 32, right.
+/// white 0.4 + backdrop blur, radius 32, right. Attachment turns render the
+/// media as a card instead of text.
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.text, required this.isUser});
+  const _Bubble({
+    required this.text,
+    required this.isUser,
+    this.attachment,
+  });
 
   final String text;
   final bool isUser;
+  final ChatAttachment? attachment;
+
+  Future<void> _openFilePreview(BuildContext context) async {
+    String content = '';
+    bool binary = false;
+    try {
+      // Text resources are small; sync read keeps the sheet atomic.
+      content = File(attachment!.path).readAsStringSync();
+    } catch (_) {
+      binary = true;
+    }
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              key: const ValueKey('file-preview'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  attachment!.name,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: binary
+                        ? const Text(
+                            'Binary file — stored on this device, no preview.',
+                            style: TextStyle(fontSize: 15, color: Colors.black54),
+                          )
+                        : SelectableText(
+                            content,
+                            style: const TextStyle(
+                                fontSize: 14, color: Colors.black87),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// A picture that no longer resolves keeps looking honest, like the
+  /// reference: dark panel, red Error pill, refresh icon.
+  Widget _imageWidget() {
+    return Image.file(
+      File(attachment!.path),
+      height: 190,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        key: const ValueKey('attachment-error'),
+        height: 190,
+        color: const Color(0xFF101216),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 18, color: Color(0xFFEF4444)),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Error',
+                style: TextStyle(fontSize: 13, color: Color(0xFFF87171)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(Icons.refresh, size: 18, color: Colors.white70),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final Widget bubble = Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      decoration: BoxDecoration(
-        color: isUser ? Colors.white.withValues(alpha: 0.4) : Colors.white,
-        borderRadius: BorderRadius.circular(32),
-        border: isUser
-            ? Border.all(color: Colors.white.withValues(alpha: 0.5))
-            : null,
-      ),
-      child: isUser
-          ? SelectableText(
-              text,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
-            )
-          // Assistant bubbles render safe markdown (no web view, no network).
-          : MarkdownView(text),
-    );
+    final Widget bubble;
+    if (attachment != null) {
+      bubble = Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+        ),
+        child: attachment!.kind == 'image'
+            ? ClipRRect(
+                key: const ValueKey('attachment-image'),
+                borderRadius: BorderRadius.circular(24),
+                child: _imageWidget(),
+              )
+            : GestureDetector(
+                key: const ValueKey('attachment-file'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openFilePreview(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.insert_drive_file_outlined,
+                          size: 20, color: Colors.black87),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          attachment!.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      );
+    } else {
+      bubble = Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: isUser ? Colors.white.withValues(alpha: 0.4) : Colors.white,
+          borderRadius: BorderRadius.circular(32),
+          border: isUser
+              ? Border.all(color: Colors.white.withValues(alpha: 0.5))
+              : null,
+        ),
+        child: isUser
+            ? SelectableText(
+                text,
+                style: const TextStyle(fontSize: 16, color: Colors.black87),
+              )
+            // Assistant bubbles render safe markdown (no web view, no network).
+            : MarkdownView(text),
+      );
+    }
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser || attachment != null
+          ? Alignment.centerRight
+          : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
-        child: isUser
+        child: isUser || attachment != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(32),
                 child: BackdropFilter(

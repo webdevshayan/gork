@@ -2,6 +2,25 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// A file or image attached to a message. The bytes never leave the device —
+/// an attachment is a path into local storage, nothing is uploaded.
+class ChatAttachment {
+  /// 'image' or 'file'.
+  final String kind;
+  final String path;
+  final String name;
+
+  const ChatAttachment(this.kind, this.path, this.name);
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'path': path, 'name': name};
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) => ChatAttachment(
+        json['kind'] as String,
+        json['path'] as String,
+        json['name'] as String,
+      );
+}
+
 /// One message in a conversation.
 class ChatTurn {
   final String role;
@@ -11,16 +30,28 @@ class ChatTurn {
   /// Drives the date separators in the chat UI.
   final int? time;
 
-  const ChatTurn(this.role, this.content, {this.time});
+  /// Present for attachment turns — the body is empty and the media renders
+  /// as a card instead of text.
+  final ChatAttachment? attachment;
 
-  Map<String, dynamic> toJson() => time == null
-      ? {'role': role, 'content': content}
-      : {'role': role, 'content': content, 'time': time};
+  const ChatTurn(this.role, this.content, {this.time, this.attachment});
+
+  Map<String, dynamic> toJson() {
+    final json = time == null
+        ? {'role': role, 'content': content}
+        : {'role': role, 'content': content, 'time': time};
+    if (attachment != null) json['attachment'] = attachment!.toJson();
+    return json;
+  }
 
   factory ChatTurn.fromJson(Map<String, dynamic> json) => ChatTurn(
         json['role'] as String,
         json['content'] as String,
         time: json['time'] as int?,
+        attachment: json['attachment'] == null
+            ? null
+            : ChatAttachment.fromJson(
+                (json['attachment'] as Map<String, dynamic>)),
       );
 }
 

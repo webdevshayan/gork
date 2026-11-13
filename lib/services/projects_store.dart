@@ -148,6 +148,18 @@ class ProjectsStore {
 
   Project? byId(String id) => _load()[id];
 
+  /// The folder that owns a conversation (null when the chat is global).
+  /// Chats host their resources at the project level: an attachment added in
+  /// a project chat mirrors into this folder's files/images.
+  Project? projectOfChat(String conversationId) {
+    for (final project in _load().values) {
+      if (project.chats.any((chat) => chat.id == conversationId)) {
+        return project;
+      }
+    }
+    return null;
+  }
+
   Future<void> save(Project project) async {
     final map = _load();
     map[project.id] = project;

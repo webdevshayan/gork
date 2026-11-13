@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,6 +17,9 @@ import 'projects_screen.dart';
 import 'projects_surface.dart';
 
 enum HarkTab { home, chat, projects }
+
+/// What the + (attachment) menu offers.
+enum AttachKind { camera, photos, files }
 
 /// The glass shell, pixel-matched to the reference screenshots:
 /// ambient backdrop + top bar (context button / nav pill / avatar) + dynamic
@@ -62,6 +66,58 @@ class _HarkShellState extends State<HarkShell> {
       });
 
   void _toggleAttach() => setState(() => _attachOpen = !_attachOpen);
+
+  /// Real attachments: Camera / Photos pick an image, Files picks any file.
+  /// The content lands in the active conversation (switching to Chat first
+  /// when the input is used from Home or Projects). Nothing is uploaded —
+  /// paths stay on the device.
+  Future<void> _pickAttachment(AttachKind kind) async {
+    setState(() => _attachOpen = false);
+    try {
+      switch (kind) {
+        case AttachKind.camera:
+        case AttachKind.photos:
+          final picked = await ImagePicker().pickImage(
+            source: kind == AttachKind.camera
+                ? ImageSource.camera
+                : ImageSource.gallery,
+            maxWidth: 1280,
+            imageQuality: 82,
+          );
+          if (picked == null) return;
+          _deliverAttachment(
+              (state) => state.attachImage(picked.path, name: picked.name));
+        case AttachKind.files:
+          final result = await FilePicker.platform.pickFiles(withData: false);
+          final file = result?.files.single;
+          if (file == null || file.path == null) return;
+          _deliverAttachment(
+              (state) => state.attachFile(file.path!, file.name));
+      }
+    } catch (e) {
+      debugPrint('attach failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not attach that.')),
+        );
+      }
+    }
+  }
+
+  /// Delivers an attachment to the chat thread, entering the Chat tab first
+  /// when the input bar was used from Home or Projects.
+  void _deliverAttachment(void Function(ChatScreenState) deliver) {
+    if (_tab != HarkTab.chat || _onMenu) {
+      _selectTab(HarkTab.chat);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final state = _chatKey.currentState;
+        if (state != null) deliver(state);
+      });
+    } else {
+      final state = _chatKey.currentState;
+      if (state != null) deliver(state);
+    }
+  }
 
   /// The glass input bar works on every tab: submitting from Home/Projects
   /// jumps to Chat and delivers the message to the assistant.
@@ -201,7 +257,10 @@ class _HarkShellState extends State<HarkShell> {
               bottom: 96,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: _AttachMenu(onDismiss: _toggleAttach),
+                child: _AttachMenu(
+                  onDismiss: _toggleAttach,
+                  onPick: _pickAttachment,
+                ),
               ),
             ),
           if (_homeMenuOpen && !_onMenu)
@@ -581,11 +640,13 @@ class _HomeMenu extends StatelessWidget {
 }
 
 /// The + attachment menu from the screenshots: Camera / Photos / Files in a
-/// more opaque glass dropdown above the input bar.
+/// more opaque glass dropdown above the input bar — and every row really
+/// picks content now.
 class _AttachMenu extends StatelessWidget {
-  const _AttachMenu({required this.onDismiss});
+  const _AttachMenu({required this.onDismiss, required this.onPick});
 
   final VoidCallback onDismiss;
+  final ValueChanged<AttachKind> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -597,25 +658,28 @@ class _AttachMenu extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _row(context, Icons.photo_camera_outlined, 'Camera'),
+          _row(context, Icons.photo_camera_outlined, 'Camera', AttachKind.camera),
           const Divider(color: Colors.black12, height: 1),
-          _row(context, Icons.image_outlined, 'Photos'),
+          _row(context, Icons.image_outlined, 'Photos', AttachKind.photos),
           const Divider(color: Colors.black12, height: 1),
-          _row(context, Icons.folder_outlined, 'Files'),
+          _row(context, Icons.folder_outlined, 'Files', AttachKind.files),
         ],
       ),
     );
   }
 
-  Widget _row(BuildContext context, IconData icon, String label) {
+  Widget _row(
+    BuildContext context,
+    IconData icon,
+    String label,
+    AttachKind kind,
+  ) {
     return GlassMenuRow(
       icon: icon,
       label: label,
       onTap: () {
         onDismiss();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$label attachments land in the next movement.')),
-        );
+        onPick(kind);
       },
     );
   }
