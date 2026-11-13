@@ -59,8 +59,7 @@ class _HarkHomeState extends State<HarkHome> {
     }
   }
 
-  String get _conditionsLabel =>
-      _weather?.label ?? (_weatherFailed ? 'Broken Clouds' : 'Broken Clouds');
+  String get _conditionsLabel => _weather?.label ?? 'Broken Clouds';
 
   String get _tempLabel => _weather == null
       ? '26°C'

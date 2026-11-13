@@ -9,10 +9,12 @@ android {
     compileSdk = flutter.compileSdkVersion
 
     // The Flutter plugin forces an NDK download via a synthetic empty CMake
-    // build. Nothing in this app compiles native code, the engine .so files
-    // ship pre-stripped upstream, and the packaging block below keeps debug
-    // symbols — so AGP never needs to strip and the NDK is never needed.
-    // This runs after the plugin's own finalizeDsl and clears that path.
+    // build. Nothing in this app compiles native code, so this runs after
+    // the plugin's own finalizeDsl and clears that path. The NDK is still
+    // needed by AGP's strip step (packaging): the Flutter engine .so ships
+    // unstripped upstream and StripNativeLibraries is what slims it into
+    // the APK. Keeping debug symbols here instead shipped a 169 MB engine
+    // in v1.5.0 — the blanket is gone on purpose.
     androidComponents {
         finalizeDsl { extension ->
             extension.externalNativeBuild.cmake.path = null
@@ -47,15 +49,6 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
-        }
-    }
-
-    packaging {
-        jniLibs {
-            // Flutter engine .so files ship pre-stripped upstream. Keeping
-            // debug symbols for all native libs skips AGP's strip step, so
-            // the Android NDK is never needed to build this project.
-            keepDebugSymbols.add("**/*.so")
         }
     }
 }

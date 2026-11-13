@@ -178,6 +178,14 @@ class ReleaseInfo {
   final int apkSize;
   final bool prerelease;
 
+  /// A release APK this large means the build packaged the unstripped
+  /// Flutter engine (169 MB of debug symbols rode along in v1.5.0).
+  /// Normal stripped releases are 19–35 MB. Warn, don't block — the bytes
+  /// are still a valid, self-consistent artifact.
+  static const int bloatedApkBytes = 120 * 1024 * 1024;
+
+  bool get bloatedBuild => apkSize > bloatedApkBytes;
+
   const ReleaseInfo({
     required this.tag,
     required this.name,
