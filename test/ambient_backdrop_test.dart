@@ -64,7 +64,7 @@ void main() {
       find.byKey(const ValueKey('theme-scrim')),
     );
     final color = scrim.color!;
-    expect(color, Colors.white.withValues(alpha: 0.35));
+    expect(color, Colors.white.withValues(alpha: 0.25));
   });
 
   testWidgets('dark mode dims with a black scrim', (tester) async {
@@ -75,7 +75,7 @@ void main() {
     final scrim = tester.widget<Container>(
       find.byKey(const ValueKey('theme-scrim')),
     );
-    expect(scrim.color, Colors.black.withValues(alpha: 0.45));
+    expect(scrim.color, Colors.black.withValues(alpha: 0.30));
   });
 
   testWidgets('Auto follows the system brightness', (tester) async {
@@ -86,7 +86,7 @@ void main() {
       tester
           .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
           .color,
-      Colors.black.withValues(alpha: 0.45),
+      Colors.black.withValues(alpha: 0.30),
     );
 
     await tester.pumpWidget(_wrap(Brightness.light));
@@ -95,7 +95,7 @@ void main() {
       tester
           .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
           .color,
-      Colors.white.withValues(alpha: 0.35),
+      Colors.white.withValues(alpha: 0.25),
     );
   });
 

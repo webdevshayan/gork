@@ -6,6 +6,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
+import 'package:gork_daemon/cli_support.dart';
 import 'package:gork_daemon/scheduler.dart';
 
 /// gork companion daemon.
@@ -80,11 +81,32 @@ Middleware requireSecret(String? secret) {
       };
 }
 
-/// The full HTTP handler: router wrapped in the secret gate.
-Handler buildHandler(Daemon daemon, {String? secret}) =>
-    const Pipeline().addMiddleware(requireSecret(secret)).addHandler(buildRouter(daemon));
+/// The full HTTP handler: router wrapped in the secret gate. [config] and
+/// [configOverlay] wire up POST /config (the app's Sync-to-daemon action).
+Handler buildHandler(
+  Daemon daemon, {
+  String? secret,
+  ConfigStore? config,
+  Map<String, String>? configOverlay,
+}) =>
+    const Pipeline()
+        .addMiddleware(requireSecret(secret))
+        .addHandler(buildRouter(daemon,
+            config: config, configOverlay: configOverlay));
 
-Router buildRouter(Daemon daemon) {
+/// Keys the phone may write through POST /config. GORK_PORT is allowed (it
+/// only takes effect on restart) and GORK_CONNECTOR_* come from the
+/// connectors map.
+const Set<String> kConfigurableKeys = {
+  'GORK_API_KEY',
+  'GORK_BASE_URL',
+  'GORK_MODEL',
+  'NTFY_TOPIC',
+  'GORK_PORT',
+};
+
+Router buildRouter(Daemon daemon,
+    {ConfigStore? config, Map<String, String>? configOverlay}) {
   final router = Router();
 
   router.get('/health', (Request request) async {
@@ -137,6 +159,82 @@ Router buildRouter(Daemon daemon) {
     return _json({'ran': ran});
   });
 
+  // The phone's "Sync to daemon" action: write provider keys, model, ntfy
+  // topic and connector tokens into config.env, apply the LLM config live,
+  // and report honestly what changed.
+  router.post('/config', (Request request) async {
+    if (config == null || configOverlay == null) {
+      return _json({'error': 'config store not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    final Map<String, dynamic> body;
+    try {
+      body =
+          raw.isEmpty ? <String, dynamic>{} : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+
+    final saved = <String>[];
+    final needsRestart = <String>[];
+    final incoming = body['config'] as Map<String, dynamic>? ?? {};
+    for (final entry in incoming.entries) {
+      if (!kConfigurableKeys.contains(entry.key)) continue;
+      final value = entry.value?.toString() ?? '';
+      if (value.isEmpty) continue;
+      await config.set(entry.key, value);
+      configOverlay[entry.key] = value;
+      saved.add(entry.key);
+      if (entry.key == 'GORK_PORT') needsRestart.add('GORK_PORT');
+    }
+
+    final connectors = body['connectors'] as Map<String, dynamic>? ?? {};
+    for (final entry in connectors.entries) {
+      final key = 'GORK_CONNECTOR_${entry.key.toString().toUpperCase()}';
+      final value = entry.value?.toString() ?? '';
+      if (value.isEmpty) continue;
+      await config.set(key, value);
+      configOverlay[key] = value;
+      saved.add(key);
+    }
+
+    return _json({
+      'saved': saved,
+      'needsRestart': needsRestart,
+      'llm': configOverlay['GORK_API_KEY'] == null ||
+              configOverlay['GORK_API_KEY']!.isEmpty
+          ? 'not configured'
+          : 'live',
+    });
+  });
+
+  // Read the daemon's config back. Secrets never leave the box: the API key
+  // is redacted, connector tokens are listed by id only.
+  router.get('/config', (Request request) async {
+    if (config == null || configOverlay == null) {
+      return _json({'error': 'config store not wired in this daemon'}, 500);
+    }
+    final values = config.read();
+    final visible = <String, dynamic>{};
+    for (final entry in values.entries) {
+      if (entry.key == 'GORK_API_KEY' || entry.key.startsWith('GORK_CONNECTOR_')) {
+        continue;
+      }
+      visible[entry.key] = entry.value;
+    }
+    final connectors = <String, String>{
+      for (final entry in values.entries)
+        if (entry.key.startsWith('GORK_CONNECTOR_'))
+          entry.key.substring('GORK_CONNECTOR_'.length).toLowerCase(): 'connected',
+    };
+    return _json({
+      'config': visible,
+      'connectors': connectors,
+      'apiKeyConfigured':
+          (values['GORK_API_KEY'] ?? '').isNotEmpty,
+    });
+  });
+
   return router;
 }
 
@@ -144,14 +242,20 @@ Future<void> main(List<String> args) async {
   final port =
       int.tryParse(Platform.environment['GORK_PORT'] ?? '') ?? kDefaultPort;
 
-  final llm = EnvLlmCaller();
+  // Live config overlay: POST /config (the phone's Sync action) writes here,
+  // so new LLM credentials apply without a daemon restart.
+  final overlay = <String, String>{};
+  final config = ConfigStore(configPath());
+
+  final llm = EnvLlmCaller(null, overlay);
   final topic = Platform.environment['NTFY_TOPIC'];
   final notifier =
       topic == null || topic.isEmpty ? const NoopNotifier() : NtfyNotifier(topic);
 
   final daemon = Daemon(newTaskStore(), llm, notifier);
   final secret = Platform.environment['GORK_SECRET'];
-  final handler = buildHandler(daemon, secret: secret);
+  final handler = buildHandler(daemon,
+      secret: secret, config: config, configOverlay: overlay);
 
   // 24/7 loop: check the schedule every minute.
   Timer.periodic(const Duration(minutes: 1), (_) async {

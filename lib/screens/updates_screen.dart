@@ -9,6 +9,7 @@ import '../services/installer.dart';
 import '../services/update_service.dart';
 import '../widgets/glass.dart';
 import '../widgets/screen.dart';
+import '../constants/design_tokens.dart';
 
 /// Check for updates, download the release APK, hand it to the system
 /// installer. Every step says what it is doing; failures are shown verbatim.
@@ -152,7 +153,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               children: [
                 Text(
                   'Installed version',
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
+                  style: TextStyle(fontSize: 15, color: GlassColors.textDim),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -160,7 +161,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    color: GlassColors.text,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -193,7 +194,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               SizedBox(width: 12),
-              Text('Asking GitHub…', style: TextStyle(color: Colors.black54)),
+              Text('Asking GitHub…', style: TextStyle(color: GlassColors.textDim)),
             ],
           ),
         );
@@ -204,7 +205,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           children: [
             const Text(
               'You are on the latest release.',
-              style: TextStyle(fontSize: 16, color: Colors.black87),
+              style: TextStyle(fontSize: 16, color: GlassColors.text),
             ),
             const SizedBox(height: 12),
             _blackPill(key: 'updates-check', label: 'Check again', onTap: _check),
@@ -221,13 +222,13 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: Colors.black87,
+                color: GlassColors.text,
               ),
             ),
             if (release.prerelease)
               const Text(
                 'pre-release — may be rough',
-                style: TextStyle(fontSize: 13, color: Colors.black45),
+                style: TextStyle(fontSize: 13, color: GlassColors.textDim),
               ),
             if (release.notes.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -235,7 +236,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 release.notes,
                 maxLines: 8,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 15, color: Colors.black54),
+                style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
               ),
             ],
             const SizedBox(height: 12),
@@ -255,7 +256,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               _progress == null
                   ? 'Downloading…'
                   : 'Downloading… ${(_progress! * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(fontSize: 15, color: Colors.black54),
+              style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
             ),
             const SizedBox(height: 10),
             LinearProgressIndicator(
@@ -273,13 +274,13 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             Text(
               'Downloaded. The system installer will open — Android may ask '
               'you to allow installs from gork first.',
-              style: const TextStyle(fontSize: 15, color: Colors.black87),
+              style: const TextStyle(fontSize: 15, color: GlassColors.text),
             ),
             if (!_canInstall) ...[
               const SizedBox(height: 8),
               const Text(
                 'That permission is currently off.',
-                style: TextStyle(fontSize: 14, color: Colors.black45),
+                style: TextStyle(fontSize: 14, color: GlassColors.textDim),
               ),
             ],
             const SizedBox(height: 12),

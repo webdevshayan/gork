@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:shelf/shelf.dart';
 
 import 'package:gork_daemon/server.dart';
 import 'package:gork_daemon/scheduler.dart';
+import 'package:gork_daemon/cli_support.dart';
 
 class FakeTaskStore implements TaskStore {
   final List<Task> items = [];
@@ -110,5 +112,96 @@ void main() {
     final list = await handler(_req('GET', '/tasks', headers: h));
     final body = await _body(list);
     expect((body['tasks'] as List).length, greaterThanOrEqualTo(1));
+  });
+
+  group('POST /config — the app pushes its config, no file editing', () {
+    late Directory tmp;
+    late ConfigStore config;
+    late Map<String, String> overlay;
+
+    setUp(() async {
+      tmp = await Directory.systemTemp.createTemp('gork-config-test');
+      config = ConfigStore('${tmp.path}/config.env');
+      overlay = <String, String>{};
+    });
+
+    tearDown(() async => await tmp.delete(recursive: true));
+
+    Future<Response> post(Map<String, dynamic> body) async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          config: config, configOverlay: overlay);
+      return handler(Request('POST', Uri.parse('http://test.local/config'),
+          headers: {
+            'x-gork-secret': 's3cret',
+            'content-type': 'application/json',
+          },
+          body: jsonEncode(body)));
+    }
+
+    test('writes keys to config.env and applies the LLM config live',
+        () async {
+      final res = await post({
+        'config': {'GORK_API_KEY': 'sk-live', 'GORK_MODEL': 'llama-3'},
+      });
+      expect(res.statusCode, 200);
+      final values = config.read();
+      expect(values['GORK_API_KEY'], 'sk-live');
+      expect(values['GORK_MODEL'], 'llama-3');
+      // live apply: an EnvLlmCaller sharing the overlay picks it up at once
+      // (describe() reports config, never the key itself)
+      final llm = EnvLlmCaller(null, overlay);
+      expect(llm.describe(), contains('llama-3'));
+      expect(llm.describe(), isNot(contains('sk-live')));
+      expect(llm.describe(), isNot(contains('not configured')));
+    });
+
+    test('stores connector tokens as GORK_CONNECTOR_<ID>', () async {
+      final res = await post({
+        'connectors': {'github': 'gh-1', 'slack': 'xoxb-2'},
+      });
+      expect(res.statusCode, 200);
+      final values = config.read();
+      expect(values['GORK_CONNECTOR_GITHUB'], 'gh-1');
+      expect(values['GORK_CONNECTOR_SLACK'], 'xoxb-2');
+    });
+
+    test('GET /config returns config but never leaks the API key', () async {
+      await post({
+        'config': {'GORK_API_KEY': 'sk-secret', 'GORK_MODEL': 'm'},
+        'connectors': {'github': 'gh-1'},
+      });
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          config: config, configOverlay: overlay);
+      final res = await handler(
+          _req('GET', '/config', headers: {'x-gork-secret': 's3cret'}));
+      expect(res.statusCode, 200);
+      final body = await _body(res);
+      final returned = body['config'] as Map<String, dynamic>;
+      expect(returned['GORK_API_KEY'], anyOf(isNull, isEmpty, '<redacted>'));
+      expect(returned['GORK_MODEL'], 'm');
+      // connector tokens never leave the box — listed as connected only
+      expect((body['connectors'] as Map)['github'], 'connected');
+    });
+
+    test('rejects malformed JSON with 400', () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          config: config, configOverlay: overlay);
+      final res = await handler(Request('POST', Uri.parse('http://test.local/config'),
+          headers: {
+            'x-gork-secret': 's3cret',
+            'content-type': 'application/json',
+          },
+          body: 'not json'));
+      expect(res.statusCode, 400);
+    });
+
+    test('is gated by the shared secret like every other route', () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          config: config, configOverlay: overlay);
+      final res = await handler(
+          Request('POST', Uri.parse('http://test.local/config'),
+              body: jsonEncode({'config': {}})));
+      expect(res.statusCode, 401);
+    });
   });
 }

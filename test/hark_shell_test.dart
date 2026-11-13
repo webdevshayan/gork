@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
+import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
@@ -153,13 +154,13 @@ void main() {
   ) async {
     await pumpShell(tester);
 
-    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.white);
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.black54);
+    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black);
+    expect(tester.widget<Text>(find.text('Chat')).style!.color, GlassColors.textDim);
 
     await openTab(tester, 'chat');
 
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.white);
-    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black54);
+    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.black);
+    expect(tester.widget<Text>(find.text('Home')).style!.color, GlassColors.textDim);
     // Empty chat: seeded intro + the fanned GitHub link-preview stack.
     expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
     expect(find.textContaining('gork PR #19', skipOffstage: false,
@@ -183,21 +184,24 @@ void main() {
     expect(find.text('Shayan Ali Jalb'), findsOneWidget);
     expect(find.text('shayanalibuilds@gmail.com'), findsOneWidget);
     expect(find.text('gork'), findsOneWidget);
-    expect(find.text('pro'), findsOneWidget);
-    expect(find.text('Upgrade'), findsOneWidget);
+    expect(find.text('pro'), findsNothing, reason: 'no upsell on the menu');
+    expect(find.text('Upgrade'), findsNothing, reason: 'no upsell on the menu');
+    expect(find.text('Resets'), findsNothing);
+    expect(find.text('Usage and plan'), findsNothing);
     for (final row in [
       'Profile', 'Scheduled Tasks', 'Accounts', 'Wallet', 'Security',
+      'AI Providers', 'Sync to daemon',
     ]) {
       expect(find.text(row, skipOffstage: false), findsOneWidget);
     }
     expect(find.text('Message Hark'), findsNothing,
         reason: 'the input bar is hidden on the settings surface');
     // No tab is selected on the settings surface.
-    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black54);
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.black54);
+    expect(tester.widget<Text>(find.text('Home')).style!.color, GlassColors.textDim);
+    expect(tester.widget<Text>(find.text('Chat')).style!.color, GlassColors.textDim);
     expect(
       tester.widget<Text>(find.text('Projects')).style!.color,
-      Colors.black54,
+      GlassColors.textDim,
     );
 
     // Tapping a tab returns to it.

@@ -124,5 +124,34 @@ class TypeScale {
 }
 
 /// Resolve the semantic palette for the current brightness.
-Palette paletteOf(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark ? Palette.dark : Palette.light;
+///
+/// Movement 34: the whole app is dark glass — token screens resolve dark no
+/// matter the platform brightness, so every page matches the shell.
+Palette paletteOf(BuildContext context) => Palette.dark;
+
+/// Colors for the glass shell: dark fills, subtle light borders, light text.
+/// Named after their role, not their look — pages must stay consistent.
+class GlassColors {
+  GlassColors._();
+
+  /// Dark translucent glass fill (sits over the ambient backdrop).
+  static const Color fill = Color(0xB312141A);
+
+  /// Same fill, more opaque for primary chrome (input bar, nav pills).
+  static const Color fillStrong = Color(0xCC12141A);
+
+  /// Subtle light border — hairline, never the old white 0.5 edge.
+  static const Color border = Color(0x1FF2F4F7);
+
+  /// Primary text on glass.
+  static const Color text = Color(0xFFF2F4F7);
+
+  /// Secondary text on glass.
+  static const Color textDim = Color(0xFFA8B0BA);
+
+  /// Tertiary/faint text on glass.
+  static const Color textFaint = Color(0xFF8A93A0);
+
+  /// Hairline divider on glass.
+  static const Color divider = Color(0x2EF2F4F7);
+}

@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import '../services/locator.dart';
 
 /// Theme override chosen on the Theme page (Auto/System/Light/Dark).
-/// 'Dark' dims the ambient backdrop; the other modes leave it untouched.
+/// 'Dark' swaps the backdrop to the night sky and dims it; the other modes
+/// leave the day sky untouched.
 final ValueNotifier<String?> themeSetting = ValueNotifier<String?>(null);
 
 /// Path of the user's chosen profile photo (null = show the person icon).
@@ -17,19 +18,19 @@ Future<void> initProfilePhoto() async {
   avatarPath.value = Locator.prefs.getString('profile.photoPath');
 }
 
-/// Full-screen blurred ambient sky. The photo is a bundled asset — the app
-/// is fully offline — and a light sky gradient is always painted underneath
-/// it, so there is never a black flash while the image decodes.
+/// Full-screen ambient backdrop. Both photos are bundled assets — the app is
+/// fully offline. The image is painted absolutely (Positioned.fill + cover)
+/// over a matching gradient so there is never a flash while it decodes:
+/// a light sky gradient in light mode, a deep night gradient in dark mode.
 ///
 /// Overlays (contrast pass):
-///   * Light surfaces get a WHITE wash over the photo, so black87 text and
-///     glass read cleanly.
-///   * Dark dims with a black scrim.
-///   * Auto/System follow the platform brightness.
+///   * Light mode gets a white wash over the day sky.
+///   * Dark mode gets the moon + night-sky photo under a soft black scrim.
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
 
-  static const String _skyAsset = 'assets/ambient/sky.jpg';
+  static const String _dayAsset = 'assets/ambient/sky.jpg';
+  static const String _nightAsset = 'assets/ambient/night.jpg';
 
   static const Color _lightScrim = Colors.white;
   static const Color _darkScrim = Colors.black;
@@ -50,35 +51,46 @@ class AmbientBackdrop extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Always painted first: no black background while the asset
+              // Always painted first: no jarring background while the asset
               // decodes (cold start included).
-              const DecoratedBox(
-                key: ValueKey('ambient-placeholder'),
+              DecoratedBox(
+                key: const ValueKey('ambient-placeholder'),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF8FC0E8),
-                      Color(0xFFC9E2F2),
-                      Color(0xFFF7ECD4),
-                    ],
+                    colors: dark
+                        ? const [
+                            Color(0xFF0B1026),
+                            Color(0xFF05070F),
+                            Color(0xFF0A0F1E),
+                          ]
+                        : const [
+                            Color(0xFF8FC0E8),
+                            Color(0xFFC9E2F2),
+                            Color(0xFFF7ECD4),
+                          ],
                   ),
                 ),
               ),
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                child: Image.asset(
-                  _skyAsset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
+              // Absolute cover: the photo fills the screen no matter the
+              // aspect ratio, behind everything.
+              Positioned.fill(
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                  child: Image.asset(
+                    key: ValueKey(dark ? 'ambient-night' : 'ambient-day'),
+                    dark ? _nightAsset : _dayAsset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
                 ),
               ),
               Container(
                 key: const ValueKey('theme-scrim'),
                 color: dark
-                    ? _darkScrim.withValues(alpha: 0.45)
-                    : _lightScrim.withValues(alpha: 0.35),
+                    ? _darkScrim.withValues(alpha: 0.30)
+                    : _lightScrim.withValues(alpha: 0.25),
               ),
             ],
           ),

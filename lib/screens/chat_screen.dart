@@ -11,6 +11,7 @@ import '../services/locator.dart';
 import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import '../widgets/markdown_view.dart';
+import '../constants/design_tokens.dart';
 
 class _UiMessage {
   final String role;
@@ -321,11 +322,11 @@ class ChatScreenState extends State<ChatScreen> {
               return ListTile(
                 title: Text(
                   p.name,
-                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                  style: const TextStyle(fontSize: 16, color: GlassColors.text),
                 ),
                 subtitle: Text(
                   p.isCustom ? 'custom' : p.baseURL,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  style: const TextStyle(fontSize: 12, color: GlassColors.textDim),
                 ),
                 trailing: _providerId == p.id ? const Icon(Icons.check) : null,
                 onTap: () {
@@ -383,7 +384,7 @@ class ChatScreenState extends State<ChatScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 15, color: Colors.black45),
+            style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
           ),
         ),
       );
@@ -414,7 +415,7 @@ class ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.only(top: 2, bottom: 8, right: 8),
               child: Text(
                 '•••• Read',
-                style: const TextStyle(fontSize: 12, color: Colors.black38),
+                style: const TextStyle(fontSize: 12, color: GlassColors.textFaint),
               ),
             ),
           ),
@@ -513,7 +514,7 @@ class ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(20),
             child: Text(
               'No results for "$query".',
-              style: const TextStyle(fontSize: 16, color: Colors.black54),
+              style: const TextStyle(fontSize: 16, color: GlassColors.textDim),
             ),
           )
         else ..._bubbleList(hits),
@@ -572,7 +573,7 @@ class _Bubble extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: GlassColors.text,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -581,12 +582,12 @@ class _Bubble extends StatelessWidget {
                     child: binary
                         ? const Text(
                             'Binary file — stored on this device, no preview.',
-                            style: TextStyle(fontSize: 15, color: Colors.black54),
+                            style: TextStyle(fontSize: 15, color: GlassColors.textDim),
                           )
                         : SelectableText(
                             content,
                             style: const TextStyle(
-                                fontSize: 14, color: Colors.black87),
+                                fontSize: 14, color: GlassColors.text),
                           ),
                   ),
                 ),
@@ -643,9 +644,9 @@ class _Bubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.4),
+          color: GlassColors.fill,
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+          border: Border.all(color: GlassColors.border),
         ),
         child: attachment!.kind == 'image'
             ? ClipRRect(
@@ -661,21 +662,21 @@ class _Bubble extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.75),
+                    color: GlassColors.fillStrong,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.insert_drive_file_outlined,
-                          size: 20, color: Colors.black87),
+                          size: 20, color: GlassColors.text),
                       const SizedBox(width: 10),
                       Flexible(
                         child: Text(
                           attachment!.name,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 15, color: Colors.black87),
+                              fontSize: 15, color: GlassColors.text),
                         ),
                       ),
                     ],
@@ -688,16 +689,20 @@ class _Bubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: isUser ? Colors.white.withValues(alpha: 0.4) : Colors.white,
+          // dark theme: user bubbles are dark glass, assistant bubbles are a
+          // solid dark surface so long markdown reads cleanly.
+          color: isUser
+              ? GlassColors.fill
+              : Palette.dark.surface,
           borderRadius: BorderRadius.circular(32),
           border: isUser
-              ? Border.all(color: Colors.white.withValues(alpha: 0.5))
-              : null,
+              ? Border.all(color: GlassColors.border)
+              : Border.all(color: GlassColors.divider),
         ),
         child: isUser
             ? SelectableText(
                 text,
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
+                style: const TextStyle(fontSize: 16, color: GlassColors.text),
               )
             // Assistant bubbles render safe markdown (no web view, no network).
             : MarkdownView(text),
@@ -779,16 +784,15 @@ class _EmptyChat extends StatelessWidget {
       ),
       const SizedBox(height: 16),
       Text(
-        error ??
-            'Say something below. Your keys stay on this device. '
-                'gork is free and open source.',
-        style: const TextStyle(fontSize: 14, color: Colors.black54),
+        error ?? 'Say something below. Your keys stay on this device.',
+        style: const TextStyle(
+            fontSize: 14, color: GlassColors.textDim),
       ),
       if (error != null) ...[
         const SizedBox(height: 8),
         const Text(
           'Tip: add a provider key first (Menu → Security → Providers).',
-          style: TextStyle(fontSize: 14, color: Colors.black87),
+          style: TextStyle(fontSize: 14, color: GlassColors.text),
         ),
       ],
     ];
@@ -846,7 +850,7 @@ class _PreviewCardView extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
             ),
             alignment: Alignment.center,
-            child: Icon(Icons.code, size: 40, color: Colors.black87),
+            child: Icon(Icons.code, size: 40, color: GlassColors.text),
           ),
           const SizedBox(height: 10),
           Text(
@@ -856,13 +860,13 @@ class _PreviewCardView extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: Colors.black87,
+              color: GlassColors.text,
             ),
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.code, size: 12, color: Colors.black54),
+              const Icon(Icons.code, size: 12, color: GlassColors.textDim),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -871,7 +875,7 @@ class _PreviewCardView extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Colors.black54,
+                    color: GlassColors.textDim,
                   ),
                 ),
               ),

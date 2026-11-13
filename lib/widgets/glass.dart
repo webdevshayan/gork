@@ -2,9 +2,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../constants/design_tokens.dart';
+
 /// Hark-style glass primitives — every floating surface in the shell is built
-/// from these. Spec: ClipRRect + BackdropFilter(blur 10) + white 0.3–0.4 fill
-/// + thin white 0.5 border. Cards use radius 16, pills and input bars use 30.
+/// from these. Spec: ClipRRect + BackdropFilter(blur 10) + dark glass fill
+/// + thin light border. Cards use radius 16, pills and input bars use 30.
 class GlassContainer extends StatelessWidget {
   const GlassContainer({
     super.key,
@@ -15,6 +17,7 @@ class GlassContainer extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.width,
     this.height,
+    this.strong = false,
   });
 
   final Widget child;
@@ -24,6 +27,9 @@ class GlassContainer extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final double? width;
   final double? height;
+
+  /// More opaque dark chrome (input bar, top bar pills).
+  final bool strong;
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +42,10 @@ class GlassContainer extends StatelessWidget {
           height: height,
           padding: padding,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: opacity),
+            color: strong ? GlassColors.fillStrong : GlassColors.fill,
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: GlassColors.border,
               width: 1,
             ),
           ),
@@ -67,7 +73,7 @@ class GlassIconButton extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Center(child: Icon(icon, size: 20, color: Colors.black87)),
+        child: Center(child: Icon(icon, size: 20, color: GlassColors.text)),
       ),
     );
   }
@@ -132,7 +138,7 @@ class GlassMenuRow extends StatelessWidget {
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 22, color: Colors.black87),
+              Icon(icon, size: 22, color: GlassColors.text),
               const SizedBox(width: 16),
             ],
             Expanded(
@@ -140,12 +146,12 @@ class GlassMenuRow extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 17, color: Colors.black87),
+                style: const TextStyle(fontSize: 17, color: GlassColors.text),
               ),
             ),
             const SizedBox(width: 12),
             trailing ??
-                const Icon(Icons.chevron_right, size: 20, color: Colors.black54),
+                const Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
           ],
         ),
       ),
@@ -168,7 +174,7 @@ class GlassRadio extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: selected ? Colors.black87 : Colors.black38,
+          color: selected ? GlassColors.text : GlassColors.textFaint,
           width: 2,
         ),
       ),
@@ -178,7 +184,7 @@ class GlassRadio extends StatelessWidget {
                 width: 12,
                 height: 12,
                 decoration: const BoxDecoration(
-                  color: Colors.black87,
+                  color: GlassColors.text,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -206,7 +212,7 @@ class GlassScrollButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: const Center(
-          child: Icon(Icons.keyboard_arrow_down, size: 26, color: Colors.black54),
+          child: Icon(Icons.keyboard_arrow_down, size: 26, color: GlassColors.textDim),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
+import '../constants/design_tokens.dart';
 
 /// Theme page from the reference: glass back button, centered title, and a
 /// single glass card of radio rows (Auto / System / Light / Dark). The
@@ -56,7 +57,7 @@ class _ThemePageState extends State<ThemePage> {
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: GlassColors.text,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -70,7 +71,7 @@ class _ThemePageState extends State<ThemePage> {
                     child: Column(
                       children: [
                         for (var i = 0; i < _modes.length; i++) ...[
-                          if (i > 0) const Divider(color: Colors.black12, height: 1),
+                          if (i > 0) const Divider(color: GlassColors.divider, height: 1),
                           GlassMenuRow(
                             key: ValueKey('theme-${_modes[i].toLowerCase()}'),
                             label: _modes[i],

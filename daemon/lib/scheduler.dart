@@ -131,12 +131,24 @@ abstract class LlmCaller {
 class EnvLlmCaller implements LlmCaller {
   final http.Client _http;
 
-  EnvLlmCaller([http.Client? client]) : _http = client ?? http.Client();
+  /// Live config overlay: POST /config writes here so a running daemon picks
+  /// up new LLM credentials without a restart. Overlay wins over env vars.
+  final Map<String, String> overlay;
+
+  EnvLlmCaller([http.Client? client, Map<String, String>? overlay])
+      : _http = client ?? http.Client(),
+        overlay = overlay ?? const {};
+
+  String _env(String key, String fallback) {
+    final live = overlay[key];
+    if (live != null && live.isNotEmpty) return live;
+    return Platform.environment[key] ?? fallback;
+  }
 
   String get _baseUrl =>
-      Platform.environment['GORK_BASE_URL'] ?? 'https://api.openai.com/v1';
-  String get _apiKey => Platform.environment['GORK_API_KEY'] ?? '';
-  String get _model => Platform.environment['GORK_MODEL'] ?? 'gpt-4o-mini';
+      _env('GORK_BASE_URL', 'https://api.openai.com/v1');
+  String get _apiKey => _env('GORK_API_KEY', '');
+  String get _model => _env('GORK_MODEL', 'gpt-4o-mini');
 
   @override
   String describe() => _apiKey.isEmpty

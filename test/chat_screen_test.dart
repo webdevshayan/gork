@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/chat_screen.dart';
 import 'package:gork/services/chat_service.dart';
 import 'package:gork/services/history_store.dart';
@@ -60,7 +61,7 @@ void main() {
       );
       final BoxDecoration userDecoration =
           userContainer.decoration! as BoxDecoration;
-      expect(userDecoration.color, Colors.white.withValues(alpha: 0.4));
+      expect(userDecoration.color, GlassColors.fill);
       expect(userDecoration.borderRadius, BorderRadius.circular(32));
 
       final replyFinder = find.text('mock reply', findRichText: true);
@@ -70,7 +71,7 @@ void main() {
       );
       final BoxDecoration aiDecoration =
           aiContainer.decoration! as BoxDecoration;
-      expect(aiDecoration.color, Colors.white);
+      expect(aiDecoration.color, Palette.dark.surface);
       expect(aiDecoration.borderRadius, BorderRadius.circular(32));
     },
   );
@@ -165,11 +166,12 @@ void main() {
     expect(find.textContaining('gork PR #19', findRichText: true), findsOneWidget);
     // It sits below the fanned stack — scroll to it.
     await tester.scrollUntilVisible(
-      find.textContaining('open source', findRichText: true),
+      find.textContaining('keys stay on this device', findRichText: true),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.textContaining('open source', findRichText: true), findsOneWidget);
+    expect(find.textContaining('keys stay on this device', findRichText: true), findsOneWidget);
+    expect(find.textContaining('open source', findRichText: true), findsNothing);
   });
 
   testWidgets('search(null) leaves search mode; search(q) filters hits',
