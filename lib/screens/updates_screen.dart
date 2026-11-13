@@ -207,6 +207,13 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               'You are on the latest release.',
               style: TextStyle(fontSize: 16, color: GlassColors.text),
             ),
+            if (_release?.bloatedBuild == true)
+              const Text(
+                key: ValueKey('updates-bloated-warning'),
+                'The latest release is a bloated build (unstripped engine). '
+                'A slim rebuild should replace it.',
+                style: TextStyle(fontSize: 13, color: GlassColors.textDim),
+              ),
             const SizedBox(height: 12),
             _blackPill(key: 'updates-check', label: 'Check again', onTap: _check),
           ],
@@ -230,6 +237,17 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 'pre-release — may be rough',
                 style: TextStyle(fontSize: 13, color: GlassColors.textDim),
               ),
+            if (release.bloatedBuild) ...[
+              const SizedBox(height: 10),
+              Text(
+                key: const ValueKey('updates-bloated-warning'),
+                'Bloated build '
+                '(${(release.apkSize / 1000000).toStringAsFixed(1)} MB): this '
+                'release packaged an unstripped engine. A slim rebuild should '
+                'replace it.',
+                style: const TextStyle(fontSize: 13, color: GlassColors.textDim),
+              ),
+            ],
             if (release.notes.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text(
