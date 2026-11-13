@@ -136,9 +136,22 @@ class ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() {});
   }
 
+  /// History turn → API message. Text files feed the agent their real
+  /// content (capped); images ride as vision payloads for multimodal
+  /// providers — and when an image cannot load (missing, oversized, unknown
+  /// type) its honest marker is all that travels.
+  ChatMessage _withAttachment(_UiMessage m) {
+    if (m.attachment == null) return ChatMessage(m.role, m.content);
+    final image = AttachmentContext.loadImage(m.attachment!);
+    return ChatMessage(
+      m.role,
+      AttachmentContext.describe(m.attachment!),
+      images: image == null ? null : [image],
+    );
+  }
+
   /// Public send API — the shell's glass input bar drives this.
-  Future<void> send(String rawText) async {
-    final text = rawText.trim();
+  Future<void> send(String rawText) async {    final text = rawText.trim();
     if (text.isEmpty || _loading) return;
 
     // The user's message always lands in the thread, even before any key is
@@ -168,15 +181,7 @@ class ChatScreenState extends State<ChatScreen> {
         userText: text,
         priorMessages: [
           for (final m in _messages.take(_messages.length - 1))
-            ChatMessage(
-              m.role,
-              m.attachment == null
-                  ? m.content
-                  // Attachments speak: text files feed the agent their
-                  // real content (capped); binaries and images stay
-                  // honest markers.
-                  : AttachmentContext.describe(m.attachment!),
-            ),
+            _withAttachment(m),
         ],
       );
       setState(() {

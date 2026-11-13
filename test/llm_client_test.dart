@@ -249,4 +249,104 @@ void main() {
       expect(tools.first['input_schema'], isNotNull);
     });
   });
+
+  group('multimodal messages (Movement 32 — images see)', () {
+    test('OpenAI-compatible: images serialize as image_url content parts',
+        () async {
+      Map<String, dynamic>? capturedBody;
+      final client = MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {'content': 'I see a red square.'},
+                'index': 0,
+              }
+            ],
+            'model': 'gpt-4o',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      await LlmClient(client: client).complete(
+        provider: _openai,
+        apiKey: 'sk-test',
+        messages: const [
+          ChatMessage('user', 'what is in this picture?', images: [
+            ChatImage('image/png', 'aGk='),
+          ]),
+        ],
+      );
+
+      final content = capturedBody!['messages'].first['content'] as List;
+      expect(content, hasLength(2));
+      expect(content[0]['type'], 'text');
+      expect(content[0]['text'], 'what is in this picture?');
+      expect(content[1]['type'], 'image_url');
+      expect(content[1]['image_url']['url'], 'data:image/png;base64,aGk=');
+    });
+
+    test('plain string messages stay plain strings', () async {
+      Map<String, dynamic>? capturedBody;
+      final client = MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {'content': 'ok'},
+                'index': 0,
+              }
+            ],
+            'model': 'gpt-4o',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      await LlmClient(client: client).complete(
+        provider: _openai,
+        apiKey: 'sk-test',
+        messages: const [ChatMessage('user', 'hello')],
+      );
+
+      expect(capturedBody!['messages'].first['content'], 'hello');
+    });
+
+    test('Anthropic: images serialize as base64 source blocks before text',
+        () async {
+      Map<String, dynamic>? capturedBody;
+      final client = MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({'content': []}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      await LlmClient(client: client).complete(
+        provider: _anthropic,
+        apiKey: 'ak-test',
+        messages: const [
+          ChatMessage('user', 'describe this', images: [
+            ChatImage('image/jpeg', 'aGk='),
+          ]),
+        ],
+      );
+
+      final content = capturedBody!['messages'].first['content'] as List;
+      expect(content, hasLength(2));
+      expect(content[0]['type'], 'image');
+      expect(content[0]['source']['type'], 'base64');
+      expect(content[0]['source']['media_type'], 'image/jpeg');
+      expect(content[0]['source']['data'], 'aGk=');
+      expect(content[1]['type'], 'text');
+      expect(content[1]['text'], 'describe this');
+    });
+  });
 }
