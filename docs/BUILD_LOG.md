@@ -37,3 +37,4 @@ The README stays clean — the receipts live here.
 | #29 | Chat search: the menu Search pill opens real conversation search with honest empty states |
 | #30 | NDK-free release builds: official repos first, Aliyun before central, no gradle daemon |
 | #31 | Attachments speak: text files feed the agent their real content — binaries and images stay honest markers |
+| #32 | Images see: vision payloads ride to multimodal providers — base64 parts for OpenAI-compatible and Anthropic, honest markers when a file can't load |

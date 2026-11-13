@@ -4,6 +4,17 @@ import 'package:http/http.dart' as http;
 
 import '../providers/providers.dart';
 
+/// An image riding inside a message, for vision-capable providers.
+/// [mediaType] is a concrete MIME type (image/jpeg, image/png, image/webp,
+/// image/gif); [base64Data] is the raw base64 payload without the data-URI
+/// prefix.
+class ChatImage {
+  final String mediaType;
+  final String base64Data;
+
+  const ChatImage(this.mediaType, this.base64Data);
+}
+
 /// A single chat message. role: system | user | assistant | tool.
 class ChatMessage {
   final String role;
@@ -15,10 +26,29 @@ class ChatMessage {
   /// For tool-result messages (role == 'tool').
   final String? toolCallId;
 
-  const ChatMessage(this.role, this.content, {this.toolCalls, this.toolCallId});
+  /// Images attached to this message (user turns). When present, the
+  /// message serializes as multimodal content parts instead of a plain
+  /// string; providers that cannot see images error visibly, which is the
+  /// honest outcome.
+  final List<ChatImage>? images;
+
+  const ChatMessage(this.role, this.content,
+      {this.toolCalls, this.toolCallId, this.images});
 
   Map<String, dynamic> toOpenAiJson() {
-    final map = <String, dynamic>{'role': role, 'content': content};
+    final map = <String, dynamic>{'role': role};
+    if (images != null && images!.isNotEmpty) {
+      map['content'] = [
+        {'type': 'text', 'text': content},
+        for (final img in images!)
+          {
+            'type': 'image_url',
+            'image_url': {'url': 'data:${img.mediaType};base64,${img.base64Data}'},
+          },
+      ];
+    } else {
+      map['content'] = content;
+    }
     if (toolCalls != null && toolCalls!.isNotEmpty) {
       map['tool_calls'] = [
         for (final c in toolCalls!)
@@ -32,6 +62,29 @@ class ChatMessage {
     if (toolCallId != null) map['tool_call_id'] = toolCallId;
     return map;
   }
+
+  /// Anthropic content blocks: image blocks first, then text.
+  List<Map<String, dynamic>> _anthropicContent() {
+    return [
+      for (final img in images ?? const <ChatImage>[])
+        {
+          'type': 'image',
+          'source': {
+            'type': 'base64',
+            'media_type': img.mediaType,
+            'data': img.base64Data,
+          },
+        },
+      {'type': 'text', 'text': content},
+    ];
+  }
+
+  Map<String, dynamic> toAnthropicJson() => {
+        'role': role,
+        'content': (images != null && images!.isNotEmpty)
+            ? _anthropicContent()
+            : content,
+      };
 }
 
 /// A tool the model may call (function calling).
@@ -222,7 +275,7 @@ class LlmClient {
     final body = <String, dynamic>{
       'model': model,
       'max_tokens': maxTokens,
-      'messages': [for (final m in turns) {'role': m.role, 'content': m.content}],
+      'messages': [for (final m in turns) m.toAnthropicJson()],
     };
     if (systemLines.isNotEmpty) {
       body['system'] = systemLines.join('\n\n');

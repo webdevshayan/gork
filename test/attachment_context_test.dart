@@ -64,7 +64,7 @@ void main() {
     expect(block, contains('truncated'));
   });
 
-  test('images stay presence markers (vision rides later)', () {
+  test('images keep the marker text — the payload rides beside it now', () {
     final p = file('shot.png', [0x89, 0x50]);
     final block = AttachmentContext
         .describe(ChatAttachment('image', p.path, 'shot.png'));
@@ -78,7 +78,120 @@ void main() {
     expect(block, '[file attached: empty.txt — empty]');
   });
 
+  // ---- image vision (Movement 32) ---------------------------------------------
+
+  test('a real png loads as a base64 vision payload', () {
+    final p = file('shot.png', [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]);
+    final image = AttachmentContext.loadImage(
+        ChatAttachment('image', p.path, 'shot.png'));
+    expect(image, isNotNull);
+    expect(image!.mediaType, 'image/png');
+    expect(image.base64Data, base64Encode([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]));
+  });
+
+  test('extension decides the mime type', () {
+    for (final e in {
+      'photo.jpg': 'image/jpeg',
+      'photo.jpeg': 'image/jpeg',
+      'photo.png': 'image/png',
+      'photo.webp': 'image/webp',
+      'photo.gif': 'image/gif',
+    }.entries) {
+      final p = file(e.key, [1, 2, 3]);
+      expect(AttachmentContext.loadImage(
+              ChatAttachment('image', p.path, e.key))!.mediaType, e.value);
+    }
+  });
+
+  test('unknown extensions refuse to guess', () {
+    final p = file('shot.heic', [1, 2, 3]);
+    expect(
+        AttachmentContext.loadImage(
+            ChatAttachment('image', p.path, 'shot.heic')),
+        isNull);
+    expect(
+        AttachmentContext.loadImage(
+            ChatAttachment('image', p.path, 'no-extension')),
+        isNull);
+  });
+
+  test('a missing image file returns null — no throw', () {
+    expect(
+        AttachmentContext.loadImage(
+            ChatAttachment('image', '${dir.path}/gone.png', 'gone.png')),
+        isNull);
+  });
+
+  test('oversized images stay markers', () {
+    final p = file('big.png', List<int>.filled(
+        AttachmentContext.maxImageBytes + 1, 0x61));
+    expect(
+        AttachmentContext.loadImage(
+            ChatAttachment('image', p.path, 'big.png')),
+        isNull);
+  });
+
+  test('file attachments never load as images', () {
+    final p = file('notes.md', utf8.encode('hi'));
+    expect(
+        AttachmentContext.loadImage(
+            ChatAttachment('file', p.path, 'notes.md')),
+        isNull);
+  });
+
   // ---- integration level ------------------------------------------------------
+
+  testWidgets(
+      'sending after attaching an image puts a base64 payload in the request',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final store = InMemorySecureStore();
+    await store.write('apikey.openai', 'sk-test');
+    final shot = file('shot.png', [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]);
+    final bodies = <String>[];
+    final fakeHttp = MockClient((request) async {
+      bodies.add(request.body);
+      return http.Response(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {'content': 'mock reply'},
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    Locator.reset();
+    Locator.bind(
+      prefs: prefs,
+      store: store,
+      chat: ChatService(
+        vault: KeyVault(store),
+        client: LlmClient(client: fakeHttp),
+      ),
+    );
+
+    final chatKey = GlobalKey<ChatScreenState>();
+    await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
+    await tester.pumpAndSettle();
+
+    await chatKey.currentState!.attachImage(shot.path, name: 'shot.png');
+    await tester.pumpAndSettle();
+    await chatKey.currentState!.send('what is this?');
+    await tester.pumpAndSettle();
+
+    // The outbound request carries the image as a vision part, not just a
+    // marker string.
+    expect(bodies, hasLength(1));
+    expect(bodies.single,
+        contains('"image_url":{"url":"data:image/png;base64,'));
+    expect(
+        bodies.single,
+        contains(base64Encode([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A])));
+  });
 
   testWidgets(
       'sending after attaching puts the real file content in the model request',
