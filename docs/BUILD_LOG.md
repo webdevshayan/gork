@@ -35,3 +35,5 @@ The README stays clean — the receipts live here.
 | #27 | Attachments are real: Camera / Photos / Files from the + menu land in the thread and mirror into project folders |
 | #28 | README rebuilt for humans: build log hidden, MIT license |
 | #29 | Chat search: the menu Search pill opens real conversation search with honest empty states |
+| #30 | NDK-free release builds: official repos first, Aliyun before central, no gradle daemon |
+| #31 | Attachments speak: text files feed the agent their real content — binaries and images stay honest markers |

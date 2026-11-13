@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../providers/providers.dart';
+import '../services/attachment_context.dart';
 import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
@@ -171,8 +172,10 @@ class ChatScreenState extends State<ChatScreen> {
               m.role,
               m.attachment == null
                   ? m.content
-                  // Attachments travel into the model as inert context.
-                  : '[${m.attachment!.kind} attached: ${m.attachment!.name}]',
+                  // Attachments speak: text files feed the agent their
+                  // real content (capped); binaries and images stay
+                  // honest markers.
+                  : AttachmentContext.describe(m.attachment!),
             ),
         ],
       );
