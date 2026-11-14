@@ -96,18 +96,10 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _restore() async {
-    final prefsProvider = Locator.prefs.getString('chat.providerId');
-    if (prefsProvider != null && await Locator.chat.hasKey(prefsProvider)) {
-      _providerId = prefsProvider;
-    } else {
-      for (final p in kProviders) {
-        if (await Locator.chat.hasKey(p.id)) {
-          _providerId = p.id;
-          break;
-        }
-      }
-    }
-
+    // History loads FIRST, synchronously, before anything async: the very
+    // first frame must show the real thread. Resolving the provider used to
+    // happen before this, so slow key checks flashed the seeded intro
+    // placeholders before real messages swapped in (the v1.7.x preload bug).
     Conversation? conversation;
     if (widget.conversationId != null) {
       // An explicit conversation (e.g. a chat opened from inside a project)
@@ -133,6 +125,21 @@ class ChatScreenState extends State<ChatScreen> {
           _UiMessage(m.role, m.content,
               time: m.time, attachment: m.attachment),
       ];
+      if (mounted) setState(() {});
+    }
+
+    // Provider resolution is async and only affects SENDING, never what the
+    // user already sees — safe to settle after the thread is on screen.
+    final prefsProvider = Locator.prefs.getString('chat.providerId');
+    if (prefsProvider != null && await Locator.chat.hasKey(prefsProvider)) {
+      _providerId = prefsProvider;
+    } else {
+      for (final p in kProviders) {
+        if (await Locator.chat.hasKey(p.id)) {
+          _providerId = p.id;
+          break;
+        }
+      }
     }
     if (mounted) setState(() {});
   }
@@ -369,7 +376,7 @@ class ChatScreenState extends State<ChatScreen> {
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
       'Sunday',
     ];
-    return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   bool _sameDay(int? a, int? b) {
@@ -379,50 +386,86 @@ class ChatScreenState extends State<ChatScreen> {
     return da.year == db.year && da.month == db.month && da.day == db.day;
   }
 
-  Widget _separator(String label) => Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+  /// Time-only stamp under a bubble: 'h:mm a', deterministic, no intl.
+  String _timeLabel(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final int h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final String min = d.minute.toString().padLeft(2, '0');
+    return '$h12:$min ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  /// The centered glass date badge — WhatsApp-style, pinned while its day
+  /// group scrolls (PinnedHeaderSliver inside the CustomScrollView).
+  Widget _dateBadge(String label) => Center(
+        child: GlassContainer(
+          radius: 20,
+          strong: true,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
             label,
-            style: TextStyle(fontSize: 15, color: GlassColors.textDim),
+            style: TextStyle(fontSize: 13, color: GlassColors.textDim),
           ),
         ),
       );
 
-  List<Widget> _bubbleList(List<_UiMessage> source) {
-    final widgets = <Widget>[];
-    for (var i = 0; i < source.length; i++) {
-      final m = source[i];
-      final prev = i > 0 ? source[i - 1] : null;
-      final bool newDay = prev == null || !_sameDay(m.time, prev.time);
-      if (newDay && m.time != null) {
-        widgets.add(_separator(_dayLabel(m.time!)));
-      } else if (prev == null && m.time != null) {
-        widgets.add(_separator(_dayLabel(m.time!)));
-      }
-      widgets.add(_Bubble(
-        text: m.content,
-        isUser: m.role == 'user',
-        attachment: m.attachment,
-      ));
-      final bool answered = m.role == 'user' &&
-          source.indexWhere((x) => x.role == 'assistant', i) > i;
-      if (answered) {
-        widgets.add(
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 8, right: 8),
-              child: Text(
-                '•••• Read',
-                style: TextStyle(fontSize: 12, color: GlassColors.textFaint),
-              ),
+  Widget _withStamp(_UiMessage m) {
+    final Widget bubble = _Bubble(
+      text: m.content,
+      isUser: m.role == 'user',
+      attachment: m.attachment,
+    );
+    final bool left = !(m.role == 'user' || m.attachment != null);
+    return Column(
+      crossAxisAlignment:
+          left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+      children: [
+        bubble,
+        if (m.time != null)
+          Padding(
+            padding: EdgeInsets.only(
+                bottom: 8, left: left ? 4 : 0, right: left ? 0 : 4),
+            child: Text(
+              _timeLabel(m.time!),
+              style: TextStyle(fontSize: 11, color: GlassColors.textFaint),
             ),
-          ),
-        );
+          )
+        else
+          const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Messages grouped by calendar day, in order. Days with no timestamp fall
+  /// into an unlabeled leading group (no badge).
+  List<_DayGroup> _groupedByDay(List<_UiMessage> source) {
+    final groups = <_DayGroup>[];
+    for (final m in source) {
+      final String label = m.time == null ? '' : _dayLabel(m.time!);
+      if (groups.isEmpty || groups.last.label != label) {
+        groups.add(_DayGroup(label, [m]));
+      } else {
+        groups.last.messages.add(m);
       }
     }
-    return widgets;
+    return groups;
+  }
+
+  /// Sticky-badge thread renderer: one pinned badge per day, stamps under
+  /// every bubble, no Read receipts.
+  List<Widget> _threadSlivers(List<_UiMessage> source) {
+    final slivers = <Widget>[];
+    for (final g in _groupedByDay(source)) {
+      if (g.label.isNotEmpty) {
+        slivers.add(PinnedHeaderSliver(child: _dateBadge(g.label)));
+      }
+      slivers.add(SliverToBoxAdapter(
+        child: Column(
+          children: [for (final m in g.messages) _withStamp(m)],
+        ),
+      ));
+    }
+    return slivers;
   }
 
   @override
@@ -481,10 +524,13 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessages() {
-    return ListView(
+    return CustomScrollView(
       controller: _scroll,
-      padding: const EdgeInsets.all(16),
-      children: _bubbleList(_messages),
+      slivers: [
+        const SliverPadding(padding: EdgeInsets.all(16)),
+        ..._threadSlivers(_messages),
+        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+      ],
     );
   }
 
@@ -492,32 +538,41 @@ class ChatScreenState extends State<ChatScreen> {
     final query = _searchQuery!;
     // Empty query in search mode shows the whole conversation.
     if (query.isEmpty) {
-      return ListView(
-        controller: _scroll,
-        padding: const EdgeInsets.all(16),
-        children: _messages.isEmpty
-            ? List<Widget>.of(_EmptyChat(error: _error).buildChildren())
-            : _bubbleList(_messages),
-      );
+      return _messages.isEmpty
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: _EmptyChat(error: _error).buildChildren(),
+            )
+          : CustomScrollView(
+              controller: _scroll,
+              slivers: [
+                const SliverPadding(padding: EdgeInsets.all(16)),
+                ..._threadSlivers(_messages),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+              ],
+            );
     }
     final hits = [
       for (final m in _messages)
         if (m.content.toLowerCase().contains(query)) m,
     ];
-    return ListView(
+    return CustomScrollView(
       controller: _scroll,
-      padding: const EdgeInsets.all(16),
-      children: [
+      slivers: [
+        const SliverPadding(padding: EdgeInsets.all(16)),
         if (hits.isEmpty)
-          GlassContainer(
-            radius: 24,
-            padding: const EdgeInsets.all(20),
-            child: Text(
-              'No results for "$query".',
-              style: TextStyle(fontSize: 16, color: GlassColors.textDim),
+          SliverToBoxAdapter(
+            child: GlassContainer(
+              radius: 24,
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'No results for "$query".',
+                style: TextStyle(fontSize: 16, color: GlassColors.textDim),
+              ),
             ),
           )
-        else ..._bubbleList(hits),
+        else ..._threadSlivers(hits),
+        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
       ],
     );
   }
@@ -885,4 +940,11 @@ class _PreviewCardView extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DayGroup {
+  _DayGroup(this.label, this.messages);
+
+  final String label;
+  final List<_UiMessage> messages;
 }
