@@ -66,10 +66,18 @@ class GlassContainer extends StatelessWidget {
 
 /// Circular glass button used in the top bar (menu / back).
 class GlassIconButton extends StatelessWidget {
-  const GlassIconButton({super.key, required this.icon, required this.onTap});
+  const GlassIconButton({
+    super.key,
+    required this.icon,
+    required this.onTap,
+    this.semanticLabel,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+
+  /// TalkBack name for icon-only buttons (a11y guard tests require it).
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +89,10 @@ class GlassIconButton extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Center(child: Icon(icon, size: 20, color: GlassColors.text)),
+        child: Center(
+          child: Icon(icon, size: 20, color: GlassColors.text,
+              semanticLabel: semanticLabel),
+        ),
       ),
     );
   }

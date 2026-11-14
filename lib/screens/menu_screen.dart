@@ -101,26 +101,6 @@ class _MenuScreenState extends State<MenuScreen> {
         const SizedBox(height: 24),
         GlassContainer(
           radius: 28,
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Text(
-                'gork',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: GlassColors.text,
-                ),
-              ),
-              const Spacer(),
-              Icon(Icons.auto_awesome, size: 20,
-                  color: GlassColors.textDim),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        GlassContainer(
-          radius: 28,
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             children: [

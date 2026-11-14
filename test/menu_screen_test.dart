@@ -30,8 +30,8 @@ void main() {
     expect(find.text('Upgrade'), findsNothing);
     expect(find.text('pro'), findsNothing);
     expect(find.byKey(const ValueKey('pro-card')), findsNothing);
-    // the wordmark itself stays
-    expect(find.text('gork'), findsWidgets);
+    // the wordmark card is gone (user request, Movement 42)
+    expect(find.text('gork'), findsNothing);
   });
 
   testWidgets('no Resets row, no usage-and-plan row', (tester) async {

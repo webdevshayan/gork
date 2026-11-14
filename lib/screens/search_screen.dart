@@ -92,7 +92,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: GlassIconButton(
-                    icon: Icons.u_turn_left,
+                    icon: Icons.arrow_back_ios_new,
                     onTap: () => Navigator.pop(context),
                   ),
                 ),
@@ -265,16 +265,9 @@ class _HitCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.65),
+          color: GlassColors.fill,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          border: Border.all(color: GlassColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
