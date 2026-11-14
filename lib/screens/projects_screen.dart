@@ -8,175 +8,130 @@ import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 import '../services/projects_store.dart';
 import '../widgets/g_button.dart';
+import '../widgets/glass.dart';
+import '../widgets/screen.dart';
+import 'chat_page.dart';
+import 'projects_surface.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 
 /// Projects: long-running workspaces with their own notes and files.
 class ProjectsScreen extends StatefulWidget {
-  const ProjectsScreen({super.key});
+  const ProjectsScreen({super.key, this.onOpenChat});
+
+  /// Optional chat-open hook (wired by hosts that can push ChatPage).
+  final ValueChanged<String>? onOpenChat;
 
   @override
   State<ProjectsScreen> createState() => _ProjectsScreenState();
 }
 
+/// ONE Projects UI: the pushed screen renders the SAME glass folder list as
+/// the tab surface — search jumps and menu entries no longer get a legacy
+/// GCard list (Movement 46).
 class _ProjectsScreenState extends State<ProjectsScreen> {
-  List<Project> _projects = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _refresh();
-  }
-
   void _refresh() {
-    setState(() => _projects = Locator.projects.all());
+    if (mounted) setState(() {});
   }
 
-  Future<void> _createOrEdit([Project? existing]) async {
-    final titleController = TextEditingController(text: existing?.title);
-    final notesController = TextEditingController(text: existing?.notes);
-    final palette = paletteOf(context);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: Spacing.lg,
-            right: Spacing.lg,
-            top: Spacing.lg,
-            bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(existing == null ? 'New project' : 'Edit project',
-                  style: TypeScale.title(color: palette.textPrimary)),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                controller: titleController,
-                style: TypeScale.body(color: palette.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Project name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                controller: notesController,
-                minLines: 3,
-                maxLines: 8,
-                style: TypeScale.body(color: palette.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Notes…',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: Spacing.lg),
-              GButton(
-                label: 'Save project',
-                expands: true,
-                onPressed: () {
-                  final title = titleController.text.trim();
-                  if (title.isEmpty) return;
-                  final now = DateTime.now().millisecondsSinceEpoch;
-                  final project = (existing == null)
-                      ? Project(
-                          id: now.toString(),
-                          title: title,
-                          notes: notesController.text.trim(),
-                          files: const [],
-                          createdAt: now,
-                          updatedAt: now,
-                        )
-                      : existing.copyWith(
-                          title: title,
-                          notes: notesController.text.trim(),
-                          updatedAt: now,
-                        );
-                  Locator.projects.save(project);
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    _refresh();
+  /// Default chat hook: push the full-screen chat page directly, so opening
+  /// a project chat works from ANY host (search jumps, menu) without extra
+  /// wiring.
+  void _pushChat(String conversationId) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ChatPage(conversationId: conversationId,
+          backLabel: 'Back to workspace'),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final palette = paletteOf(context);
     return Screen(
       title: 'Projects',
-      fab: FloatingActionButton(
-        backgroundColor: palette.primary,
-        foregroundColor: palette.onPrimary,
-        child: const Icon(Icons.add),
-        onPressed: () => _createOrEdit(),
+      body: ProjectsSurface(
+        onOpenChat: widget.onOpenChat ?? _pushChat,
+        onAfterPush: _refresh,
       ),
-      body: _projects.isEmpty
-          ? GCard(
-              child: Text(
-                'No projects yet. Tap + to create your first workspace.',
-                style: TypeScale.body(color: palette.textSecondary),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: Spacing.md),
-              itemCount: _projects.length,
-              itemBuilder: (context, index) {
-                final p = _projects[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: Spacing.md),
-                  child: GCard(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(RadiusTokens.lg),
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => ProjectDetailScreen(projectId: p.id)),
-                        );
-                        _refresh();
-                      },
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p.title,
-                              style: TypeScale.heading(color: palette.textPrimary)),
-                          if (p.notes.isNotEmpty) ...[
-                            const SizedBox(height: Spacing.xs),
-                            Text(
-                              p.notes,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TypeScale.bodySmall(
-                                  color: palette.textSecondary),
-                            ),
-                          ],
-                          const SizedBox(height: Spacing.sm),
-                          Text(
-                            '${p.files.length} file(s)',
-                            style: TypeScale.caption(color: palette.textTertiary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
     );
   }
+}
+
+/// The shared create/edit project sheet. The surface's empty state and any
+/// future host open it directly — no legacy screen in the middle.
+Future<void> showProjectEditor(BuildContext context, {Project? existing}) {
+  final titleController = TextEditingController(text: existing?.title);
+  final notesController = TextEditingController(text: existing?.notes);
+  final palette = paletteOf(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (context) {
+      return SafeArea(
+        child: GlassContainer(
+          radius: 24,
+          strong: true,
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(18),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(existing == null ? 'New project' : 'Edit project',
+                    style: TypeScale.title(color: palette.textPrimary)),
+                const SizedBox(height: Spacing.md),
+                TextField(
+                  controller: titleController,
+                  style: TypeScale.body(color: palette.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: 'Project name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                TextField(
+                  controller: notesController,
+                  minLines: 3,
+                  maxLines: 8,
+                  style: TypeScale.body(color: palette.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: 'Notes…',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: Spacing.lg),
+                GButton(
+                  label: 'Save project',
+                  expands: true,
+                  onPressed: () {
+                    final title = titleController.text.trim();
+                    if (title.isEmpty) return;
+                    final now = DateTime.now().millisecondsSinceEpoch;
+                    final project = (existing == null)
+                        ? Project(
+                            id: now.toString(),
+                            title: title,
+                            notes: notesController.text.trim(),
+                            files: const [],
+                            createdAt: now,
+                            updatedAt: now,
+                          )
+                        : existing.copyWith(
+                            title: title,
+                            notes: notesController.text.trim(),
+                            updatedAt: now,
+                          );
+                    Locator.projects.save(project);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// Detail view: chats + notes + files + images for one project. Projects

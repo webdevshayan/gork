@@ -23,8 +23,8 @@ void main() {
 
     expect(find.textContaining('No projects yet'), findsOneWidget);
 
-    // Create project.
-    await tester.tap(find.byIcon(Icons.add));
+    // Create project — the glass empty state opens the shared editor sheet.
+    await tester.tap(find.byKey(const ValueKey('create-project')));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Project name').first,
         'Debian setup');
@@ -34,7 +34,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Debian setup'), findsOneWidget);
-    expect(find.text('0 file(s)'), findsOneWidget);
+    expect(find.text('0 chats · 0 files · 0 images'), findsOneWidget,
+        reason: 'the unified folder card carries the counts line');
 
     // Open detail and add a file.
     await tester.tap(find.text('Debian setup'));

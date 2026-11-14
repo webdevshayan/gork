@@ -246,7 +246,10 @@ class _HarkShellState extends State<HarkShell> {
                       ? const HarkHome()
                       : _tab == HarkTab.chat
                       ? ChatHome(onOpenChat: _openThread, onCompose: _composeNew)
-                      : ProjectsSurface(onOpenChat: _openProjectChat),
+                      : ProjectsSurface(
+                          onOpenChat: _openProjectChat,
+                          onAfterPush: () => setState(() {}),
+                        ),
                 ),
                 if (showInput)
                   BottomInputBar(
