@@ -16,6 +16,7 @@ import 'package:gork/app.dart';
 import 'package:gork/constants/ambient.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/hark_shell.dart';
+import 'package:gork/widgets/bottom_input_bar.dart';
 import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';

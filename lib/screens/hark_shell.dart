@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../services/history_store.dart';
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
@@ -14,8 +15,11 @@ import 'hark_home.dart';
 import 'menu_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
+import 'chat_home.dart';
+import 'chat_page.dart';
 import 'projects_surface.dart';
 import 'search_screen.dart';
+import '../widgets/bottom_input_bar.dart';
 import '../constants/design_tokens.dart';
 
 enum HarkTab { home, chat, projects }
@@ -43,7 +47,6 @@ class _HarkShellState extends State<HarkShell> {
   String? _chatConversationId;
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
-  final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
 
   void _selectTab(HarkTab tab) {
     setState(() {
@@ -85,13 +88,12 @@ class _HarkShellState extends State<HarkShell> {
           );
           if (picked == null) return;
           _deliverAttachment(
-              (state) => state.attachImage(picked.path, name: picked.name));
+              ChatAttachment('image', picked.path, picked.name));
         case AttachKind.files:
           final result = await FilePicker.platform.pickFiles(withData: false);
           final file = result?.files.single;
           if (file == null || file.path == null) return;
-          _deliverAttachment(
-              (state) => state.attachFile(file.path!, file.name));
+          _deliverAttachment(ChatAttachment('file', file.path!, file.name));
       }
     } catch (e) {
       debugPrint('attach failed: $e');
@@ -103,36 +105,24 @@ class _HarkShellState extends State<HarkShell> {
     }
   }
 
-  /// Delivers an attachment to the chat thread, entering the Chat tab first
-  /// when the input bar was used from Home or Projects.
-  void _deliverAttachment(void Function(ChatScreenState) deliver) {
-    if (_tab != HarkTab.chat || _onMenu) {
-      _selectTab(HarkTab.chat);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final state = _chatKey.currentState;
-        if (state != null) deliver(state);
-      });
-    } else {
-      final state = _chatKey.currentState;
-      if (state != null) deliver(state);
-    }
+  /// An attachment composes a NEW thread full-screen (paths stay on-device;
+  /// when the thread belongs to a project folder the page mirrors it there).
+  void _deliverAttachment(ChatAttachment attachment) {
+    Navigator.of(context).push(_slideUpRoute(
+      ChatPage(pendingAttachment: attachment, backLabel: 'Back'),
+    ));
   }
 
-  /// The glass input bar works on every tab: submitting from Home/Projects
-  /// jumps to Chat and delivers the message to the assistant.
+  /// The glass input bar composes: submitting opens a NEW thread full-screen
+  /// with the message already flying (WhatsApp compose semantics).
   void _sendFromInput(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     _input.clear();
     setState(() => _attachOpen = false);
-    if (_tab != HarkTab.chat || _onMenu) {
-      _selectTab(HarkTab.chat);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _chatKey.currentState?.send(trimmed);
-      });
-    } else {
-      _chatKey.currentState?.send(trimmed);
-    }
+    Navigator.of(context).push(_slideUpRoute(
+      ChatPage(initialMessage: trimmed, backLabel: 'Back'),
+    ));
   }
 
   /// ONE verb in the top-left: search. Scope follows the tab (home =
@@ -146,16 +136,24 @@ class _HarkShellState extends State<HarkShell> {
   /// detail is dismissed and the shell switches to the Chat tab carrying
   /// that conversation.
   /// A chat that lives inside a project opens as ITS OWN pushed full-screen
-  /// route (with the thread title and a chevron back) — it never collapses
-  /// back into the shell's Chat tab.
+  /// route (thread title + chevron back) — it never collapses into a tab.
   void _openProjectChat(String conversationId) {
+    setState(() => _chatConversationId = conversationId);
     Navigator.of(context).push(_slideUpRoute(
-      _ChatPage(
-        conversationId: conversationId,
-        onOpenChat: _openProjectChat,
-      ),
+      ChatPage(conversationId: conversationId, backLabel: 'Back to workspace'),
     ));
   }
+
+  /// A thread tapped on the chat home.
+  void _openThread(String conversationId) {
+    setState(() => _chatConversationId = conversationId);
+    Navigator.of(context).push(_slideUpRoute(
+      ChatPage(conversationId: conversationId, backLabel: 'Back to chats'),
+    ));
+  }
+
+  /// Quick compose from the chat home's input bar.
+  void _composeNew(String text) => _sendFromInput(text);
 
   void _onLeftButton() {
     if (_onMenu) {
@@ -247,13 +245,7 @@ class _HarkShellState extends State<HarkShell> {
                       : _tab == HarkTab.home
                       ? const HarkHome()
                       : _tab == HarkTab.chat
-                      ? ChatScreen(
-                          key: _chatKey,
-                          // Changing the conversation makes ChatScreen
-                          // restore its own thread via didUpdateWidget.
-                          conversationId: _chatConversationId,
-                          searchOpen: false,
-                        )
+                      ? ChatHome(onOpenChat: _openThread, onCompose: _composeNew)
                       : ProjectsSurface(onOpenChat: _openProjectChat),
                 ),
                 if (showInput)
@@ -535,122 +527,6 @@ class _AvatarSheet extends StatelessWidget {
   }
 }
 
-/// The pinned glass input bar, pixel-matched: hint "Message Hark", + and mic
-/// on the right; the mic becomes a black send circle when there is text.
-class BottomInputBar extends StatelessWidget {
-  const BottomInputBar({
-    super.key,
-    required this.controller,
-    required this.focusNode,
-    required this.onSend,
-    required this.onAttach,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final ValueChanged<String> onSend;
-  final VoidCallback onAttach;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final bool hasText = value.text.trim().isNotEmpty;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: GlassContainer(
-            key: const ValueKey('input-bar'),
-            radius: 30,
-            strong: true,
-            padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: onSend,
-                    // The message area auto-resizes with the text instead of
-                    // clipping long messages.
-                    minLines: 1,
-                    maxLines: 6,
-                    style: TextStyle(
-                      fontSize: 17,
-                      color: GlassColors.text,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Message Hark',
-                      hintStyle: TextStyle(
-                        fontSize: 17,
-                        color: GlassColors.textDim,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  key: const ValueKey('attach-button'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onAttach,
-                  child: Padding(
-                    // 14, not 10: this box must match the mic's 52dp box —
-                    // the row is END-aligned (bottom-pinned for multi-line),
-                    // and a shorter box made the + ride ~4dp below the mic
-                    // on a single line.
-                    padding: EdgeInsets.all(14),
-                    child: Icon(Icons.add, size: 24, color: GlassColors.textDim),
-                  ),
-                ),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 150),
-                  transitionBuilder: (child, anim) =>
-                      FadeTransition(opacity: anim, child: child),
-                  child: hasText
-                      ? GestureDetector(
-                          key: const ValueKey('send-button'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => onSend(controller.text),
-                          child: Container(
-                            key: const ValueKey('send-circle'),
-                            width: 44,
-                            height: 44,
-                            margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
-                            decoration: BoxDecoration(
-                              // dark theme: light circle, dark arrow.
-                              color: GlassColors.text,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_upward,
-                              size: 22,
-                              color: Colors.black,
-                            ),
-                          ),
-                        )
-                      : Padding(
-                          key: ValueKey('mic-icon'),
-                          padding: EdgeInsets.all(14),
-                          child: Icon(
-                            Icons.mic_none,
-                            size: 24,
-                            color: GlassColors.textDim,
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 /// The + dropdown on Home: add a file, an image, or a new panel — a more
 /// opaque glass dropdown right under the left button, like the reference.
 class _AttachMenu extends StatelessWidget {
@@ -695,133 +571,3 @@ class _AttachMenu extends StatelessWidget {
     );
   }
 }
-/// A pushed, full-screen chat for conversations that live inside a project:
-/// glass top bar (chevron back + thread title) and its own input bar. The
-/// page OWNS the ChatScreen state key so the input bar sends to THIS thread.
-class _ChatPage extends StatefulWidget {
-  const _ChatPage({required this.conversationId, required this.onOpenChat});
-
-  final String conversationId;
-  final ValueChanged<String> onOpenChat;
-
-  @override
-  State<_ChatPage> createState() => _ChatPageState();
-}
-
-class _ChatPageState extends State<_ChatPage> {
-  final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
-
-  @override
-  Widget build(BuildContext context) {
-    final String title =
-        Locator.history.byId(widget.conversationId)?.title ?? 'New chat';
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const AmbientBackdrop(),
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Row(
-                    children: [
-                      GlassBackButton(
-                        key: const ValueKey('chat-page-back'),
-                        label: 'Back to workspace',
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: GlassColors.text,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ChatScreen(
-                    key: _chatKey,
-                    conversationId: widget.conversationId,
-                  ),
-                ),
-                _ChatPageInputBar(
-                  chatKey: _chatKey,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The input bar for the pushed chat screen — same glass bar, wired to the
-/// page's ChatScreen through the key the page owns.
-class _ChatPageInputBar extends StatefulWidget {
-  const _ChatPageInputBar({required this.chatKey});
-
-  final GlobalKey<ChatScreenState> chatKey;
-
-  @override
-  State<_ChatPageInputBar> createState() => _ChatPageInputBarState();
-}
-
-class _ChatPageInputBarState extends State<_ChatPageInputBar> {
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _focus = FocusNode();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send(String raw) async {
-    final text = raw.trim();
-    if (text.isEmpty) return;
-    _controller.clear();
-    await widget.chatKey.currentState?.send(text);
-  }
-
-  Future<void> _attach() async {
-    try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
-        imageQuality: 82,
-      );
-      if (picked == null || !mounted) return;
-      await widget.chatKey.currentState
-          ?.attachImage(picked.path, name: picked.name);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not attach that.')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomInputBar(
-      controller: _controller,
-      focusNode: _focus,
-      onSend: _send,
-      onAttach: _attach,
-    );
-  }
-}
-
