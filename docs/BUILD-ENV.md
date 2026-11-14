@@ -1,15 +1,15 @@
 # Build environment (Movement 1)
 
-The machine that forges every APK. Verified 2026-11-11.
+The machine that forges every APK. Rebuilt from zero and re-verified 2026-11-14 — the receipts below are the recipe for the next rebuild.
 
 | Piece | Value |
 |---|---|
 | OS | Debian GNU/Linux 13 (trixie), 13.4 |
 | Architecture | x86_64, 2 cores, 4 GB RAM |
-| Flutter | 3.50.0 stable |
+| Flutter | 3.50.0 stable (`/home/z/tools/flutter`) |
 | Dart | 3.13.7 |
-| JDK | OpenJDK 21.0.13 (Debian) |
-| Android cmdline-tools | 19.0 |
+| JDK | OpenJDK 21.0.13, locally extracted at `/home/z/tools/jdk21-root` (the sandbox ships a **JRE** — no `javac`) |
+| Android cmdline-tools | latest (12.x) at `/home/z/tools/android-sdk/cmdline-tools/latest` |
 | Android platform | android-36 |
 | Android build-tools | 36.0.0 |
 | Android licenses | accepted |
@@ -73,3 +73,46 @@ This project builds Android APKs only.
   28.2.13676358 — Flutter 3.50's pin in `FlutterExtension.kt`), with
   `llvm-strip`/`llvm-objcopy` shims running over an extracted llvm-19
   (Debian `llvm-19` + `libllvm19` debs, `LD_LIBRARY_PATH` set in the shim).
+
+## Rebuild receipts (2026-11-14 — full toolchain rebuild from zero)
+
+Every step below was needed and each missed step cost a failed release
+build. There is no root apt on this box and `sudo` asks for a password it
+will never get: system packages are installed by downloading Debian .debs
+(`apt-get download <pkg>` — no root needed) and extracting them locally
+with `dpkg-deb -x <deb> <dir>`.
+
+1. **Flutter** — stable tarball into `/home/z/tools/flutter`, on PATH via
+   `/home/z/my-project/scripts/env.sh` (exports `GORK_ROOT TOOLS JAVA_HOME
+   ANDROID_HOME GRADLE_USER_HOME PUB_CACHE PATH`; source it in every shell).
+2. **Android SDK** — cmdline-tools under `/home/z/tools/android-sdk`,
+   then `yes | sdkmanager --licenses` and
+   `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`.
+3. **flutter_tools repository patch** — run
+   `scripts/patch_flutter_tools_repos.sh` once (Aliyun before mavenCentral
+   in the included build; otherwise `kotlin-build-tools-impl` 429s and
+   `assembleRelease` dies in 15 s — this killed v1.6.0 build attempt #1).
+4. **JDK with `javac`** — the sandbox's `/usr/lib/jvm/java-21-openjdk-amd64`
+   is JRE-only; gradle dies with "does not provide the required
+   capabilities: [JAVA_COMPILER]" after five minutes of real work
+   (v1.6.0 attempt #2). Fix: `apt-get download openjdk-21-jdk-headless
+   openjdk-21-jre-headless`, extract both into `/home/z/tools/jdk21-root`,
+   point `JAVA_HOME` there (env.sh does). The JRE deb is required — the
+   JDK deb alone lacks `libjli.so` and `javac` cannot even start.
+5. **llvm-19 for the strip shims** — `apt-get download llvm-19 libllvm19`,
+   extract into `/home/z/tools/llvm19-root`. GNU binutils here is
+   x86-64-only; AGP's strip step needs an arm64-capable `llvm-strip`.
+6. **NDK stub** — create `/home/z/tools/android-sdk/ndk/28.2.13676358/`
+   with a `source.properties` containing `Pkg.Revision = 28.2.13676358`
+   (Flutter 3.50's pin). Without it gradle tries to fetch a multi-GB NDK.
+   Then lay the shims at
+   `ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/`:
+   `llvm-strip`/`llvm-objcopy` scripts that set
+   `LD_LIBRARY_PATH=/home/z/tools/llvm19-root/usr/lib/llvm-19/lib` and exec
+   `/home/z/tools/llvm19-root/usr/lib/llvm-19/bin/<tool>`.
+7. **Release lint off** — `checkReleaseBuilds = false` (see
+   `android/app/build.gradle.kts`); lint-vital OOMs the capped 1 GB gradle
+   JVM in metaspace after a full compile (v1.6.0 attempt #3).
+8. **Build** — `scripts/release_apk.sh` (reads the version from pubspec,
+   passes `--dart-define=GORK_VERSION`, runs the size gate). Proven twice:
+   v1.6.0 (attempt #4, green) and v1.6.1.

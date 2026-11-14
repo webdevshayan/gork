@@ -42,3 +42,4 @@ The README stays clean — the receipts live here.
 | #34 | Dark glass everywhere: Wallet rename, one-click connectors, app→daemon config sync |
 | #35 | Slim release: strip the engine, gate the size, warn on bloat (v1.5.0 had shipped a 180 MB APK) |
 | #36 | Release pipeline: `scripts/release_apk.sh` reads the version from pubspec, passes `--dart-define=GORK_VERSION`, runs the slim size gate — v1.6.0 is the first release built by the script and the first to carry Movements 34+35 to the phone |
+| #37 | Build-box receipts: the full toolchain-rebuild recipe on paper (JRE-only JDK → extracted jdk21-root, llvm-19 debs → llvm19-root, NDK stub + strip shims, Aliyun patch, lint off) — tested, so the next rebuild cannot forget them |

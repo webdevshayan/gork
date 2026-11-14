@@ -69,4 +69,33 @@ void main() {
       expect(gradle, contains('checkReleaseBuilds = false'));
     });
   });
+
+  group('toolchain rebuild receipts are on paper', () {
+    // 2026-11-14: the sandbox was recycled and the toolchain rebuilt from
+    // zero. Three repairs were rediscovered the hard way — each one cost a
+    // failed release build. They must be documented, because "files too
+    // large are not put back": the next rebuild starts from nothing.
+    final env = readRepo('docs/BUILD-ENV.md');
+
+    test('the JDK repair is documented — the sandbox ships JRE-only Java', () {
+      // Without javac gradle dies with "does not provide the required
+      // capabilities: [JAVA_COMPILER]" after five minutes of work.
+      expect(env, contains('jdk21-root'));
+      expect(env, contains('javac'));
+    });
+
+    test('the llvm-19 deb extraction is documented', () {
+      // GNU binutils on this box cannot strip the arm64 engine; the strip
+      // shims run over a locally extracted llvm-19 (no root apt available).
+      expect(env, contains('llvm19-root'));
+    });
+
+    test('the NDK stub recipe is documented — AGP must never auto-download', () {
+      // A missing NDK revision dir makes gradle try to fetch a full NDK
+      // (multi-GB) or fail; the stub satisfies the version check and hosts
+      // the strip shims.
+      expect(env, contains('28.2.13676358'));
+      expect(env, contains('source.properties'));
+    });
+  });
 }
