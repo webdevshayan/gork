@@ -61,6 +61,21 @@ void main() {
       expect(res.exitCode, 0, reason: res.stderr);
       expect(res.stdout, contains('version: ${m!.group(1)}+${m.group(2)}'));
     });
+
+    test('builds the established slim shape: arm64-only, split-per-abi', () {
+      // The release shape since Movement 30 (BUILD-ENV: 19-35 MB artifacts):
+      // fat multi-ABI APKs are dead weight on the user's phone. One target,
+      // one split — and no blanket debug-platform flags (the guard test
+      // forbids those in gradle.properties for the same reason).
+      expect(script, contains('--split-per-abi'));
+      expect(script, contains('--target-platform android-arm64'));
+    });
+
+    test('gates the arm64 split artifact, not the fat APK', () {
+      expect(script, contains('app-arm64-v8a-release.apk'));
+      expect(script, isNot(contains('gate: scripts/check_release_apk.sh '
+          'build/app/outputs/flutter-apk/app-release.apk')));
+    });
   });
 
   group('unversioned builds never self-update', () {

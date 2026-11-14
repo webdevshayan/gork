@@ -60,6 +60,12 @@ This project builds Android APKs only.
 
 ## Toolchain notes (re-verified 2026-11-13)
 
+- The included flutter_tools gradle build does NOT inherit this repo's Aliyun
+  ordering — upstream ships `packages/flutter_tools/gradle/settings.gradle.kts`
+  with `google() + mavenCentral()` only, so `kotlin-build-tools-impl` 429s and
+  `assembleRelease` dies before compiling anything. After every flutter
+  install/upgrade run `scripts/patch_flutter_tools_repos.sh` once (idempotent;
+  leaves a `.bak-gork` backup).
 - cmdline-tools 19.0 deprecates the `sdkmanager` binary — the shim now warns
   and delegates to the bundled `android` CLI. Licenses and package installs
   still work through it; the warning is noise.

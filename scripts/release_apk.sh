@@ -29,16 +29,16 @@ if [ -z "$VERSION" ] || [ -z "$BUILD" ]; then
   exit 1
 fi
 
-APK="build/app/outputs/flutter-apk/app-release.apk"
+APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
 
 if [ "${1:-}" = "--dry-run" ] || [ "${DRY_RUN:-0}" = "1" ]; then
   echo "version: $VERSION+$BUILD"
   echo "dart-define: GORK_VERSION=$VERSION"
-  echo "build: flutter build apk --release --dart-define=GORK_VERSION=$VERSION"
+  echo "build: flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define=GORK_VERSION=$VERSION"
   echo "gate: scripts/check_release_apk.sh $APK"
   exit 0
 fi
 
-flutter build apk --release --dart-define=GORK_VERSION="$VERSION"
+flutter build apk --release --split-per-abi --target-platform android-arm64 --dart-define=GORK_VERSION="$VERSION"
 scripts/check_release_apk.sh "$APK"
 echo "release ready: $APK — gork $VERSION+$BUILD, size gate passed."
