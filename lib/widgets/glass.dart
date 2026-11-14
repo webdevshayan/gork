@@ -15,6 +15,7 @@ class GlassContainer extends StatelessWidget {
     this.opacity = 0.3,
     this.sigma = 10,
     this.padding = EdgeInsets.zero,
+    this.margin,
     this.width,
     this.height,
     this.strong = false,
@@ -25,6 +26,9 @@ class GlassContainer extends StatelessWidget {
   final double opacity;
   final double sigma;
   final EdgeInsetsGeometry padding;
+
+  /// Outer margin — wraps the whole container so callers keep one widget.
+  final EdgeInsetsGeometry? margin;
   final double? width;
   final double? height;
 
@@ -33,7 +37,7 @@ class GlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+    final Widget body = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
@@ -53,6 +57,10 @@ class GlassContainer extends StatelessWidget {
         ),
       ),
     );
+    if (margin != null) {
+      return Padding(padding: margin!, child: body);
+    }
+    return body;
   }
 }
 
