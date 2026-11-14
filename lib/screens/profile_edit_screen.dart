@@ -63,10 +63,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               children: [
                 Row(
                   children: [
-                    GlassIconButton(
+                    GlassBackButton(
                       key: const ValueKey('profile-back'),
-                      icon: Icons.arrow_back_ios_new,
-                      onTap: () => Navigator.pop(context),
+                      label: 'Back',
                     ),
                     const Spacer(),
                   ],

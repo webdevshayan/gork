@@ -132,10 +132,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Row(
                     children: [
-                      GlassIconButton(
-                        icon: Icons.arrow_back_ios_new,
-                        semanticLabel: 'Close search',
-                        onTap: () => Navigator.pop(context),
+                      GlassBackButton(
+                        label: 'Close search',
                       ),
                     ],
                   ),

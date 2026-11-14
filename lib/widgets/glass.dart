@@ -98,6 +98,32 @@ class GlassIconButton extends StatelessWidget {
   }
 }
 
+/// The reusable back affordance: a glass chevron with a TalkBack label.
+/// Every screen-level back control uses THIS so navigation looks and sounds
+/// identical everywhere (Movement 44).
+class GlassBackButton extends StatelessWidget {
+  const GlassBackButton({
+    super.key,
+    this.label = 'Back',
+    this.onTap,
+  });
+
+  /// The TalkBack name — 'Back', 'Back to workspace', 'Close search', ...
+  final String label;
+
+  /// Defaults to popping the navigator; pass null and handle taps outside.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassIconButton(
+      icon: Icons.arrow_back_ios_new,
+      semanticLabel: label,
+      onTap: onTap ?? () => Navigator.of(context).pop(),
+    );
+  }
+}
+
 /// The black action chip from the spec: green check + white label.
 class GlassActionChip extends StatelessWidget {
   const GlassActionChip({super.key, required this.label});
