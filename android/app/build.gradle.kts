@@ -51,6 +51,16 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    lint {
+        // The 4 GB build box OOMs lint-vital in metaspace while analyzing
+        // plugin Kotlin (image_picker_android) — it killed the v1.6.0 build
+        // after the whole compile had succeeded. The gradle JVM is capped
+        // at 1 GB (see gradle.properties); lint-vital needs more than that.
+        // The app's quality gates are the flutter test suite and the
+        // release size gate (scripts/check_release_apk.sh), not lint.
+        checkReleaseBuilds = false
+    }
 }
 
 kotlin {
