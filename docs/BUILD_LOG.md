@@ -39,3 +39,6 @@ The README stays clean — the receipts live here.
 | #31 | Attachments speak: text files feed the agent their real content — binaries and images stay honest markers |
 | #32 | Images see: vision payloads ride to multimodal providers — base64 parts for OpenAI-compatible and Anthropic, honest markers when a file can't load |
 | #33 | Update from within: GitHub releases check + APK download + honest system-installer handoff |
+| #34 | Dark glass everywhere: Wallet rename, one-click connectors, app→daemon config sync |
+| #35 | Slim release: strip the engine, gate the size, warn on bloat (v1.5.0 had shipped a 180 MB APK) |
+| #36 | Release pipeline: `scripts/release_apk.sh` reads the version from pubspec, passes `--dart-define=GORK_VERSION`, runs the slim size gate — v1.6.0 is the first release built by the script and the first to carry Movements 34+35 to the phone |
