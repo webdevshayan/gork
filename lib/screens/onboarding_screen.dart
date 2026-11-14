@@ -178,7 +178,9 @@ class _OnboardingGateState extends State<OnboardingGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_done) return const HarkShell();
+    // Non-const — same reason as the home: in app.dart. A const shell is
+    // skipped on ancestor rebuilds and never re-reads GlassColors.
+    if (_done) return HarkShell();
     return OnboardingScreen(onFinished: () => setState(() => _done = true));
   }
 }

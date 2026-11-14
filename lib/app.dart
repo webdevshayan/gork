@@ -89,7 +89,11 @@ class GorkApp extends StatelessWidget {
                 themeMode: resolved == Brightness.dark
                     ? ThemeMode.dark
                     : ThemeMode.light,
-                home: const OnboardingGate(),
+                // NOT const: a const home is an identical widget instance
+                // across rebuilds, so Flutter skips the whole shell subtree
+                // on a theme change — glass colors stay stale (the v1.7.0
+                // screenshot bug: dark cards over the day sky).
+                home: OnboardingGate(),
               );
             }));
           },

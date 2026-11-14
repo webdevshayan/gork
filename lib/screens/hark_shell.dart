@@ -538,7 +538,11 @@ class BottomInputBar extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onTap: onAttach,
                   child: Padding(
-                    padding: EdgeInsets.all(10),
+                    // 14, not 10: this box must match the mic's 52dp box —
+                    // the row is END-aligned (bottom-pinned for multi-line),
+                    // and a shorter box made the + ride ~4dp below the mic
+                    // on a single line.
+                    padding: EdgeInsets.all(14),
                     child: Icon(Icons.add, size: 24, color: GlassColors.textDim),
                   ),
                 ),
