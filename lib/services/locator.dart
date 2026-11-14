@@ -10,6 +10,7 @@ import 'inbox_service.dart';
 import 'integrations.dart';
 import 'memory_store.dart';
 import 'notifications.dart';
+import 'outbox.dart';
 import 'panels_store.dart';
 import 'projects_store.dart';
 import 'scheduler.dart';
@@ -45,6 +46,12 @@ class Locator {
     if (httpClient != null) _httpClient = httpClient;
   }
 
+  static MessageOutbox? _outbox;
+
+  /// The server-backed outbox (Movement 48): sent messages are processed on
+  /// the VPS and survive device death / app inactivity.
+  static MessageOutbox get outbox => _outbox ??= MessageOutbox();
+
   static void reset() {
     _store = null;
     _chat = null;
@@ -52,6 +59,7 @@ class Locator {
     _scheduler = null;
     _notifications = null;
     _httpClient = null;
+    _outbox = null;
   }
 
   static SecureStore get store => _store ??= SecureStoreImpl();

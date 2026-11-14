@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -8,6 +9,7 @@ import '../services/attachment_context.dart';
 import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
+import '../services/outbox.dart';
 import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import '../widgets/markdown_view.dart';
@@ -44,6 +46,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class ChatScreenState extends State<ChatScreen> {
+  Timer? _serverPoll;
   final ScrollController _scroll = ScrollController();
   List<_UiMessage> _messages = [];
   String _conversationId = '';
@@ -142,6 +145,7 @@ class ChatScreenState extends State<ChatScreen> {
       }
     }
     if (mounted) setState(() {});
+    await _syncFromServer();
   }
 
   /// History turn → API message. Text files feed the agent their real
@@ -176,6 +180,23 @@ class ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
+    // The VPS owns the request when one is configured: the message is
+    // enqueued server-side and survives device death / app inactivity. The
+    // reply is polled while this screen is open; if it closes (or the device
+    // dies), the job keeps running and _restore merges the reply on return.
+    if (Locator.outbox.configured) {
+      setState(() => _loading = true);
+      final entry =
+          await Locator.outbox.enqueue(_conversationId, text, awaitAcceptance: true);
+      await _persist();
+      if (entry.jobId != null) {
+        _startServerPoll(entry.jobId!);
+      } else {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+
     if (_providerId == null) {
       setState(() => _error = 'No provider key yet. Add one in Providers.');
       return;
@@ -206,6 +227,57 @@ class ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
     } finally {
+      await _persist();
+      _scrollToBottom();
+    }
+  }
+
+  /// Polls an accepted server job while this screen is open. The poll stops
+  /// when the screen is disposed — the JOB does not: it finishes on the VPS.
+  void _startServerPoll(String jobId) {
+    _serverPoll?.cancel();
+    _serverPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final reply = await Locator.outbox.jobResult(jobId);
+      if (reply == null || !mounted) return;
+      _serverPoll?.cancel();
+      _serverPoll = null;
+      setState(() {
+        _messages.add(
+          _UiMessage('assistant', reply,
+              time: DateTime.now().millisecondsSinceEpoch),
+        );
+        _loading = false;
+      });
+      await _persist();
+      _scrollToBottom();
+    });
+  }
+
+  /// Catch-up on restore: merge any replies the VPS produced while this
+  /// screen (or the whole device) was away. A per-conversation watermark
+  /// keeps the merge idempotent.
+  Future<void> _syncFromServer() async {
+    if (!Locator.outbox.configured || _conversationId.isEmpty) return;
+    final serverMsgs = await Locator.outbox.pullMessages(_conversationId);
+    if (serverMsgs.isEmpty || !mounted) return;
+    final wmKey = 'outbox.sync.${_conversationId}';
+    final prefs = Locator.prefs;
+    final watermark = prefs.getInt(wmKey) ?? 0;
+    bool changed = false;
+    for (var i = watermark; i < serverMsgs.length; i++) {
+      final m = serverMsgs[i];
+      if (m['role'] != 'assistant') continue;
+      if (_messages.any((u) => u.role == 'assistant' && u.content == m['content'])) {
+        continue; // already merged by the live poll
+      }
+      setState(() {
+        _messages.add(_UiMessage('assistant', m['content']!,
+            time: DateTime.now().millisecondsSinceEpoch));
+      });
+      changed = true;
+    }
+    await prefs.setInt(wmKey, serverMsgs.length);
+    if (changed) {
       await _persist();
       _scrollToBottom();
     }
@@ -582,6 +654,7 @@ class ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _serverPoll?.cancel(); // local polling only — server work is never cancelled
     _scroll.dispose();
     super.dispose();
   }

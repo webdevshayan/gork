@@ -39,7 +39,7 @@ class HarkShell extends StatefulWidget {
   State<HarkShell> createState() => _HarkShellState();
 }
 
-class _HarkShellState extends State<HarkShell> {
+class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
   HarkTab _tab = HarkTab.home;
   bool _onMenu = false;
   bool _attachOpen = false;
@@ -210,7 +210,23 @@ class _HarkShellState extends State<HarkShell> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Foreground again → flush pending server-queued messages. Requests the
+    // VPS already accepted were never paused or cancelled by app state.
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      Locator.outbox.flush();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -278,6 +294,7 @@ class _HarkShellState extends State<HarkShell> {
       ),
     );
   }
+
 }
 
 class _TopBar extends StatelessWidget {

@@ -378,7 +378,7 @@ SCOPES_EXPECTED = [
 ]
 
 
-def serve(host="127.0.0.1", port=8787):
+def serve(host="127.0.0.1", port=int(os.environ.get("GORK_PORT", "8787"))):
     init_db()
     stop = threading.Event()
     worker = threading.Thread(target=worker_loop, args=(stop,), daemon=True)
