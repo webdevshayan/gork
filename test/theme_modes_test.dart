@@ -12,8 +12,10 @@
 // "whatever the OS says" — Auto never looked at the clock.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gork/app.dart';
 import 'package:gork/constants/ambient.dart';
 import 'package:gork/constants/design_tokens.dart';
+import 'package:gork/screens/hark_shell.dart';
 import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';
@@ -222,4 +224,58 @@ Widget _wrap(Brightness platform) {
     data: MediaQueryData(platformBrightness: platform),
     child: const MaterialApp(home: AmbientBackdrop()),
   );
+
+  group('Movement 40 — the theme change reaches every glass consumer', () {
+    testWidgets('a theme switch repaints the shell (no const short-circuit)',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'onboarding.done': true});
+      Locator.bind(prefs: await SharedPreferences.getInstance());
+      themeModeSetting.value = 'Dark';
+      await tester.pumpWidget(const GorkApp());
+      await tester.pumpAndSettle();
+
+      // Open the menu so its glass rows are on stage.
+      await tester.tap(find.byKey(const ValueKey('avatar')));
+      await tester.pumpAndSettle();
+
+      // Switch to Light. The backdrop swaps AND the glass rows must
+      // repaint light — a const OnboardingGate short-circuits the rebuild
+      // and leaves dark glass over the day sky (the v1.7.0 screenshot bug).
+      themeModeSetting.value = 'Light';
+      await tester.pumpAndSettle();
+
+      final container = tester.widget<Container>(find.descendant(
+        of: find.byType(GlassContainer),
+        matching: find.byType(Container),
+      ).first);
+      final fill = (container.decoration as BoxDecoration).color!;
+      expect(fill.computeLuminance(), greaterThan(0.7),
+          reason: 'glass must follow the resolved theme immediately');
+    });
+  });
+
+  group('Movement 40 — single-line input bar alignment', () {
+    testWidgets('the attach icon centers with the mic icon', (tester) async {
+      final controller = TextEditingController();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: BottomInputBar(
+              controller: controller,
+              focusNode: FocusNode(),
+              onSend: (_) {},
+              onAttach: () {},
+            ),
+          ),
+        ),
+      ));
+
+      final double plusDy = tester.getCenter(find.byIcon(Icons.add)).dy;
+      final double micDy = tester.getCenter(find.byIcon(Icons.mic_none)).dy;
+      expect((plusDy - micDy).abs(), lessThan(1.0),
+          reason: 'bottom-aligned boxes of different heights make the + '
+              'ride ~4dp lower than the mic on a single line');
+    });
+  });
 }
