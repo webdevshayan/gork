@@ -2,8 +2,9 @@ allprojects {
     repositories {
         google()
         // PREFER_PROJECT: this list REPLACES the settings' repos for :app.
-        // Engine artifacts (io.flutter:*) live here, not on Central —
-        // without this, they fall through to mavenCentral and its 429s.
+        // Engine artifacts (io.flutter:*) live here, not on the public
+        // Central index — without this line they fall through to it and
+        // die on its rate limits (429).
         maven("https://storage.googleapis.com/download.flutter.io")
         maven("https://maven.aliyun.com/repository/central")
         maven("https://maven.aliyun.com/repository/public")
