@@ -108,6 +108,21 @@ void main() {
       expect(re.allMatches(readRepo('android/settings.gradle.kts')).length, 1);
     });
 
+    test('the engine repo reaches PROJECT resolution — allprojects too', () {
+      // Gradle's default RepositoriesMode.PREFER_PROJECT means the root
+      // allprojects repositories REPLACE the settings list for :app
+      // resolution. Without download.flutter.io there, io.flutter engine
+      // artifacts fall through to Maven Central and die on its 429s
+      // (this killed the v1.7.0 build attempt #1).
+      final gradle = readRepo('android/build.gradle.kts');
+      expect(gradle, contains('download.flutter.io'));
+      // Aliyun still comes before mavenCentral in the same block.
+      final all = gradle.indexOf('allprojects');
+      expect(gradle.indexOf('aliyun', all), greaterThan(all));
+      expect(gradle.indexOf('mavenCentral', all),
+          greaterThan(gradle.indexOf('aliyun', all)));
+    });
+
     test('no build flag forces a debug/unstripped engine artifact', () {
       final String props = readRepo('android/gradle.properties');
       expect(props, isNot(contains('flutter.buildMode=debug')));
