@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../constants/design_tokens.dart';
 import '../services/google_accounts.dart';
 import '../services/integrations.dart';
+import 'package:file_picker/file_picker.dart';
+
+import '../services/credential_uploader.dart';
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/g_button.dart';
@@ -27,6 +30,8 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
   late Future<List<GoogleAccount>> _accounts;
   String? _activeEmail;
   bool _connecting = false;
+  final GoogleCredentialsUploader _uploader = GoogleCredentialsUploader();
+  bool? _credsOnVps;
 
   GoogleAccountStore get _store =>
       widget.store ??
@@ -47,6 +52,35 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       _activeEmail = (await _store.active())?.email;
       return a;
     });
+    if (_uploader.configured) {
+      _uploader.hasCredentials().then((v) {
+        if (mounted) setState(() => _credsOnVps = v);
+      });
+    } else {
+      _credsOnVps = null;
+    }
+  }
+
+  /// The Cloud Console credentials JSON travels to the VPS vault exactly
+  /// once; nothing is ever read back (status boolean only).
+  Future<void> _uploadCredentials() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+          type: FileType.custom, allowedExtensions: ['json']);
+      if (picked == null || picked.files.single.path == null) return;
+      await _uploader.upload(picked.files.single.path!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content:
+            Text('Credentials sealed on the VPS — never read back, only a status.')));
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+    }
   }
 
   /// THE one click: active account + every Google service bound.
@@ -119,6 +153,61 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
+            // Cloud Console credentials → the VPS vault (Movement 49).
+            GlassContainer(
+              radius: 24,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Google Cloud Console',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: GlassColors.text)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload the credentials.json from Cloud Console once — it '
+                    'is sealed on the VPS and never read back.',
+                    style: TextStyle(fontSize: 13, color: GlassColors.textDim),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    key: const ValueKey('gconsole-upload'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _uploadCredentials,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Text('Upload credentials.json',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ),
+                  ),
+                  if (_credsOnVps != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _credsOnVps!
+                          ? 'Credentials sealed on the VPS ✓'
+                          : 'No credentials stored yet.',
+                      key: const ValueKey('gconsole-status'),
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: _credsOnVps!
+                              ? GlassColors.text
+                              : GlassColors.textDim),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
           const AmbientBackdrop(),
           SafeArea(
             child: ListView(

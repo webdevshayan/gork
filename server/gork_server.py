@@ -197,13 +197,14 @@ def _process_job(c, row):
         return json.dumps({"reply": reply})
     if row["kind"] == "youtube":
         ing = yt_ingest(payload.get("url", ""))
-        with _LOCK, db() as w:
-            w.execute(
-                "INSERT OR REPLACE INTO ingests "
-                "(video_id,title,transcript,frames,updated_at) "
-                "VALUES (?,?,?,?,?)",
-                (ing["video_id"], ing["title"], ing["transcript"],
-                 json.dumps(ing["frames"]), int(time.time() * 1000)))
+        # The caller already holds _LOCK and owns the connection — reuse it
+        # (a non-reentrant re-acquire would deadlock the worker).
+        c.execute(
+            "INSERT OR REPLACE INTO ingests "
+            "(video_id,title,transcript,frames,updated_at) "
+            "VALUES (?,?,?,?,?)",
+            (ing["video_id"], ing["title"], ing["transcript"],
+             json.dumps(ing["frames"]), int(time.time() * 1000)))
         return json.dumps({"video_id": ing["video_id"],
                            "title": ing["title"],
                            "transcript": ing["transcript"]})
