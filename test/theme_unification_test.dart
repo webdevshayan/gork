@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/hark_shell.dart';
+import 'package:gork/widgets/bottom_input_bar.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';
 import 'package:gork/widgets/glass.dart';
 

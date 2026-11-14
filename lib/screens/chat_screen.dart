@@ -483,7 +483,7 @@ class ChatScreenState extends State<ChatScreen> {
               child: searching
                   ? _buildSearchResults()
                   : _messages.isEmpty
-                      ? _EmptyChat(error: _error)
+                      ? EmptyChat(error: _error)
                       : _buildMessages(),
             ),
             if (!searching && _toolsUsed.isNotEmpty && !_loading)
@@ -544,7 +544,7 @@ class ChatScreenState extends State<ChatScreen> {
       return _messages.isEmpty
           ? ListView(
               padding: const EdgeInsets.all(16),
-              children: _EmptyChat(error: _error).buildChildren(),
+              children: EmptyChat(error: _error).buildChildren(),
             )
           : CustomScrollView(
               controller: _scroll,
@@ -793,8 +793,8 @@ class _Bubble extends StatelessWidget {
 
 /// Empty chat: the seeded intro sequence, then the fanned GitHub
 /// link-preview stack (three slightly rotated cards, like the reference).
-class _EmptyChat extends StatelessWidget {
-  const _EmptyChat({this.error});
+class EmptyChat extends StatelessWidget {
+  const EmptyChat({this.error});
 
   final String? error;
 

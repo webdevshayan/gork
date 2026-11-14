@@ -336,8 +336,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('send-circle')));
     await tester.pumpAndSettle();
     expect(find.text('hello'), findsOneWidget,
-        reason: 'the message lands on the chat tab');
-    expect(find.byIcon(Icons.search), findsOneWidget,
-        reason: 'left button on chat is search now');
+        reason: 'the message lands in the composed thread');
+    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
+        reason: 'the composed thread is a pushed screen with a chevron back');
   });
 }
