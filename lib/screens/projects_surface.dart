@@ -3,28 +3,36 @@ import 'package:flutter/material.dart';
 import '../services/locator.dart';
 import '../services/projects_store.dart';
 import '../widgets/glass.dart';
-import 'projects_screen.dart';
+import 'projects_screen.dart' show showProjectEditor, ProjectDetailScreen;
 import '../constants/design_tokens.dart';
 
 /// Projects tab: projects are FOLDERS — each folder holds its own chats and
 /// shared resources (files, images, notes). This surface lists the folders;
 /// tapping one opens the workspace detail where chats and resources live.
 class ProjectsSurface extends StatelessWidget {
-  const ProjectsSurface({super.key, this.onOpenChat});
+  const ProjectsSurface({super.key, this.onOpenChat, this.onAfterPush});
 
-  /// Called when the user opens (or creates) a chat inside a project — the
-  /// shell switches to the Chat tab with that conversation.
+  /// Called when the user opens (or creates) a chat inside a project —
+  /// hosts push ChatPage with it.
   final ValueChanged<String>? onOpenChat;
 
-  void _push(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  /// Fires after an internal push returns, so hosts can refresh counts.
+  final VoidCallback? onAfterPush;
+
+  Future<void> _push(BuildContext context, Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    onAfterPush?.call();
   }
 
   @override
   Widget build(BuildContext context) {
     final projects = Locator.projects.all();
     if (projects.isEmpty) {
-      return _EmptyProjects(onCreate: () => _push(context, const ProjectsScreen()));
+      return _EmptyProjects(
+          onCreate: () async {
+        await showProjectEditor(context);
+        onAfterPush?.call();
+      });
     }
     return ListView(
       key: const ValueKey('projects-folder-list'),
