@@ -128,7 +128,7 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   children: [
                     GlassIconButton(
                       key: const ValueKey('google-back'),
-                      icon: Icons.u_turn_left,
+                      icon: Icons.arrow_back_ios_new,
                       onTap: () => Navigator.pop(context),
                     ),
                     const Spacer(),

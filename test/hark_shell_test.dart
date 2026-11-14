@@ -26,6 +26,10 @@ class _BlockedClient implements HttpClient {
       throw StateError('network disabled in widget tests');
 }
 
+Color _navLabelColor(WidgetTester tester, String label) => DefaultTextStyle.of(
+      tester.element(find.text(label)),
+    ).style.color!;
+
 void main() {
   setUpAll(() {
     HttpOverrides.global = _BlockedOverrides();
@@ -155,13 +159,14 @@ void main() {
   ) async {
     await pumpShell(tester);
 
-    expect(tester.widget<Text>(find.text('Home')).style!.color, Colors.black);
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, GlassColors.textDim);
+    // The labels inherit the animated default text style.
+    expect(_navLabelColor(tester, 'Home'), GlassColors.textOnChip);
+    expect(_navLabelColor(tester, 'Chat'), GlassColors.textDim);
 
     await openTab(tester, 'chat');
 
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, Colors.black);
-    expect(tester.widget<Text>(find.text('Home')).style!.color, GlassColors.textDim);
+    expect(_navLabelColor(tester, 'Chat'), GlassColors.textOnChip);
+    expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
     // Empty chat: seeded intro + the fanned GitHub link-preview stack.
     expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
     expect(find.textContaining('gork PR #19', skipOffstage: false,
@@ -184,7 +189,9 @@ void main() {
 
     expect(find.text(kDefaultName), findsOneWidget);
     expect(find.text(kDefaultEmail), findsOneWidget);
-    expect(find.text('gork'), findsOneWidget);
+    expect(find.text('gork'), findsNothing,
+        reason: 'the gork wordmark card is removed (user request) — the '
+            'menu starts with the identity header and rows');
     expect(find.text('pro'), findsNothing, reason: 'no upsell on the menu');
     expect(find.text('Upgrade'), findsNothing, reason: 'no upsell on the menu');
     expect(find.text('Resets'), findsNothing);
@@ -198,12 +205,9 @@ void main() {
     expect(find.text('Message Hark'), findsNothing,
         reason: 'the input bar is hidden on the settings surface');
     // No tab is selected on the settings surface.
-    expect(tester.widget<Text>(find.text('Home')).style!.color, GlassColors.textDim);
-    expect(tester.widget<Text>(find.text('Chat')).style!.color, GlassColors.textDim);
-    expect(
-      tester.widget<Text>(find.text('Projects')).style!.color,
-      GlassColors.textDim,
-    );
+    expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
+    expect(_navLabelColor(tester, 'Chat'), GlassColors.textDim);
+    expect(_navLabelColor(tester, 'Projects'), GlassColors.textDim);
 
     // Tapping a tab returns to it.
     await tester.tap(find.byKey(const ValueKey('tab-home')));
@@ -266,7 +270,8 @@ void main() {
     expect(tester.widget<GlassRadio>(find.byType(GlassRadio).at(3)).selected,
         isTrue);
     expect(find.byKey(const ValueKey('theme-scrim')), findsOneWidget);
-    expect(find.byIcon(Icons.u_turn_left), findsOneWidget);
+        expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
+        reason: 'back affordances are chevrons everywhere');
   });
 
   testWidgets('input bar: + opens the attach menu, mic becomes an arrow, '

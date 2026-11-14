@@ -315,13 +315,15 @@ class ChatScreenState extends State<ChatScreen> {
   Future<void> _pickProvider() async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return SafeArea(
-          child: ListView.builder(
+          child: GlassContainer(
+            radius: 24,
+            strong: true,
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ListView.builder(
             shrinkWrap: true,
             itemCount: kProviders.length,
             itemBuilder: (context, index) {
@@ -344,9 +346,10 @@ class ChatScreenState extends State<ChatScreen> {
               );
             },
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 
   void _newChat() {
@@ -610,15 +613,16 @@ class _Bubble extends StatelessWidget {
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
+          child: GlassContainer(
+            radius: 24,
+            strong: true,
+            margin: const EdgeInsets.all(12),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
               key: const ValueKey('file-preview'),
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,6 +651,7 @@ class _Bubble extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         );

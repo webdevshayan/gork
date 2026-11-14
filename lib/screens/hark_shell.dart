@@ -299,6 +299,12 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<HarkTab> onSelect;
   final VoidCallback onAvatar;
 
+  static const List<(String, HarkTab)> _tabs = [
+    ('Home', HarkTab.home),
+    ('Chat', HarkTab.chat),
+    ('Projects', HarkTab.projects),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -312,14 +318,7 @@ class _TopBar extends StatelessWidget {
             radius: 30,
             opacity: 0.35,
             padding: const EdgeInsets.all(4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _tabChip('Home', HarkTab.home),
-                _tabChip('Chat', HarkTab.chat),
-                _tabChip('Projects', HarkTab.projects),
-              ],
-            ),
+            child: _slidingPill(),
           ),
           const _Avatar(),
         ],
@@ -327,30 +326,75 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  Widget _tabChip(String label, HarkTab chipTab) {
-    final bool isSelected = !onMenu && tab == chipTab;
-    return GestureDetector(
-      key: ValueKey('tab-${label.toLowerCase()}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onSelect(chipTab),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          // dark theme: the selected pill flips to a light chip with dark
-          // text so it reads on dark glass.
-          color: isSelected ? GlassColors.text : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            color: isSelected ? Colors.black : GlassColors.textDim,
+  double _labelWidth(String label) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return painter.width + 32; // 16px horizontal padding per side
+  }
+
+  /// The highlight SLIDES between tabs (AnimatedPositioned) instead of each
+  /// chip repainting; the active label is black on the near-white chip.
+  Widget _slidingPill() {
+    int activeIndex = -1;
+    for (var i = 0; i < _tabs.length; i++) {
+      if (!onMenu && tab == _tabs[i].$2) activeIndex = i;
+    }
+    double left = 0;
+    for (var i = 0; i < activeIndex; i++) {
+      left += _labelWidth(_tabs[i].$1);
+    }
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        AnimatedPositioned(
+          key: const ValueKey('nav-highlight'),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          left: activeIndex < 0 ? 0 : left,
+          top: 0,
+          bottom: 0,
+          width: activeIndex < 0
+              ? 0
+              : _labelWidth(_tabs[activeIndex].$1),
+          child: Container(
+            decoration: BoxDecoration(
+              color: GlassColors.chip,
+              borderRadius: BorderRadius.circular(26),
+            ),
           ),
         ),
-      ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (label, chipTab) in _tabs)
+              GestureDetector(
+                key: ValueKey('tab-${label.toLowerCase()}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onSelect(chipTab),
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 220),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: !onMenu && tab == chipTab
+                        ? GlassColors.textOnChip
+                        : GlassColors.textDim,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    child: Text(label),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

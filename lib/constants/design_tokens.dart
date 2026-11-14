@@ -178,4 +178,12 @@ class GlassColors {
   /// Hairline divider on glass.
   static Color get divider =>
       _dark ? const Color(0x2EF2F4F7) : const Color(0x2E111418);
+
+  /// The active nav-tab chip. Near-white in BOTH brightnesses so the label
+  /// on it (textOnChip, near-black) always reads — the old selected state
+  /// painted a dark chip with black text in light mode (invisible).
+  static Color get chip => const Color(0xF2FFFFFF);
+
+  /// Label on the active chip — black on the near-white chip, both modes.
+  static Color get textOnChip => const Color(0xFF111418);
 }

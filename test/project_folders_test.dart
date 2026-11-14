@@ -180,8 +180,9 @@ void main() {
     expect(find.byType(ProjectDetailScreen), findsOneWidget);
     // The pushed detail carries its own back control (the shell's back
     // button sits under the opaque route).
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
+        reason: 'the detail screen back control is a chevron');
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
     await tester.pumpAndSettle();
     expect(find.byType(ProjectDetailScreen), findsNothing);
     expect(find.byKey(const ValueKey('projects-folder-list')), findsOneWidget);

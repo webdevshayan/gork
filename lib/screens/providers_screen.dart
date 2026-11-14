@@ -44,7 +44,7 @@ class _ProvidersScreenState extends State<ProvidersScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: palette.surface,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
       ),
