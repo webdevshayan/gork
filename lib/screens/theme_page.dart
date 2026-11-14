@@ -45,11 +45,10 @@ class _ThemePageState extends State<ThemePage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Row(
                     children: [
-                      GlassIconButton(
-                        key: const ValueKey('theme-back'),
-                        icon: Icons.arrow_back_ios_new,
-                        onTap: () => Navigator.pop(context),
-                      ),
+                      GlassBackButton(
+                      key: const ValueKey('theme-back'),
+                      label: 'Back',
+                    ),
                       const Spacer(),
                     ],
                   ),

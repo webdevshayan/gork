@@ -315,7 +315,14 @@ class _TopBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GlassIconButton(key: const ValueKey('left-button'), icon: leftIcon, onTap: onLeftButton),
+          GlassIconButton(
+            key: const ValueKey('left-button'),
+            icon: leftIcon,
+            // The label follows the verb: search on core tabs, back on the
+            // settings surface.
+            semanticLabel: onMenu ? 'Back' : 'Search',
+            onTap: onLeftButton,
+          ),
           GlassContainer(
             key: const ValueKey('nav-pill'),
             radius: 30,
@@ -375,7 +382,12 @@ class _TopBar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final (label, chipTab) in _tabs)
-              GestureDetector(
+              Semantics(
+                // The pill is a real tab control: button + selected flags
+                // so screen readers announce the active tab.
+                button: true,
+                selected: !onMenu && tab == chipTab,
+                child: GestureDetector(
                 key: ValueKey('tab-${label.toLowerCase()}'),
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onSelect(chipTab),
@@ -393,6 +405,7 @@ class _TopBar extends StatelessWidget {
                         horizontal: 16, vertical: 10),
                     child: Text(label),
                   ),
+                ),
                 ),
               ),
           ],
@@ -715,11 +728,9 @@ class _ChatPageState extends State<_ChatPage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: Row(
                     children: [
-                      GlassIconButton(
+                      GlassBackButton(
                         key: const ValueKey('chat-page-back'),
-                        icon: Icons.arrow_back_ios_new,
-                        semanticLabel: 'Back to workspace',
-                        onTap: () => Navigator.of(context).pop(),
+                        label: 'Back to workspace',
                       ),
                       const SizedBox(width: 12),
                       Expanded(

@@ -46,11 +46,9 @@ class Screen extends StatelessWidget {
                   child: Row(
                     children: [
                       if (Navigator.of(context).canPop())
-                        GlassIconButton(
+                        GlassBackButton(
                           key: const ValueKey('screen-back'),
-                          icon: Icons.arrow_back_ios_new,
-                          semanticLabel: 'Back',
-                          onTap: () => Navigator.of(context).pop(),
+                          label: 'Back',
                         ),
                       if (title != null) ...[
                         const SizedBox(width: 12),
