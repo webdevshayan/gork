@@ -15,6 +15,7 @@ import 'menu_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'projects_surface.dart';
+import 'search_screen.dart';
 import '../constants/design_tokens.dart';
 
 enum HarkTab { home, chat, projects }
@@ -37,7 +38,6 @@ class HarkShell extends StatefulWidget {
 class _HarkShellState extends State<HarkShell> {
   HarkTab _tab = HarkTab.home;
   bool _onMenu = false;
-  bool _homeMenuOpen = false;
   bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
   String? _chatConversationId;
@@ -49,7 +49,6 @@ class _HarkShellState extends State<HarkShell> {
     setState(() {
       _tab = tab;
       _onMenu = false;
-      _homeMenuOpen = false;
       _attachOpen = false;
       if (tab != HarkTab.projects) _lastCoreTab = tab;
     });
@@ -57,7 +56,6 @@ class _HarkShellState extends State<HarkShell> {
 
   void _openMenu() => setState(() {
         _onMenu = true;
-        _homeMenuOpen = false;
         _attachOpen = false;
       });
 
@@ -137,33 +135,26 @@ class _HarkShellState extends State<HarkShell> {
     }
   }
 
+  /// ONE verb in the top-left: search. Scope follows the tab (home =
+  /// everything, chat = the active conversation, projects = projects).
   IconData get _leftIcon {
     if (_onMenu) return Icons.arrow_back_ios_new;
-    switch (_tab) {
-      case HarkTab.home:
-        return Icons.add;
-      case HarkTab.chat:
-        return Icons.settings_outlined;
-      case HarkTab.projects:
-        return Icons.arrow_back_ios_new;
-    }
+    return Icons.search;
   }
 
   /// Opens a chat that lives inside a project folder: any pushed workspace
   /// detail is dismissed and the shell switches to the Chat tab carrying
   /// that conversation.
+  /// A chat that lives inside a project opens as ITS OWN pushed full-screen
+  /// route (with the thread title and a chevron back) — it never collapses
+  /// back into the shell's Chat tab.
   void _openProjectChat(String conversationId) {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-    setState(() {
-      _chatConversationId = conversationId;
-      _tab = HarkTab.chat;
-      _onMenu = false;
-      _homeMenuOpen = false;
-      _attachOpen = false;
-      _lastCoreTab = HarkTab.chat;
-    });
+    Navigator.of(context).push(_slideUpRoute(
+      _ChatPage(
+        conversationId: conversationId,
+        onOpenChat: _openProjectChat,
+      ),
+    ));
   }
 
   void _onLeftButton() {
@@ -171,21 +162,42 @@ class _HarkShellState extends State<HarkShell> {
       _closeMenu();
       return;
     }
-    switch (_tab) {
-      case HarkTab.home:
-        setState(() => _homeMenuOpen = !_homeMenuOpen);
-        return;
-      case HarkTab.chat:
-        _openMenu();
-        return;
-      case HarkTab.projects:
-        // Back: leave a pushed workspace detail if one is open.
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        return;
-    }
+    _openSearch();
   }
+
+  /// The scoped search overlay — slides up from the bottom and covers the
+  /// screen (its own backdrop hides the content behind it).
+  void _openSearch() {
+    final SearchScope scope = switch (_tab) {
+      HarkTab.chat => SearchScope.chat,
+      HarkTab.projects => SearchScope.projects,
+      HarkTab.home => SearchScope.all,
+    };
+    final String? conversationId = _tab == HarkTab.chat
+        ? (_chatConversationId ?? Locator.history.latest?.id)
+        : null;
+    Navigator.of(context).push(_slideUpRoute(SearchScreen(
+      onOpenChat: _openProjectChat,
+      initialScope: scope,
+      conversationId: conversationId,
+    )));
+  }
+
+  /// Full-screen overlay route: rises from the bottom edge (ease-out), not
+  /// the default Material fade — the search feels like a sheet over the app.
+  Route<T> _slideUpRoute<T>(Widget page) => PageRouteBuilder<T>(
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, __, ___) => page,
+        transitionsBuilder: (_, animation, __, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+              parent: animation, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      );
 
   void _onAvatarTap() {
     if (_onMenu) {
@@ -265,15 +277,6 @@ class _HarkShellState extends State<HarkShell> {
                   onDismiss: _toggleAttach,
                   onPick: _pickAttachment,
                 ),
-              ),
-            ),
-          if (_homeMenuOpen && !_onMenu)
-            Positioned(
-              key: const ValueKey('home-menu-anchor'),
-              top: 76,
-              left: 16,
-              child: _HomeMenu(
-                onDismiss: () => setState(() => _homeMenuOpen = false),
               ),
             ),
         ],
@@ -637,67 +640,6 @@ class BottomInputBar extends StatelessWidget {
 
 /// The + dropdown on Home: add a file, an image, or a new panel — a more
 /// opaque glass dropdown right under the left button, like the reference.
-class _HomeMenu extends StatelessWidget {
-  const _HomeMenu({required this.onDismiss});
-
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      key: const ValueKey('home-menu'),
-      radius: 24,
-      opacity: 0.6,
-      width: 220,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _row(context, Icons.insert_drive_file_outlined, 'Add file'),
-          Divider(color: GlassColors.divider, height: 1),
-          _row(context, Icons.image_outlined, 'Add image'),
-          Divider(color: GlassColors.divider, height: 1),
-          _row(context, Icons.dashboard_outlined, 'New panel'),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(BuildContext context, IconData icon, String label) {
-    return GlassMenuRow(
-      icon: icon,
-      label: label,
-      onTap: () {
-        onDismiss();
-        if (label == 'New panel') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const PanelsScreen()),
-          );
-          return;
-        }
-        final projects = Locator.projects.all();
-        if (projects.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Create a project first.')),
-          );
-          return;
-        }
-        // Resources live in the project folder — open the most recent one.
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                ProjectDetailScreen(projectId: projects.first.id),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// The + attachment menu from the screenshots: Camera / Photos / Files in a
-/// more opaque glass dropdown above the input bar — and every row really
-/// picks content now.
 class _AttachMenu extends StatelessWidget {
   const _AttachMenu({required this.onDismiss, required this.onPick});
 
@@ -740,3 +682,135 @@ class _AttachMenu extends StatelessWidget {
     );
   }
 }
+/// A pushed, full-screen chat for conversations that live inside a project:
+/// glass top bar (chevron back + thread title) and its own input bar. The
+/// page OWNS the ChatScreen state key so the input bar sends to THIS thread.
+class _ChatPage extends StatefulWidget {
+  const _ChatPage({required this.conversationId, required this.onOpenChat});
+
+  final String conversationId;
+  final ValueChanged<String> onOpenChat;
+
+  @override
+  State<_ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<_ChatPage> {
+  final GlobalKey<ChatScreenState> _chatKey = GlobalKey<ChatScreenState>();
+
+  @override
+  Widget build(BuildContext context) {
+    final String title =
+        Locator.history.byId(widget.conversationId)?.title ?? 'New chat';
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const AmbientBackdrop(),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Row(
+                    children: [
+                      GlassIconButton(
+                        key: const ValueKey('chat-page-back'),
+                        icon: Icons.arrow_back_ios_new,
+                        semanticLabel: 'Back to workspace',
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: GlassColors.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ChatScreen(
+                    key: _chatKey,
+                    conversationId: widget.conversationId,
+                  ),
+                ),
+                _ChatPageInputBar(
+                  chatKey: _chatKey,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The input bar for the pushed chat screen — same glass bar, wired to the
+/// page's ChatScreen through the key the page owns.
+class _ChatPageInputBar extends StatefulWidget {
+  const _ChatPageInputBar({required this.chatKey});
+
+  final GlobalKey<ChatScreenState> chatKey;
+
+  @override
+  State<_ChatPageInputBar> createState() => _ChatPageInputBarState();
+}
+
+class _ChatPageInputBarState extends State<_ChatPageInputBar> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send(String raw) async {
+    final text = raw.trim();
+    if (text.isEmpty) return;
+    _controller.clear();
+    await widget.chatKey.currentState?.send(text);
+  }
+
+  Future<void> _attach() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        imageQuality: 82,
+      );
+      if (picked == null || !mounted) return;
+      await widget.chatKey.currentState
+          ?.attachImage(picked.path, name: picked.name);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not attach that.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomInputBar(
+      controller: _controller,
+      focusNode: _focus,
+      onSend: _send,
+      onAttach: _attach,
+    );
+  }
+}
+

@@ -98,13 +98,18 @@ class AmbientBackdrop extends StatelessWidget {
               // Absolute cover: the photo fills the screen no matter the
               // aspect ratio, behind everything.
               Positioned.fill(
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                  child: Image.asset(
-                    key: ValueKey(dark ? 'ambient-night' : 'ambient-day'),
-                    dark ? _nightAsset : _dayAsset,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
+                // RepaintBoundary: holding an overscroll repaints the glass
+                // BackdropFilters every frame — the sky's raster must NOT be
+                // re-filtered with them or the blur visibly collapses.
+                child: RepaintBoundary(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                    child: Image.asset(
+                      key: ValueKey(dark ? 'ambient-night' : 'ambient-day'),
+                      dark ? _nightAsset : _dayAsset,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                    ),
                   ),
                 ),
               ),

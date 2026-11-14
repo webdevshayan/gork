@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/history_store.dart';
 import '../services/locator.dart';
+import '../services/projects_store.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
 import 'cloud_computer_screen.dart';
@@ -15,14 +16,30 @@ import 'theme_page.dart';
 import 'wallet_screen.dart';
 import '../constants/design_tokens.dart';
 
+/// What the search covers — the entry point preselects the scope (home =
+/// everything, a chat = that conversation, projects = projects only) and the
+/// chips let the user widen or narrow it.
+enum SearchScope { all, chat, projects }
+
 /// Chat search from the reference: a glass query field over the ambient sky,
 /// hits across conversations (title + matched snippet + date), quick feature
-/// jumps and recent chats while the query is empty. Opening a hit hands the
-/// conversation id to the shell, which lands it in the Chat tab.
+/// jumps and recent chats while the query is empty. Opening a chat hit hands
+/// the conversation id to the shell; project hits open the workspace screen.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key, required this.onOpenChat});
+  const SearchScreen({
+    super.key,
+    required this.onOpenChat,
+    this.initialScope = SearchScope.all,
+    this.conversationId,
+  });
 
   final ValueChanged<String> onOpenChat;
+
+  /// The scope the overlay was opened with.
+  final SearchScope initialScope;
+
+  /// The active conversation when opened from the Chat tab.
+  final String? conversationId;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -31,6 +48,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _field = TextEditingController();
   String _query = '';
+  late SearchScope _scope = widget.initialScope;
 
   static const List<_Jump> _jumps = [
     _Jump('Inbox', Icons.inbox_outlined, InboxScreen()),
@@ -44,10 +62,16 @@ class _SearchScreenState extends State<SearchScreen> {
     _Jump('Theme', Icons.palette_outlined, ThemePage()),
   ];
 
-  List<_Hit> _hits(String query) {
+  List<_Hit> _chatHits(String query) {
     final lower = query.toLowerCase();
+    Iterable<Conversation> conversations = Locator.history.all();
+    if (_scope == SearchScope.chat && widget.conversationId != null) {
+      final one =
+          conversations.where((c) => c.id == widget.conversationId).toList();
+      if (one.isNotEmpty) conversations = one;
+    }
     final out = <_Hit>[];
-    for (final conv in Locator.history.all()) {
+    for (final conv in conversations) {
       for (final m in conv.messages) {
         final index = m.content.toLowerCase().indexOf(lower);
         if (index < 0) continue;
@@ -66,6 +90,16 @@ class _SearchScreenState extends State<SearchScreen> {
     return out;
   }
 
+  List<Project> _projectHits(String query) {
+    final lower = query.toLowerCase();
+    return [
+      for (final p in Locator.projects.all())
+        if (p.title.toLowerCase().contains(lower) ||
+            p.notes.toLowerCase().contains(lower))
+          p,
+    ];
+  }
+
   String _dateLabel(int ms) {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -75,10 +109,15 @@ class _SearchScreenState extends State<SearchScreen> {
     return '${months[d.month - 1]} ${d.day}';
   }
 
+  String _scopeLabel(SearchScope scope) => switch (scope) {
+        SearchScope.all => 'All',
+        SearchScope.chat => 'This chat',
+        SearchScope.projects => 'Projects',
+      };
+
   @override
   Widget build(BuildContext context) {
     final bool empty = _query.trim().isEmpty;
-    final hits = empty ? const <_Hit>[] : _hits(_query.trim());
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -91,24 +130,22 @@ class _SearchScreenState extends State<SearchScreen> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: GlassIconButton(
-                    icon: Icons.arrow_back_ios_new,
-                    onTap: () => Navigator.pop(context),
+                  child: Row(
+                    children: [
+                      GlassIconButton(
+                        icon: Icons.arrow_back_ios_new,
+                        semanticLabel: 'Close search',
+                        onTap: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
-                Padding(
+                const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'Search',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                      color: GlassColors.text,
-                    ),
-                  ),
+                  child: _SearchTitle(),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: GlassContainer(
@@ -135,7 +172,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                   setState(() => _query = '');
                                 },
                               ),
-                        hintText: 'Search your chats',
+                        hintText: _scope == SearchScope.chat
+                            ? 'Search this chat'
+                            : _scope == SearchScope.projects
+                                ? 'Search your projects'
+                                : 'Search your chats',
                         hintStyle: TextStyle(
                             fontSize: 16, color: GlassColors.textDim),
                         border: InputBorder.none,
@@ -144,10 +185,50 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // Scope chips: the overlay opens pre-scoped, the user can
+                // widen or narrow it from here.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      for (final scope in SearchScope.values)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            key: ValueKey('search-scope-${scope.name}'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => _scope = scope),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: _scope == scope
+                                    ? GlassColors.chip
+                                    : GlassColors.fill,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: GlassColors.border),
+                              ),
+                              child: Text(
+                                _scopeLabel(scope),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _scope == scope
+                                      ? GlassColors.textOnChip
+                                      : GlassColors.textDim,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    children: empty ? _emptyState() : _hitList(hits),
+                    children: empty ? _emptyState() : _resultList(),
                   ),
                 ),
               ],
@@ -159,6 +240,15 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   List<Widget> _emptyState() {
+    if (_scope == SearchScope.projects) {
+      return [
+        Text(
+          'Search your workspaces by name — folders, files, images and their '
+          'chats live inside each one.',
+          style: TextStyle(fontSize: 14, color: GlassColors.textDim),
+        ),
+      ];
+    }
     final recents = Locator.history.all().take(5).toList();
     return [
       Text(
@@ -215,21 +305,28 @@ class _SearchScreenState extends State<SearchScreen> {
     ];
   }
 
-  List<Widget> _hitList(List<_Hit> hits) {
-    if (hits.isEmpty) {
+  List<Widget> _resultList() {
+    final query = _query.trim();
+    final bool showChats = _scope != SearchScope.projects;
+    final bool showProjects = _scope != SearchScope.chat;
+    final chatHits = showChats ? _chatHits(query) : <_Hit>[];
+    final projectHits = showProjects ? _projectHits(query) : <Project>[];
+
+    if (chatHits.isEmpty && projectHits.isEmpty) {
       return [
         GlassContainer(
           radius: 24,
           padding: const EdgeInsets.all(20),
           child: Text(
-            'No results for "${_query.trim()}".',
+            'No results for "$query".',
             style: TextStyle(fontSize: 16, color: GlassColors.textDim),
           ),
         ),
       ];
     }
+
     return [
-      for (final hit in hits)
+      for (final hit in chatHits)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _HitCard(
@@ -239,7 +336,56 @@ class _SearchScreenState extends State<SearchScreen> {
             onTap: () => widget.onOpenChat(hit.conversation.id),
           ),
         ),
+      if (chatHits.isNotEmpty && projectHits.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(
+          'Projects',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: GlassColors.textDim,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+      for (final project in projectHits)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _HitCard(
+            title: project.title,
+            date: _dateLabel(project.updatedAt),
+            snippet: '${project.chats.length} chats · '
+                '${project.files.length} files · '
+                '${project.images.length} images',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProjectDetailScreen(
+                  projectId: project.id,
+                  onOpenChat: widget.onOpenChat,
+                ),
+              ),
+            ),
+          ),
+        ),
     ];
+  }
+}
+
+/// The big title — kept as a widget so the build stays readable.
+class _SearchTitle extends StatelessWidget {
+  const _SearchTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Search',
+      style: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        color: GlassColors.text,
+      ),
+    );
   }
 }
 
