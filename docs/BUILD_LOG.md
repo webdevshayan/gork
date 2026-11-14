@@ -44,6 +44,8 @@ The README stays clean — the receipts live here.
 | #36 | Release pipeline: `scripts/release_apk.sh` reads the version from pubspec, passes `--dart-define=GORK_VERSION`, runs the slim size gate — v1.6.0 is the first release built by the script and the first to carry Movements 34+35 to the phone |
 | #37 | Build-box receipts: the full toolchain-rebuild recipe on paper (JRE-only JDK → extracted jdk21-root, llvm-19 debs → llvm19-root, NDK stub + strip shims, Aliyun patch, lint off) — tested, so the next rebuild cannot forget them |
 | #38 | Profile is real: editable name/email form (persisted, defaults stay), one-click Google — pick an account, EVERY Google service binds at once — and an account selection screen; the menu gains Google + Theme rows |
+| #44 | Chat home: the Chat tab is a recent-threads list (title, snippet, WhatsApp time); ChatPage + BottomInputBar shared components; compose opens new threads |
+| #45 | One Projects UI: pushed screen = glass folder list; shared showProjectEditor sheet; ChatPage fallback hook; onAfterPush refresh |
 | #41 | WhatsApp chat list: sticky date badges (PinnedHeaderSliver), time-only stamps, no Read receipts, synchronous history preload |
 | #42 | One glass theme everywhere: Screen = glass scaffold (sky + chevron back) for ALL pushed screens, glass sheets, sliding nav pill + black active label, gork card removed |
 | #43 | Separate screens + scoped search: top-left = search on every tab, slide-up overlay with scope chips, project chats push as full screens, backdrop RepaintBoundary |
