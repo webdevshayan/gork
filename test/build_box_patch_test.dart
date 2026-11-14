@@ -56,4 +56,17 @@ void main() {
       expect(env, contains('patch_flutter_tools_repos.sh'));
     });
   });
+
+  group('release lint stays off on the 4 GB build box', () {
+    test('checkReleaseBuilds is disabled — lint-vital OOMs in metaspace', () {
+      // Regression: the v1.6.0 build compiled every source and then died in
+      // :image_picker_android:lintVitalAnalyzeRelease with
+      // OutOfMemoryError: Metaspace — lint-vital loads the whole plugin
+      // UAST world into the capped 1 GB gradle JVM (see gradle.properties:
+      // -Xmx1024m is a build-box necessity). The app's quality gates are
+      // the flutter test suite and the release size gate, not lint.
+      final gradle = readRepo('android/app/build.gradle.kts');
+      expect(gradle, contains('checkReleaseBuilds = false'));
+    });
+  });
 }
