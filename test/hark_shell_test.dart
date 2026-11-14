@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/theme_page.dart';
+import 'package:gork/screens/search_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/profile_info.dart';
 import 'package:gork/services/secure_store.dart';
@@ -100,53 +101,77 @@ void main() {
     expect(pill.radius, 30);
   });
 
-  testWidgets('left button follows the reference: + / settings / back', (
+  testWidgets('left button is search on every tab (one verb, one place)', (
     tester,
   ) async {
     await pumpShell(tester);
 
-    // Home: the + (dropdown); Chat: settings; Projects: back. No ☰ anywhere.
-    expect(find.byIcon(Icons.segment), findsNothing);
+    IconData leftIcon() => tester
+        .widget<Icon>(find.descendant(
+          of: find.byKey(const ValueKey('left-button')),
+          matching: find.byType(Icon),
+        ))
+        .icon!;
+
+    // Home, Chat, Projects: the top-left button is ALWAYS search (chevron
+    // only on the settings surface). No + dropdown, no settings icon.
+    expect(leftIcon(), Icons.search);
     expect(find.byIcon(Icons.menu), findsNothing);
 
     await openTab(tester, 'chat');
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(leftIcon(), Icons.search);
 
     await openTab(tester, 'projects');
-    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+    expect(leftIcon(), Icons.search);
   });
 
-  testWidgets('home + opens the add dropdown (file / image / panel)', (
-    tester,
-  ) async {
+  testWidgets('home search opens the scoped overlay (the + dropdown is gone)',
+    (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('home-menu')), findsOneWidget);
-    for (final item in ['Add file', 'Add image', 'New panel']) {
-      expect(find.text(item), findsOneWidget);
-    }
+    expect(find.byType(SearchScreen), findsOneWidget,
+        reason: 'the top-left button opens search on home');
+    expect(find.text('Add file'), findsNothing,
+        reason: 'attachments live in the input bar +, not the top-left');
 
-    // Tapping + again closes the dropdown.
-    await tester.tap(find.byKey(const ValueKey('left-button')));
+
+    // Closing via the overlay's own chevron returns to home.
+    await tester.tap(find.descendant(
+      of: find.byType(SearchScreen),
+      matching: find.byIcon(Icons.arrow_back_ios_new),
+    ));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('home-menu')), findsNothing);
+    expect(find.byType(SearchScreen), findsNothing);
   });
 
-  testWidgets('chat settings button opens the settings surface', (
-    tester,
-  ) async {
+  testWidgets('chat search is scoped to the active thread; '
+      'settings live behind the avatar', (tester) async {
     await pumpShell(tester);
 
     await openTab(tester, 'chat');
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
 
+    expect(find.byType(SearchScreen), findsOneWidget);
+    expect(
+      tester.widget<SearchScreen>(find.byType(SearchScreen)).initialScope,
+      SearchScope.chat,
+      reason: 'searching from the chat tab searches the conversation',
+    );
+
+    // Settings surface: avatar (the left button is search now).
+    await tester.tap(find.descendant(
+      of: find.byType(SearchScreen),
+      matching: find.byIcon(Icons.arrow_back_ios_new),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('avatar')));
+    await tester.pumpAndSettle();
     expect(find.text(kDefaultName), findsOneWidget,
         reason: 'the settings surface shows the identity header');
-    // The left button is now back.
     expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
@@ -312,7 +337,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('hello'), findsOneWidget,
         reason: 'the message lands on the chat tab');
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget,
-        reason: 'left button on chat is now settings');
+    expect(find.byIcon(Icons.search), findsOneWidget,
+        reason: 'left button on chat is search now');
   });
 }

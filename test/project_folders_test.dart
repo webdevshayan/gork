@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
+import 'package:gork/screens/chat_screen.dart';
 import 'package:gork/screens/projects_screen.dart';
 import 'package:gork/services/history_store.dart';
 import 'package:gork/services/locator.dart';
@@ -101,11 +102,14 @@ void main() {
     expect(find.text('Chats'), findsOneWidget);
     expect(find.text('No chats in this folder yet.'), findsOneWidget);
 
-    // New chat -> shell switches to the Chat tab with the new conversation.
+    // New chat -> a pushed FULL-SCREEN chat page (never collapses into the
+    // shell chat tab).
     await tester.tap(find.byKey(const ValueKey('new-project-chat')));
     await tester.pumpAndSettle();
+    expect(find.byType(ChatScreen, skipOffstage: false), findsOneWidget,
+        reason: 'the new project chat opens as its own screen');
     expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget,
-        reason: 'the chat tab opened an empty project chat');
+        reason: 'the pushed chat opened an empty project chat');
 
     // The message lands in the PROJECT chat, not the global latest.
     await tester.enterText(find.byKey(const ValueKey('input-bar')), 'hi there');
