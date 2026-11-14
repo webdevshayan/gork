@@ -764,8 +764,9 @@ class _Bubble extends StatelessWidget {
                 text,
                 style: TextStyle(fontSize: 16, color: GlassColors.text),
               )
-            // Assistant bubbles render safe markdown (no web view, no network).
-            : MarkdownView(text),
+            // Assistant bubbles render safe markdown (no web view, no network)
+            // inside a SelectionArea — AI responses are selectable too.
+            : SelectionArea(child: MarkdownView(text)),
       );
     }
 

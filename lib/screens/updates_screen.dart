@@ -8,6 +8,7 @@ import '../constants/version.dart';
 import '../services/installer.dart';
 import '../services/update_service.dart';
 import '../widgets/glass.dart';
+import '../widgets/markdown_view.dart';
 import '../widgets/screen.dart';
 import '../constants/design_tokens.dart';
 
@@ -248,21 +249,18 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 style: TextStyle(fontSize: 13, color: GlassColors.textDim),
               ),
             ],
-            if (release.notes.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                release.notes,
-                maxLines: 8,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 15, color: GlassColors.textDim),
-              ),
-            ],
+            // The action button comes FIRST — the release notes below render
+            // as markdown in full, never clipped.
             const SizedBox(height: 12),
             _blackPill(
               key: 'updates-download',
               label: 'Download ${release.apkName}',
               onTap: _download,
             ),
+            if (release.notes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              MarkdownView(release.notes),
+            ],
           ],
         );
       case _Phase.downloading:
