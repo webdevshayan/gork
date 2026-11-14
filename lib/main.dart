@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'services/locator.dart';
 
 import 'app.dart';
+import 'services/profile_info.dart';
 import 'widgets/ambient_backdrop.dart';
 
 Future<void> main() async {
@@ -13,6 +14,8 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   Locator.bind(prefs: prefs);
   await initProfilePhoto();
+  initProfile();
+  initTheme();
   runApp(const GorkApp());
 
   // Notifications + periodic scheduler tick (while the app is alive).

@@ -129,7 +129,7 @@ class _WeatherCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.cloud_outlined,
                   size: 20,
                   color: GlassColors.text,
@@ -137,7 +137,7 @@ class _WeatherCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(
                   Locator.locationLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w500,
                     color: GlassColors.text,
@@ -155,7 +155,7 @@ class _WeatherCard extends StatelessWidget {
                 children: [
                   Text(
                     conditions,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       color: GlassColors.textDim,
                     ),
@@ -163,7 +163,7 @@ class _WeatherCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     temp,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 34,
                       fontWeight: FontWeight.w500,
                       color: GlassColors.text,
@@ -180,14 +180,14 @@ class _WeatherCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Sunset',
                     style: TextStyle(fontSize: 16, color: GlassColors.textDim),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     sunset,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 34,
                       fontWeight: FontWeight.w500,
                       color: GlassColors.text,
@@ -218,7 +218,7 @@ class _CreatePanelButton extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.add, size: 20, color: GlassColors.text),
@@ -256,7 +256,7 @@ class _ManualPanelRow extends StatelessWidget {
               children: [
                 Text(
                   panel.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: GlassColors.text,
@@ -265,12 +265,12 @@ class _ManualPanelRow extends StatelessWidget {
                 if (panel.manualValue.isNotEmpty)
                   Text(
                     panel.manualValue,
-                    style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
+                    style: TextStyle(fontSize: 14, color: GlassColors.textDim),
                   ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
+          Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
         ],
       ),
     );

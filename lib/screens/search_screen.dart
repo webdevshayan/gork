@@ -97,7 +97,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'Search',
@@ -120,15 +120,15 @@ class _SearchScreenState extends State<SearchScreen> {
                       autofocus: true,
                       controller: _field,
                       onChanged: (q) => setState(() => _query = q),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 17, color: GlassColors.text),
                       decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search,
+                        prefixIcon: Icon(Icons.search,
                             size: 20, color: GlassColors.textDim),
                         suffixIcon: _query.isEmpty
                             ? null
                             : IconButton(
-                                icon: const Icon(Icons.close,
+                                icon: Icon(Icons.close,
                                     size: 18, color: GlassColors.textDim),
                                 onPressed: () {
                                   _field.clear();
@@ -136,7 +136,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                 },
                               ),
                         hintText: 'Search your chats',
-                        hintStyle: const TextStyle(
+                        hintStyle: TextStyle(
                             fontSize: 16, color: GlassColors.textDim),
                         border: InputBorder.none,
                       ),
@@ -161,7 +161,7 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Widget> _emptyState() {
     final recents = Locator.history.all().take(5).toList();
     return [
-      const Text(
+      Text(
         'Jump to',
         style: TextStyle(
           fontSize: 13,
@@ -188,7 +188,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
       const SizedBox(height: 16),
-      const Text(
+      Text(
         'Recent',
         style: TextStyle(
           fontSize: 13,
@@ -198,7 +198,7 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       const SizedBox(height: 8),
       if (recents.isEmpty)
-        const Text(
+        Text(
           'No chats yet — say something to gork and it will show up here.',
           style: TextStyle(fontSize: 14, color: GlassColors.textDim),
         ),
@@ -223,7 +223,7 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.all(20),
           child: Text(
             'No results for "${_query.trim()}".',
-            style: const TextStyle(fontSize: 16, color: GlassColors.textDim),
+            style: TextStyle(fontSize: 16, color: GlassColors.textDim),
           ),
         ),
       ];
@@ -286,7 +286,7 @@ class _HitCard extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: GlassColors.text,
@@ -295,7 +295,7 @@ class _HitCard extends StatelessWidget {
                 ),
                 Text(
                   date,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: GlassColors.textDim),
                 ),
               ],
@@ -305,10 +305,10 @@ class _HitCard extends StatelessWidget {
               snippet,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
+              style: TextStyle(fontSize: 14, color: GlassColors.textDim),
             ),
             const SizedBox(height: 6),
-            const Align(
+            Align(
               alignment: Alignment.centerRight,
               child: Icon(Icons.chevron_right, size: 18, color: GlassColors.textDim),
             ),

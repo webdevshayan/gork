@@ -125,33 +125,57 @@ class TypeScale {
 
 /// Resolve the semantic palette for the current brightness.
 ///
-/// Movement 34: the whole app is dark glass — token screens resolve dark no
-/// matter the platform brightness, so every page matches the shell.
-Palette paletteOf(BuildContext context) => Palette.dark;
+/// Movement 34 locked this to dark glass. Movement 39 unlocks it: the app
+/// shell resolves the theme mode (Light / Dark / System / Auto-by-clock)
+/// and publishes the result to [GlassColors.brightness] — every consumer
+/// of this function follows that resolution, so pages can never disagree
+/// with the shell.
+Palette paletteOf(BuildContext context) =>
+    GlassColors.brightness.value == Brightness.dark
+        ? Palette.dark
+        : Palette.light;
 
-/// Colors for the glass shell: dark fills, subtle light borders, light text.
-/// Named after their role, not their look — pages must stay consistent.
+/// Colors for the glass shell. Named after their role, not their look —
+/// pages must stay consistent. Both looks are full citizens: dark glass
+/// (Movement 34) and light glass (Movement 39, light fills, light borders,
+/// dark text). The app shell sets [brightness] whenever the theme mode
+/// resolves; everything reads the getters, so call sites never change.
 class GlassColors {
   GlassColors._();
 
-  /// Dark translucent glass fill (sits over the ambient backdrop).
-  static const Color fill = Color(0xB312141A);
+  /// What the app resolved right now. Defaults to dark — the Movement 34
+  /// glass — so tests and early frames see exactly the shipped look.
+  static final ValueNotifier<Brightness> brightness =
+      ValueNotifier<Brightness>(Brightness.dark);
+
+  static bool get _dark => brightness.value == Brightness.dark;
+
+  /// Translucent glass fill (sits over the ambient backdrop).
+  static Color get fill =>
+      _dark ? const Color(0xB312141A) : const Color(0xE6FFFFFF);
 
   /// Same fill, more opaque for primary chrome (input bar, nav pills).
-  static const Color fillStrong = Color(0xCC12141A);
+  static Color get fillStrong =>
+      _dark ? const Color(0xCC12141A) : const Color(0xF2FFFFFF);
 
-  /// Subtle light border — hairline, never the old white 0.5 edge.
-  static const Color border = Color(0x1FF2F4F7);
+  /// Hairline border — light on dark glass, quiet dark on light glass.
+  /// Never the old white 0.5 edge.
+  static Color get border =>
+      _dark ? const Color(0x1FF2F4F7) : const Color(0x33111418);
 
   /// Primary text on glass.
-  static const Color text = Color(0xFFF2F4F7);
+  static Color get text =>
+      _dark ? const Color(0xFFF2F4F7) : const Color(0xFF111418);
 
   /// Secondary text on glass.
-  static const Color textDim = Color(0xFFA8B0BA);
+  static Color get textDim =>
+      _dark ? const Color(0xFFA8B0BA) : const Color(0xFF4A5158);
 
   /// Tertiary/faint text on glass.
-  static const Color textFaint = Color(0xFF8A93A0);
+  static Color get textFaint =>
+      _dark ? const Color(0xFF8A93A0) : const Color(0xFF6B7280);
 
   /// Hairline divider on glass.
-  static const Color divider = Color(0x2EF2F4F7);
+  static Color get divider =>
+      _dark ? const Color(0x2EF2F4F7) : const Color(0x2E111418);
 }

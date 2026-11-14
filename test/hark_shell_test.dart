@@ -6,6 +6,7 @@ import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
+import 'package:gork/services/profile_info.dart';
 import 'package:gork/services/secure_store.dart';
 import 'package:gork/widgets/glass.dart';
 import 'package:http/http.dart' as http;
@@ -60,8 +61,8 @@ void main() {
     expect(find.byKey(const ValueKey('ambient-backdrop')), findsOneWidget);
     expect(find.byType(BackdropFilter), findsWidgets);
     // Reference Home has NO identity header — that lives on the menu surface.
-    expect(find.text('Shayan Ali Jalb'), findsNothing);
-    expect(find.text('shayanalibuilds@gmail.com'), findsNothing);
+    expect(find.text(kDefaultName), findsNothing);
+    expect(find.text(kDefaultEmail), findsNothing);
     expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
     expect(find.text('Broken Clouds'), findsOneWidget);
     expect(find.text('26°C'), findsOneWidget);
@@ -139,13 +140,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Shayan Ali Jalb'), findsOneWidget,
+    expect(find.text(kDefaultName), findsOneWidget,
         reason: 'the settings surface shows the identity header');
     // The left button is now back.
     expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Shayan Ali Jalb'), findsNothing);
+    expect(find.text(kDefaultName), findsNothing);
     expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
   });
 
@@ -181,8 +182,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Shayan Ali Jalb'), findsOneWidget);
-    expect(find.text('shayanalibuilds@gmail.com'), findsOneWidget);
+    expect(find.text(kDefaultName), findsOneWidget);
+    expect(find.text(kDefaultEmail), findsOneWidget);
     expect(find.text('gork'), findsOneWidget);
     expect(find.text('pro'), findsNothing, reason: 'no upsell on the menu');
     expect(find.text('Upgrade'), findsNothing, reason: 'no upsell on the menu');
@@ -207,7 +208,7 @@ void main() {
     // Tapping a tab returns to it.
     await tester.tap(find.byKey(const ValueKey('tab-home')));
     await tester.pumpAndSettle();
-    expect(find.text('Shayan Ali Jalb'), findsNothing);
+    expect(find.text(kDefaultName), findsNothing);
     expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
   });
 
@@ -246,7 +247,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Profile'));
+    // Movement 38: Profile opens the identity form; Theme has its own
+    // row — drag the menu list up until the row is on screen.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('menu-theme')));
     await tester.pumpAndSettle();
 
     expect(find.text('Theme'), findsOneWidget);
