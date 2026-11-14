@@ -322,11 +322,11 @@ class ChatScreenState extends State<ChatScreen> {
               return ListTile(
                 title: Text(
                   p.name,
-                  style: const TextStyle(fontSize: 16, color: GlassColors.text),
+                  style: TextStyle(fontSize: 16, color: GlassColors.text),
                 ),
                 subtitle: Text(
                   p.isCustom ? 'custom' : p.baseURL,
-                  style: const TextStyle(fontSize: 12, color: GlassColors.textDim),
+                  style: TextStyle(fontSize: 12, color: GlassColors.textDim),
                 ),
                 trailing: _providerId == p.id ? const Icon(Icons.check) : null,
                 onTap: () {
@@ -384,7 +384,7 @@ class ChatScreenState extends State<ChatScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
+            style: TextStyle(fontSize: 15, color: GlassColors.textDim),
           ),
         ),
       );
@@ -415,7 +415,7 @@ class ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.only(top: 2, bottom: 8, right: 8),
               child: Text(
                 '•••• Read',
-                style: const TextStyle(fontSize: 12, color: GlassColors.textFaint),
+                style: TextStyle(fontSize: 12, color: GlassColors.textFaint),
               ),
             ),
           ),
@@ -514,7 +514,7 @@ class ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.all(20),
             child: Text(
               'No results for "$query".',
-              style: const TextStyle(fontSize: 16, color: GlassColors.textDim),
+              style: TextStyle(fontSize: 16, color: GlassColors.textDim),
             ),
           )
         else ..._bubbleList(hits),
@@ -570,7 +570,7 @@ class _Bubble extends StatelessWidget {
               children: [
                 Text(
                   attachment!.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
                     color: GlassColors.text,
@@ -580,13 +580,13 @@ class _Bubble extends StatelessWidget {
                 Flexible(
                   child: SingleChildScrollView(
                     child: binary
-                        ? const Text(
+                        ? Text(
                             'Binary file — stored on this device, no preview.',
                             style: TextStyle(fontSize: 15, color: GlassColors.textDim),
                           )
                         : SelectableText(
                             content,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 14, color: GlassColors.text),
                           ),
                   ),
@@ -668,14 +668,14 @@ class _Bubble extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.insert_drive_file_outlined,
+                      Icon(Icons.insert_drive_file_outlined,
                           size: 20, color: GlassColors.text),
                       const SizedBox(width: 10),
                       Flexible(
                         child: Text(
                           attachment!.name,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 15, color: GlassColors.text),
                         ),
                       ),
@@ -702,7 +702,7 @@ class _Bubble extends StatelessWidget {
         child: isUser
             ? SelectableText(
                 text,
-                style: const TextStyle(fontSize: 16, color: GlassColors.text),
+                style: TextStyle(fontSize: 16, color: GlassColors.text),
               )
             // Assistant bubbles render safe markdown (no web view, no network).
             : MarkdownView(text),
@@ -785,12 +785,12 @@ class _EmptyChat extends StatelessWidget {
       const SizedBox(height: 16),
       Text(
         error ?? 'Say something below. Your keys stay on this device.',
-        style: const TextStyle(
+        style: TextStyle(
             fontSize: 14, color: GlassColors.textDim),
       ),
       if (error != null) ...[
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Tip: add a provider key first (Menu → Security → Providers).',
           style: TextStyle(fontSize: 14, color: GlassColors.text),
         ),
@@ -857,7 +857,7 @@ class _PreviewCardView extends StatelessWidget {
             card.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: GlassColors.text,
@@ -866,14 +866,14 @@ class _PreviewCardView extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.code, size: 12, color: GlassColors.textDim),
+              Icon(Icons.code, size: 12, color: GlassColors.textDim),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   card.footer,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: GlassColors.textDim,
                   ),

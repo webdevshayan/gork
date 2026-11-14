@@ -22,8 +22,11 @@ class _ThemePageState extends State<ThemePage> {
       Locator.prefs.getString('ui.theme') ?? 'System';
 
   void _choose(String mode) {
+    // Persist the raw mode and publish it — the app shell resolves it
+    // (Movement 39) and derives everything: MaterialApp themeMode, glass
+    // colors and the ambient backdrop.
     Locator.prefs.setString('ui.theme', mode);
-    themeSetting.value = mode == 'Dark' ? 'Dark' : mode == 'Light' ? 'Light' : null;
+    themeModeSetting.value = mode;
     setState(() {});
   }
 
@@ -52,7 +55,7 @@ class _ThemePageState extends State<ThemePage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Theme',
                   style: TextStyle(
                     fontSize: 28,
@@ -71,7 +74,7 @@ class _ThemePageState extends State<ThemePage> {
                     child: Column(
                       children: [
                         for (var i = 0; i < _modes.length; i++) ...[
-                          if (i > 0) const Divider(color: GlassColors.divider, height: 1),
+                          if (i > 0) Divider(color: GlassColors.divider, height: 1),
                           GlassMenuRow(
                             key: ValueKey('theme-${_modes[i].toLowerCase()}'),
                             label: _modes[i],

@@ -451,7 +451,7 @@ class _AvatarSheet extends StatelessWidget {
                     _choose(context);
                   },
                 ),
-                const Divider(color: GlassColors.divider, height: 1),
+                Divider(color: GlassColors.divider, height: 1),
                 GlassMenuRow(
                   key: const ValueKey('remove-photo'),
                   icon: Icons.delete_outline,
@@ -517,11 +517,11 @@ class BottomInputBar extends StatelessWidget {
                     // clipping long messages.
                     minLines: 1,
                     maxLines: 6,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 17,
                       color: GlassColors.text,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Message Hark',
                       hintStyle: TextStyle(
                         fontSize: 17,
@@ -537,7 +537,7 @@ class BottomInputBar extends StatelessWidget {
                   key: const ValueKey('attach-button'),
                   behavior: HitTestBehavior.opaque,
                   onTap: onAttach,
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(10),
                     child: Icon(Icons.add, size: 24, color: GlassColors.textDim),
                   ),
@@ -556,7 +556,7 @@ class BottomInputBar extends StatelessWidget {
                             width: 44,
                             height: 44,
                             margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               // dark theme: light circle, dark arrow.
                               color: GlassColors.text,
                               shape: BoxShape.circle,
@@ -568,7 +568,7 @@ class BottomInputBar extends StatelessWidget {
                             ),
                           ),
                         )
-                      : const Padding(
+                      : Padding(
                           key: ValueKey('mic-icon'),
                           padding: EdgeInsets.all(14),
                           child: Icon(
@@ -605,9 +605,9 @@ class _HomeMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _row(context, Icons.insert_drive_file_outlined, 'Add file'),
-          const Divider(color: GlassColors.divider, height: 1),
+          Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.image_outlined, 'Add image'),
-          const Divider(color: GlassColors.divider, height: 1),
+          Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.dashboard_outlined, 'New panel'),
         ],
       ),
@@ -667,9 +667,9 @@ class _AttachMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _row(context, Icons.photo_camera_outlined, 'Camera', AttachKind.camera),
-          const Divider(color: GlassColors.divider, height: 1),
+          Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.image_outlined, 'Photos', AttachKind.photos),
-          const Divider(color: GlassColors.divider, height: 1),
+          Divider(color: GlassColors.divider, height: 1),
           _row(context, Icons.folder_outlined, 'Files', AttachKind.files),
         ],
       ),

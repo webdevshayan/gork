@@ -146,12 +146,12 @@ class GlassMenuRow extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 17, color: GlassColors.text),
+                style: TextStyle(fontSize: 17, color: GlassColors.text),
               ),
             ),
             const SizedBox(width: 12),
             trailing ??
-                const Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
+                Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
           ],
         ),
       ),
@@ -183,7 +183,7 @@ class GlassRadio extends StatelessWidget {
               child: Container(
                 width: 12,
                 height: 12,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: GlassColors.text,
                   shape: BoxShape.circle,
                 ),
@@ -211,7 +211,7 @@ class GlassScrollButton extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: const Center(
+        child: Center(
           child: Icon(Icons.keyboard_arrow_down, size: 26, color: GlassColors.textDim),
         ),
       ),

@@ -79,3 +79,29 @@ Color _onFor(Color primary) {
       0.0722 * _channel(primary.b);
   return lum > 0.35 ? const Color(0xFF111418) : const Color(0xFFFFFFFF);
 }
+
+/// Movement 39 — the mode table. One pure function decides what "the theme
+/// is right now" means, so the app shell, the glass colors and the ambient
+/// backdrop can never disagree:
+///
+///   Light  → always light, no matter what the OS or the clock says.
+///   Dark   → always dark.
+///   System → whatever the OS reports.
+///   Auto   → the LOCAL CLOCK (dawn/morning/afternoon = light,
+///            evening/night = dark) — deliberately NOT the OS.
+///   anything else / null → Auto.
+Brightness resolveBrightness(String? mode, Brightness platform, DateTime now) {
+  switch (mode) {
+    case 'Light':
+      return Brightness.light;
+    case 'Dark':
+      return Brightness.dark;
+    case 'System':
+      return platform;
+    default:
+      final phase = phaseFor(now);
+      final darkPhase =
+          phase == AmbientPhase.evening || phase == AmbientPhase.night;
+      return darkPhase ? Brightness.dark : Brightness.light;
+  }
+}

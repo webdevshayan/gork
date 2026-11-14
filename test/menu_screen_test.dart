@@ -52,7 +52,16 @@ void main() {
   testWidgets('an AI Providers row reaches the BYOK screen',
       (tester) async {
     await _pump(tester);
+    // Google + Theme rows pushed AI Providers below the fold — drag
+    // the menu list up before anything that touches the row.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('menu-providers')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('menu-providers')),
+      100.0,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const ValueKey('menu-providers')));
     await tester.pumpAndSettle();
     expect(find.text('Providers'), findsOneWidget);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'constants/ambient.dart';
 import 'constants/design_tokens.dart';
 import 'screens/onboarding_screen.dart';
+import 'widgets/ambient_backdrop.dart';
 
 /// Ambient scope: exposes phase + wet-weather flag down the tree.
 class AmbientScope extends InheritedWidget {
@@ -55,24 +56,44 @@ class GorkApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ambient.version,
-      builder: (context, _, __) {
-        final phase = phaseFor(DateTime.now());
-        final wet = ambient.wetWeather;
-        return AmbientScope(phase: phase, wet: wet, child: Builder(builder: (context) {
-          final scope = AmbientScope.of(context);
-          // Movement 34: the whole app is dark glass — one theme everywhere.
-          final palette =
-              ambientPalette(Palette.dark, scope.phase, wet: scope.wet);
-          return MaterialApp(
-            title: 'gork',
-            theme: _theme(palette, Brightness.dark),
-            darkTheme: _theme(palette, Brightness.dark),
-            themeMode: ThemeMode.dark,
-            home: const OnboardingGate(),
-          );
-        }));
+    // Outermost listener: the raw mode chosen on the Theme page. Any tap
+    // there resolves instantly; the ambient version keeps the resolution
+    // fresh for Auto (its timer ticks every 15 minutes).
+    return ValueListenableBuilder<String>(
+      valueListenable: themeModeSetting,
+      builder: (context, mode, __) {
+        return ValueListenableBuilder<int>(
+          valueListenable: ambient.version,
+          builder: (context, _, ___) {
+            final phase = phaseFor(DateTime.now());
+            final wet = ambient.wetWeather;
+            final platform = WidgetsBinding
+                .instance.platformDispatcher.platformBrightness;
+            // Movement 39: one resolution for everything — MaterialApp
+            // themeMode, glass colors and the ambient backdrop all follow
+            // this single answer.
+            final Brightness resolved =
+                resolveBrightness(mode, platform, DateTime.now());
+            GlassColors.brightness.value = resolved;
+            themeSetting.value =
+                resolved == Brightness.dark ? 'Dark' : 'Light';
+            final palette = resolved == Brightness.dark
+                ? ambientPalette(Palette.dark, phase, wet: wet)
+                : ambientPalette(Palette.light, phase, wet: wet);
+            return AmbientScope(phase: phase, wet: wet, child: Builder(
+                builder: (context) {
+              return MaterialApp(
+                title: 'gork',
+                theme: _theme(palette, Brightness.light),
+                darkTheme: _theme(palette, Brightness.dark),
+                themeMode: resolved == Brightness.dark
+                    ? ThemeMode.dark
+                    : ThemeMode.light,
+                home: const OnboardingGate(),
+              );
+            }));
+          },
+        );
       },
     );
   }

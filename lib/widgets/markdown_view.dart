@@ -19,7 +19,7 @@ class MarkdownView extends StatelessWidget {
   /// what to do — by default the URL is simply presented, never opened).
   final ValueChanged<String>? onLinkTap;
 
-  static const Color _ink = GlassColors.text;
+  static Color get _ink => GlassColors.text;
   static const Color _accent = Color(0xFF0B57D0);
 
   @override
@@ -73,7 +73,7 @@ class MarkdownView extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 6),
           padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(left: BorderSide(color: GlassColors.textFaint, width: 3)),
           ),
           child: Column(
@@ -101,7 +101,7 @@ class MarkdownView extends StatelessWidget {
           ),
           child: SelectableText(
             code,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'monospace',
               fontFamilyFallback: ['monospace'],
               fontSize: 13,
@@ -113,7 +113,7 @@ class MarkdownView extends StatelessWidget {
       case 'table':
         return _table(node);
       case 'hr':
-        return const Padding(
+        return Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
           child: Divider(color: GlassColors.textFaint),
         );
@@ -133,7 +133,7 @@ class MarkdownView extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 6),
         child: RichText(
           text: TextSpan(
-            style: const TextStyle(fontSize: 16, color: _ink, height: 1.35),
+            style: TextStyle(fontSize: 16, color: _ink, height: 1.35),
             children: spans,
           ),
         ),
@@ -160,7 +160,7 @@ class MarkdownView extends StatelessWidget {
           children: [
             Text(
               marker,
-              style: const TextStyle(fontSize: 16, color: _ink, height: 1.35),
+              style: TextStyle(fontSize: 16, color: _ink, height: 1.35),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -173,7 +173,7 @@ class MarkdownView extends StatelessWidget {
                     )
                   : RichText(
                       text: TextSpan(
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 16, color: _ink, height: 1.35),
                         children: _inline(context, inlineChildren),
                       ),
@@ -242,12 +242,12 @@ class MarkdownView extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.image_outlined, size: 18, color: GlassColors.textDim),
+          Icon(Icons.image_outlined, size: 18, color: GlassColors.textDim),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               alt,
-              style: const TextStyle(fontSize: 14, color: GlassColors.textDim),
+              style: TextStyle(fontSize: 14, color: GlassColors.textDim),
             ),
           ),
         ],
@@ -290,7 +290,7 @@ class MarkdownView extends StatelessWidget {
         );
       case 'del':
         return TextSpan(
-          style: const TextStyle(
+          style: TextStyle(
             decoration: TextDecoration.lineThrough,
             color: GlassColors.textDim,
           ),

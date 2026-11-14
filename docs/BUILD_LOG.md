@@ -43,3 +43,5 @@ The README stays clean — the receipts live here.
 | #35 | Slim release: strip the engine, gate the size, warn on bloat (v1.5.0 had shipped a 180 MB APK) |
 | #36 | Release pipeline: `scripts/release_apk.sh` reads the version from pubspec, passes `--dart-define=GORK_VERSION`, runs the slim size gate — v1.6.0 is the first release built by the script and the first to carry Movements 34+35 to the phone |
 | #37 | Build-box receipts: the full toolchain-rebuild recipe on paper (JRE-only JDK → extracted jdk21-root, llvm-19 debs → llvm19-root, NDK stub + strip shims, Aliyun patch, lint off) — tested, so the next rebuild cannot forget them |
+| #38 | Profile is real: editable name/email form (persisted, defaults stay), one-click Google — pick an account, EVERY Google service binds at once — and an account selection screen; the menu gains Google + Theme rows |
+| #39 | Theme modes become real: Light mode gets light glass (light fills, light borders, dark text), Dark stays, System follows the OS, **Auto follows the local clock** — one resolver drives MaterialApp, glass colors and the backdrop |

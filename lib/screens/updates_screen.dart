@@ -158,7 +158,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 const SizedBox(height: 4),
                 Text(
                   widget.currentVersion,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
                     color: GlassColors.text,
@@ -183,7 +183,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           onTap: _check,
         );
       case _Phase.checking:
-        return const Padding(
+        return Padding(
           key: ValueKey('updates-checking'),
           padding: EdgeInsets.symmetric(vertical: 12),
           child: Row(
@@ -203,12 +203,12 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           key: const ValueKey('updates-up-to-date'),
           children: [
-            const Text(
+            Text(
               'You are on the latest release.',
               style: TextStyle(fontSize: 16, color: GlassColors.text),
             ),
             if (_release?.bloatedBuild == true)
-              const Text(
+              Text(
                 key: ValueKey('updates-bloated-warning'),
                 'The latest release is a bloated build (unstripped engine). '
                 'A slim rebuild should replace it.',
@@ -226,14 +226,14 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           children: [
             Text(
               '${release.tag} is available',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: GlassColors.text,
               ),
             ),
             if (release.prerelease)
-              const Text(
+              Text(
                 'pre-release — may be rough',
                 style: TextStyle(fontSize: 13, color: GlassColors.textDim),
               ),
@@ -245,7 +245,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 '(${(release.apkSize / 1000000).toStringAsFixed(1)} MB): this '
                 'release packaged an unstripped engine. A slim rebuild should '
                 'replace it.',
-                style: const TextStyle(fontSize: 13, color: GlassColors.textDim),
+                style: TextStyle(fontSize: 13, color: GlassColors.textDim),
               ),
             ],
             if (release.notes.isNotEmpty) ...[
@@ -254,7 +254,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 release.notes,
                 maxLines: 8,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
+                style: TextStyle(fontSize: 15, color: GlassColors.textDim),
               ),
             ],
             const SizedBox(height: 12),
@@ -274,7 +274,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               _progress == null
                   ? 'Downloading…'
                   : 'Downloading… ${(_progress! * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(fontSize: 15, color: GlassColors.textDim),
+              style: TextStyle(fontSize: 15, color: GlassColors.textDim),
             ),
             const SizedBox(height: 10),
             LinearProgressIndicator(
@@ -292,11 +292,11 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             Text(
               'Downloaded. The system installer will open — Android may ask '
               'you to allow installs from gork first.',
-              style: const TextStyle(fontSize: 15, color: GlassColors.text),
+              style: TextStyle(fontSize: 15, color: GlassColors.text),
             ),
             if (!_canInstall) ...[
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'That permission is currently off.',
                 style: TextStyle(fontSize: 14, color: GlassColors.textDim),
               ),

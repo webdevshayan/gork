@@ -2,12 +2,29 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../constants/ambient.dart';
 import '../services/locator.dart';
 
 /// Theme override chosen on the Theme page (Auto/System/Light/Dark).
 /// 'Dark' swaps the backdrop to the night sky and dims it; the other modes
 /// leave the day sky untouched.
 final ValueNotifier<String?> themeSetting = ValueNotifier<String?>(null);
+
+/// The raw mode chosen on the Theme page ('Auto' / 'System' / 'Light' /
+/// 'Dark'), persisted at 'ui.theme'. The app shell resolves it (Movement 39)
+/// and publishes the result through [themeSetting] — the backdrop and every
+/// GlassColors consumer follow that single resolution.
+final ValueNotifier<String> themeModeSetting = ValueNotifier<String>('System');
+
+/// Loads the persisted theme mode. Called once from main(), before runApp —
+/// the very first frame already has the right mode.
+void initTheme() {
+  try {
+    themeModeSetting.value = Locator.prefs.getString('ui.theme') ?? 'System';
+  } catch (_) {
+    // Locator unbound (widget tests) — 'System' stays.
+  }
+}
 
 /// Path of the user's chosen profile photo (null = show the person icon).
 /// The photo lives on the device only — nothing networked.
@@ -35,6 +52,10 @@ class AmbientBackdrop extends StatelessWidget {
   static const Color _lightScrim = Colors.white;
   static const Color _darkScrim = Colors.black;
 
+  /// Injectable clock — tests pin Auto's local-time behavior without
+  /// waiting for the real hour of the day.
+  static DateTime Function() clock = DateTime.now;
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<String?>(
@@ -42,10 +63,11 @@ class AmbientBackdrop extends StatelessWidget {
       builder: (context, mode, _) {
         final Brightness platform =
             MediaQuery.platformBrightnessOf(context);
-        final bool dark =
-            mode == 'Dark' ||
-            ((mode == null || mode == 'Auto' || mode == 'System') &&
-                platform == Brightness.dark);
+        // The shell publishes the RESOLVED mode here ('Light'/'Dark');
+        // 'Auto'/'System'/null resolve locally so the backdrop stays
+        // correct even when used standalone (tests, early frames).
+        final Brightness effective = resolveBrightness(mode, platform, clock());
+        final bool dark = effective == Brightness.dark;
         return SizedBox.expand(
           key: const ValueKey('ambient-backdrop'),
           child: Stack(

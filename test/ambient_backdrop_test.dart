@@ -37,7 +37,7 @@ void main() {
 
   testWidgets('backdrop paints a light gradient placeholder (never black) '
       'before/behind the image', (tester) async {
-    themeSetting.value = null;
+    themeSetting.value = 'Light';
     await tester.pumpWidget(_wrap(Brightness.light));
     await tester.pump();
 
@@ -78,8 +78,8 @@ void main() {
     expect(scrim.color, Colors.black.withValues(alpha: 0.30));
   });
 
-  testWidgets('Auto follows the system brightness', (tester) async {
-    themeSetting.value = null; // Auto
+  testWidgets('System follows the system brightness', (tester) async {
+    themeSetting.value = 'System'; // Movement 39: System = the OS
     await tester.pumpWidget(_wrap(Brightness.dark));
     await tester.pump();
     expect(
@@ -102,7 +102,7 @@ void main() {
   testWidgets('backdrop makes zero network calls (fully offline)', (
     tester,
   ) async {
-    themeSetting.value = null;
+    themeSetting.value = 'Light';
     await tester.pumpWidget(_wrap(Brightness.light));
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
