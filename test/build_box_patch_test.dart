@@ -41,6 +41,16 @@ void main() {
       expect(script, contains('maven.aliyun.com'));
     });
 
+    test('patches pluginManagement too — the plugin classpath resolves '
+        'independent of dependencyResolutionManagement', () {
+      // Regression: the v1.6.1 build (gradle cache wiped) died resolving
+      // kotlin-stdlib:2.2.21 for the flutter-plugin-loader's classpath —
+      // plugin resolution reads the settings' pluginManagement repositories,
+      // which upstream flutter does not declare at all, so gradle falls
+      // back to mavenCentral and 429s. Aliyun must cover BOTH blocks.
+      expect(script, contains('pluginManagement'));
+    });
+
     test('is idempotent — never double-patches on a rebuild', () {
       // A grep guard must run before any edit; otherwise a second toolchain
       // pass adds a second mirror block and gradle resolves duplicates.

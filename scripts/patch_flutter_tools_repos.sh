@@ -41,6 +41,9 @@ import sys
 path = sys.argv[1]
 with open(path) as f:
     text = f.read()
+
+# 1. Project-level resolution: Aliyun before mavenCentral in the existing
+#    dependencyResolutionManagement repositories block.
 needle = "    repositories {\n        google()\n        mavenCentral()\n    }"
 replacement = (
     "    repositories {\n"
@@ -54,8 +57,29 @@ replacement = (
 )
 if needle not in text:
     sys.exit("FATAL: upstream repositories block not found — flutter version changed; patch manually")
+text = text.replace(needle, replacement, 1)
+
+# 2. Plugin resolution: upstream declares NO pluginManagement block, so the
+#    plugin classpath (flutter-plugin-loader, kotlin-stdlib) falls back to
+#    mavenCentral and 429s on a cold cache (v1.6.1 build). Insert one at the
+#    top of the file — pluginManagement must be the first block in settings.
+plugin_block = (
+    "// build-box: plugin classpath resolves here, NOT in\n"
+    "// dependencyResolutionManagement — Aliyun before mavenCentral\n"
+    "// (scripts/patch_flutter_tools_repos.sh).\n"
+    "pluginManagement {\n"
+    "    repositories {\n"
+    "        maven(\"https://maven.aliyun.com/repository/gradle-plugin\")\n"
+    "        maven(\"https://maven.aliyun.com/repository/central\")\n"
+    "        maven(\"https://maven.aliyun.com/repository/public\")\n"
+    "        google()\n"
+    "        mavenCentral()\n"
+    "        gradlePluginPortal()\n"
+    "    }\n"
+    "}\n\n"
+)
 with open(path, "w") as f:
-    f.write(text.replace(needle, replacement, 1))
-print(f"patched: {path} — Aliyun mirrors now precede mavenCentral")
+    f.write(plugin_block + text)
+print(f"patched: {path} — Aliyun mirrors now precede mavenCentral (both blocks)")
 PY
 echo "backup at $TARGET.bak-gork"
