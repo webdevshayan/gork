@@ -126,15 +126,20 @@ void main() {
           reason: 'the branding card is removed — the menu starts with rows');
     });
 
-    test('the active nav label reads black in light mode', () {
+    test('the active tab inverts: ink chip + white label in light mode', () {
+      // Movement 54: in LIGHT mode the active chip is black and its label
+      // white (the chip itself must also be dark, not near-white).
       GlassColors.brightness.value = Brightness.light;
-      final color = GlassColors.textOnChip;
-      expect(color.computeLuminance(), lessThan(0.2),
-          reason: 'active tab label must be black in light mode');
+      expect(GlassColors.chip.computeLuminance(), lessThan(0.2),
+          reason: 'active tab chip must be black in light mode');
+      expect(GlassColors.textOnChip.computeLuminance(), greaterThan(0.8),
+          reason: 'active tab label must be white on the ink chip');
+      // Dark mode keeps the old inversion: near-white chip, black label.
       GlassColors.brightness.value = Brightness.dark;
+      expect(GlassColors.chip.computeLuminance(), greaterThan(0.8),
+          reason: 'the chip stays near-white in dark mode');
       expect(GlassColors.textOnChip.computeLuminance(), lessThan(0.2),
-          reason: 'the chip is near-white in dark mode, so the label is '
-              'black there too');
+          reason: 'the label is black on the near-white chip');
     });
   });
 }

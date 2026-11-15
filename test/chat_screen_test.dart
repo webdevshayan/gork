@@ -46,7 +46,7 @@ void main() {
   }
 
   testWidgets(
-    'AI bubbles are solid white, user bubbles are translucent glass',
+    'bubbles follow the palette: ink user bubble, surface AI bubble',
     (tester) async {
       await bindServices(withKey: true);
       await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
@@ -55,14 +55,25 @@ void main() {
       await chatKey.currentState!.send('hello gork');
       await tester.pumpAndSettle();
 
+      // Movement 54 — Google Messages fills. Default resolved brightness is
+      // dark: the person's bubble is the ink-inverse (near-white primary
+      // with a dark label), the assistant's is the dark surface plate.
       final userFinder = find.text('hello gork').last;
       final Container userContainer = tester.firstWidget<Container>(
         find.ancestor(of: userFinder, matching: find.byType(Container)),
       );
       final BoxDecoration userDecoration =
           userContainer.decoration! as BoxDecoration;
-      expect(userDecoration.color, GlassColors.fill);
-      expect(userDecoration.borderRadius, BorderRadius.circular(32));
+      expect(userDecoration.color, Palette.dark.primary);
+      expect(
+        userDecoration.borderRadius,
+        BorderRadius.only(
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+          bottomLeft: Radius.circular(22),
+          bottomRight: Radius.circular(6),
+        ),
+      );
 
       final replyFinder = find.text('mock reply', findRichText: true);
       expect(replyFinder, findsOneWidget);
@@ -72,7 +83,15 @@ void main() {
       final BoxDecoration aiDecoration =
           aiContainer.decoration! as BoxDecoration;
       expect(aiDecoration.color, Palette.dark.surface);
-      expect(aiDecoration.borderRadius, BorderRadius.circular(32));
+      expect(
+        aiDecoration.borderRadius,
+        BorderRadius.only(
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+          bottomLeft: Radius.circular(6),
+          bottomRight: Radius.circular(22),
+        ),
+      );
     },
   );
 

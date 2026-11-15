@@ -88,13 +88,16 @@ void main() {
     expect(find.text('5:41 PM'), findsOneWidget);
   });
 
-  testWidgets('date badges are sticky pinned headers, one per day',
+  testWidgets('date badges are inline, one per day, never pinned',
       (tester) async {
     await pumpThread(tester);
     await tester.pumpAndSettle();
 
-    // Two days in the thread → two sticky groups (WhatsApp-style labels).
-    expect(find.byType(PinnedHeaderSliver), findsNWidgets(2));
+    // Movement 54: badges scroll WITH their day (Google Messages) — no
+    // PinnedHeaderSliver, so the only badge on screen is the one for the
+    // messages being viewed. Two days → two inline badges; the whole short
+    // thread fits on screen, so both render here.
+    expect(find.byType(PinnedHeaderSliver), findsNothing);
     expect(find.text('1 November 2026'), findsOneWidget);
     expect(find.text('3 November 2026'), findsOneWidget);
   });

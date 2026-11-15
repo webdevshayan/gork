@@ -183,11 +183,14 @@ class GlassColors {
   static Color get divider =>
       _dark ? const Color(0x2EF2F4F7) : const Color(0x2E111418);
 
-  /// The active nav-tab chip. Near-white in BOTH brightnesses so the label
-  /// on it (textOnChip, near-black) always reads — the old selected state
-  /// painted a dark chip with black text in light mode (invisible).
-  static Color get chip => const Color(0xF2FFFFFF);
+  /// The active nav-tab chip: ink (black) in light mode with a white label —
+  /// Movement 54 — and near-white in dark mode with a black label. The active
+  /// tab always inverts against the glass around it so it reads instantly.
+  static Color get chip =>
+      _dark ? const Color(0xF2FFFFFF) : const Color(0xE6111418);
 
-  /// Label on the active chip — black on the near-white chip, both modes.
-  static Color get textOnChip => const Color(0xFF111418);
+  /// Label on the active chip — black on the near-white chip in dark mode,
+  /// white on the ink chip in light mode.
+  static Color get textOnChip =>
+      _dark ? const Color(0xFF111418) : const Color(0xFFF2F4F7);
 }

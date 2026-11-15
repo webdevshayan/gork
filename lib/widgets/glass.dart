@@ -37,23 +37,29 @@ class GlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget body = ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: Container(
-          width: width,
-          height: height,
-          padding: padding,
-          decoration: BoxDecoration(
-            color: strong ? GlassColors.fillStrong : GlassColors.fill,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-              color: GlassColors.border,
-              width: 1,
+    final Widget body = ValueListenableBuilder<Brightness>(
+      valueListenable: GlassColors.brightness,
+      builder: (context, _, __) => KeyedSubtree(
+        key: ValueKey('glass-${GlassColors.brightness.value}'),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+            child: Container(
+              width: width,
+              height: height,
+              padding: padding,
+              decoration: BoxDecoration(
+                color: strong ? GlassColors.fillStrong : GlassColors.fill,
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(
+                  color: GlassColors.border,
+                  width: 1,
+                ),
+              ),
+              child: child,
             ),
           ),
-          child: child,
         ),
       ),
     );

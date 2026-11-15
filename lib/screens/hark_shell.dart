@@ -432,41 +432,53 @@ class _TopBar extends StatelessWidget {
 class _Avatar extends StatelessWidget {
   const _Avatar();
 
-  Widget _fallback() => Container(
-        color: GlassColors.text,
+  /// The fallback ring: the palette's ink disc with the opposite-tone person
+  /// icon — white icon on black in light mode, black icon on white in dark.
+  /// Never a bare white disc.
+  Widget _fallback(Palette palette) => Container(
+        color: palette.primary,
         alignment: Alignment.center,
-        child: const Icon(Icons.person_outline, size: 24, color: Colors.white),
+        child: Icon(Icons.person_outline,
+            size: 24, color: palette.onPrimary),
       );
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String?>(
-      valueListenable: avatarPath,
-      builder: (context, path, _) {
-        return GestureDetector(
-          key: const ValueKey('avatar'),
-          behavior: HitTestBehavior.opaque,
-          onTap: context
-              .findAncestorStateOfType<_HarkShellState>()
-              ?._onAvatarTap,
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: ClipOval(
-              // No photo provided -> just the icon. Fully offline.
-              child: (path == null || path.isEmpty)
-                  ? _fallback()
-                  : Image.file(
-                      File(path),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _fallback(),
-                    ),
-            ),
-          ),
+    // The avatar follows the theme too: the ring is the quiet palette border
+    // (dark gray edge in dark mode) — never a hard white ring/background.
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: GlassColors.brightness,
+      builder: (context, _, __) {
+        final Palette palette = paletteOf(context);
+        return ValueListenableBuilder<String?>(
+          valueListenable: avatarPath,
+          builder: (context, path, _) {
+            return GestureDetector(
+              key: const ValueKey('avatar'),
+              behavior: HitTestBehavior.opaque,
+              onTap: context
+                  .findAncestorStateOfType<_HarkShellState>()
+                  ?._onAvatarTap,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: palette.border, width: 2),
+                ),
+                child: ClipOval(
+                  // No photo provided -> just the icon. Fully offline.
+                  child: (path == null || path.isEmpty)
+                      ? _fallback(palette)
+                      : Image.file(
+                          File(path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _fallback(palette),
+                        ),
+                ),
+              ),
+            );
+          },
         );
       },
     );

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -515,8 +514,9 @@ class ChatScreenState extends State<ChatScreen> {
     return '$h12:$min ${d.hour < 12 ? 'AM' : 'PM'}';
   }
 
-  /// The centered glass date badge — WhatsApp-style, pinned while its day
-  /// group scrolls (PinnedHeaderSliver inside the CustomScrollView).
+  /// The centered glass date badge — Google-Messages-style: it scrolls WITH
+  /// its day group instead of pinning, so the only badge on screen is the one
+  /// for the messages being viewed (never a stale pinned badge above).
   Widget _dateBadge(String label) => Center(
         child: GlassContainer(
           radius: 20,
@@ -575,17 +575,21 @@ class ChatScreenState extends State<ChatScreen> {
     return groups;
   }
 
-  /// Sticky-badge thread renderer: one pinned badge per day, stamps under
-  /// every bubble, no Read receipts.
+  /// Inline-badge thread renderer: one badge per day that scrolls with its
+  /// messages (only one visible at a time), stamps under every bubble,
+  /// 16dp side padding keeps bubbles off the screen edges, no Read receipts.
   List<Widget> _threadSlivers(List<_UiMessage> source) {
     final slivers = <Widget>[];
     for (final g in _groupedByDay(source)) {
       if (g.label.isNotEmpty) {
-        slivers.add(PinnedHeaderSliver(child: _dateBadge(g.label)));
+        slivers.add(SliverToBoxAdapter(child: _dateBadge(g.label)));
       }
-      slivers.add(SliverToBoxAdapter(
-        child: Column(
-          children: [for (final m in g.messages) _withStamp(m)],
+      slivers.add(SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        sliver: SliverToBoxAdapter(
+          child: Column(
+            children: [for (final m in g.messages) _withStamp(m)],
+          ),
         ),
       ));
     }
@@ -651,7 +655,7 @@ class ChatScreenState extends State<ChatScreen> {
     return CustomScrollView(
       controller: _scroll,
       slivers: [
-        const SliverPadding(padding: EdgeInsets.all(16)),
+        const SliverPadding(padding: EdgeInsets.symmetric(vertical: 16)),
         ..._threadSlivers(_messages),
         const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
       ],
@@ -670,7 +674,7 @@ class ChatScreenState extends State<ChatScreen> {
           : CustomScrollView(
               controller: _scroll,
               slivers: [
-                const SliverPadding(padding: EdgeInsets.all(16)),
+                const SliverPadding(padding: EdgeInsets.symmetric(vertical: 16)),
                 ..._threadSlivers(_messages),
                 const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
               ],
@@ -766,9 +770,11 @@ class _BubbleEntranceState extends State<_BubbleEntrance>
   }
 }
 
-/// Reference bubbles: AI = solid white, radius 32, left. User = glass
-/// white 0.4 + backdrop blur, radius 32, right. Attachment turns render the
-/// media as a card instead of text.
+/// Google-Messages-style bubbles: solid theme-aware fills, no glass blur.
+/// The person's bubble is ink (black in light mode, near-white in dark) with
+/// the label on the opposite side; the assistant's is the quiet surface so
+/// long markdown reads cleanly. Sender-side corner is tighter (6) like the
+/// reference app; attachments render as rounded media cards.
 class _Bubble extends StatelessWidget {  const _Bubble({
     required this.text,
     required this.isUser,
@@ -878,13 +884,14 @@ class _Bubble extends StatelessWidget {  const _Bubble({
   Widget build(BuildContext context) {
     final Widget bubble;
     if (attachment != null) {
+      final Palette palette = paletteOf(context);
       bubble = Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: GlassColors.fill,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: GlassColors.border),
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: palette.border),
         ),
         child: attachment!.kind == 'image'
             ? ClipRRect(
@@ -923,24 +930,26 @@ class _Bubble extends StatelessWidget {  const _Bubble({
               ),
       );
     } else {
+      final Palette palette = paletteOf(context);
       bubble = Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
-          // dark theme: user bubbles are dark glass, assistant bubbles are a
-          // solid dark surface so long markdown reads cleanly.
-          color: isUser
-              ? GlassColors.fill
-              : Palette.dark.surface,
-          borderRadius: BorderRadius.circular(32),
-          border: isUser
-              ? Border.all(color: GlassColors.border)
-              : Border.all(color: GlassColors.divider),
+          // Google Messages fills: the person's bubble is ink (black in light
+          // mode, near-white in dark), the assistant's is the surface so
+          // markdown always sits on a calm, theme-aware plate.
+          color: isUser ? palette.primary : palette.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(22),
+            topRight: const Radius.circular(22),
+            bottomLeft: Radius.circular(isUser ? 22 : 6),
+            bottomRight: Radius.circular(isUser ? 6 : 22),
+          ),
         ),
         child: isUser
             ? SelectableText(
                 text,
-                style: TextStyle(fontSize: 16, color: GlassColors.text),
+                style: TextStyle(fontSize: 16, color: palette.onPrimary),
               )
             // Assistant bubbles render safe markdown (no web view, no network)
             // inside a SelectionArea — AI responses are selectable too.
@@ -954,17 +963,9 @@ class _Bubble extends StatelessWidget {  const _Bubble({
           : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
+          maxWidth: MediaQuery.of(context).size.width * 0.80,
         ),
-        child: isUser || attachment != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: bubble,
-                ),
-              )
-            : bubble,
+        child: bubble,
       ),
     );
   }
