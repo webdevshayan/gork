@@ -91,6 +91,10 @@ class Conversation {
       );
 }
 
+/// The global chat — ONE conversation that is never deleted and carries the
+/// full top-to-bottom context the agent keeps about everything (Movement 51).
+const String kGlobalChatId = 'global';
+
 /// Chat history persisted with shared_preferences — simple JSON, no database.
 class HistoryStore {
   final SharedPreferences _prefs;
@@ -131,6 +135,8 @@ class HistoryStore {
   }
 
   Future<void> delete(String id) async {
+    // The global chat never dies — the agent keeps its full context.
+    if (id == kGlobalChatId) return;
     final map = _load();
     map.remove(id);
     await _prefs.setString(_kKey, jsonEncode({
@@ -139,6 +145,12 @@ class HistoryStore {
   }
 
   Future<void> clear() async {
+    // Wipe everything EXCEPT the global chat — it survives even a clear.
+    final map = _load();
+    final global = map[kGlobalChatId];
     await _prefs.remove(_kKey);
+    if (global != null) {
+      await _prefs.setString(_kKey, jsonEncode({kGlobalChatId: global.toJson()}));
+    }
   }
 }

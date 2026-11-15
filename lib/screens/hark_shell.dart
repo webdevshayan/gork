@@ -16,7 +16,6 @@ import 'hark_home.dart';
 import 'menu_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
-import 'chat_home.dart';
 import 'chat_page.dart';
 import 'projects_surface.dart';
 import 'search_screen.dart';
@@ -43,6 +42,7 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
   bool _attachOpen = false;
   HarkTab _lastCoreTab = HarkTab.home;
   String? _chatConversationId;
+  final GlobalKey<ChatScreenState> _globalChatKey = GlobalKey<ChatScreenState>();
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
 
@@ -118,6 +118,13 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
     if (trimmed.isEmpty) return;
     _input.clear();
     setState(() => _attachOpen = false);
+    // On the Chat tab the input IS the global chat's input — the message
+    // lands in the never-deleted global conversation instead of composing
+    // a new thread.
+    if (_tab == HarkTab.chat && _globalChatKey.currentState != null) {
+      _globalChatKey.currentState!.send(trimmed);
+      return;
+    }
     Navigator.of(context).push(_slideUpRoute(
       ChatPage(initialMessage: trimmed, backLabel: 'Back'),
     ));
@@ -133,25 +140,15 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
   /// Opens a chat that lives inside a project folder: any pushed workspace
   /// detail is dismissed and the shell switches to the Chat tab carrying
   /// that conversation.
-  /// A chat that lives inside a project opens as ITS OWN pushed full-screen
-  /// route (thread title + chevron back) — it never collapses into a tab.
+  /// A thread tapped in search or projects opens as its own pushed
+  /// full-screen route (thread title + chevron back) — it never collapses
+  /// into a tab. The Chat tab itself is the global chat (Movement 51).
   void _openProjectChat(String conversationId) {
     setState(() => _chatConversationId = conversationId);
     Navigator.of(context).push(_slideUpRoute(
       ChatPage(conversationId: conversationId, backLabel: 'Back to workspace'),
     ));
   }
-
-  /// A thread tapped on the chat home.
-  void _openThread(String conversationId) {
-    setState(() => _chatConversationId = conversationId);
-    Navigator.of(context).push(_slideUpRoute(
-      ChatPage(conversationId: conversationId, backLabel: 'Back to chats'),
-    ));
-  }
-
-  /// Quick compose from the chat home's input bar.
-  void _composeNew(String text) => _sendFromInput(text);
 
   void _onLeftButton() {
     if (_onMenu) {
@@ -170,7 +167,7 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
       HarkTab.home => SearchScope.all,
     };
     final String? conversationId = _tab == HarkTab.chat
-        ? (_chatConversationId ?? Locator.history.latest?.id)
+        ? kGlobalChatId
         : null;
     Navigator.of(context).push(_slideUpRoute(SearchScreen(
       onOpenChat: _openProjectChat,
@@ -259,7 +256,12 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
                       : _tab == HarkTab.home
                       ? const HarkHome()
                       : _tab == HarkTab.chat
-                      ? ChatHome(onOpenChat: _openThread, onCompose: _composeNew)
+                      ? // Movement 51: the Chat tab IS the global chat —
+                        // one conversation, never deleted, full context.
+                        ChatScreen(
+                            key: _globalChatKey,
+                            conversationId: kGlobalChatId,
+                          )
                       : ProjectsSurface(
                           onOpenChat: _openProjectChat,
                           onAfterPush: () => setState(() {}),
