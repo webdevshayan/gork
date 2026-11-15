@@ -319,5 +319,110 @@ class MemoryRoomsTests(unittest.TestCase):
         self.assertIn('From extraction', titles)
 
 
+class BrowserAccountsTests(unittest.TestCase):
+    """Movement 52 — the AI's full browser on the VPS + the accounts screen
+    data + the secure paste-fill protocol: the AI asks for a LABEL, the VPS
+    fills the active input from the sealed vault, and the secret NEVER
+    appears in any response, log or error — even if the site is insecure."""
+
+    @classmethod
+    def setUpClass(cls):
+        global BASE
+        cls._prev_base = BASE
+        BASE = 'http://127.0.0.1:18989'
+        cls._prev_db = G.DB_PATH
+        os.environ['GORK_VPS_TOKEN'] = 'test-token'
+        G.VPS_TOKEN = 'test-token'
+        G.DB_PATH = '/tmp/gork-browser-test.sqlite3'
+        if os.path.exists(G.DB_PATH):
+            os.remove(G.DB_PATH)
+        G.init_db()
+        cls.httpd, cls.stop = G.serve('127.0.0.1', 18989)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        global BASE
+        cls.stop.set()
+        cls.httpd.shutdown()
+        G.DB_PATH = cls._prev_db
+        BASE = cls._prev_base
+
+    def test_accounts_recorded_and_never_echo_secrets(self):
+        st, _ = req('POST', '/v1/accounts', {
+            'site': 'mail.google.com', 'username': 'shayanalibuilds@gmail.com',
+            'label': 'gmail-main'})
+        self.assertEqual(st, 201)
+        st, body = req('GET', '/v1/accounts')
+        self.assertEqual(st, 200)
+        acct = [a for a in body['accounts']
+                if a['site'] == 'mail.google.com'][0]
+        self.assertEqual(acct['username'], 'shayanalibuilds@gmail.com')
+        self.assertNotIn('password', json.dumps(body).lower(),
+                         'the accounts list never carries secrets')
+
+    def test_sealed_secret_never_reads_back(self):
+        st, out = req('POST', '/v1/vault/secret',
+                      {'label': 'gmail-main', 'secret': 'hunter2-secret'})
+        self.assertEqual(st, 201)
+        self.assertTrue(out['stored'])
+        self.assertNotIn('hunter2-secret', json.dumps(out))
+        st, body = req('GET', '/v1/vault/status')
+        self.assertEqual(st, 200)
+        self.assertIn('gmail-main', body['labels'])
+        self.assertNotIn('hunter2-secret', json.dumps(body))
+
+    def test_fill_secret_fills_active_input_secret_never_returned(self):
+        req('POST', '/v1/vault/secret',
+            {'label': 'mail-pass', 'secret': 'top-secret-value'})
+        # Mock the browser driver: record what was typed, return success.
+        captured = {}
+
+        class FakeDriver:
+            def fill_active(self, session, text):
+                captured['text'] = text
+                return True
+
+            def op(self, session, action, args):
+                return {'acted': action}
+
+        with patch.object(G, '_browser_driver', return_value=FakeDriver()):
+            st, out = req('POST', '/v1/browser/op', {
+                'session': 's1', 'action': 'fill_secret',
+                'label': 'mail-pass'})
+        self.assertEqual(st, 200)
+        self.assertTrue(out['filled'])
+        self.assertEqual(captured['text'], 'top-secret-value',
+                         'the driver got the real value')
+        self.assertNotIn('top-secret-value', json.dumps(out),
+                         'the AI-facing response never carries the secret')
+
+    def test_browser_op_without_engine_fails_honestly(self):
+        # Simulate a VPS without playwright: the factory must resolve to
+        # None (patch past the one-shot cache).
+        with patch.object(G, '_BROWSER_DRIVER', None), \
+             patch.object(G, '_BROWSER_TRIED', True):
+            st, out = req('POST', '/v1/browser/op',
+                          {'session': 's1', 'action': 'navigate',
+                           'url': 'https://example.com'})
+        self.assertEqual(st, 200)
+        self.assertFalse(out.get('ok', True))
+        self.assertIn('engine', out.get('error', '').lower())
+
+    def test_fill_secret_unknown_label_is_rejected(self):
+        class FakeDriver:
+            def fill_active(self, session, text):
+                return True
+
+        with patch.object(G, '_browser_driver', return_value=FakeDriver()):
+            st, out = req('POST', '/v1/browser/op',
+                          {'session': 's1', 'action': 'fill_secret',
+                           'label': 'does-not-exist'})
+        self.assertEqual(st, 200)
+        self.assertFalse(out.get('filled', True))
+        self.assertIn('unknown', out.get('error', '').lower())
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

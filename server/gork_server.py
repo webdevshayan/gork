@@ -119,6 +119,12 @@ def init_db() -> None:
           id TEXT PRIMARY KEY, room TEXT NOT NULL, title TEXT NOT NULL,
           category TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '',
           updated_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS accounts (
+          site TEXT NOT NULL, username TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
+          updated_at INTEGER NOT NULL, PRIMARY KEY (site, username));
+        CREATE TABLE IF NOT EXISTS vault_secrets (
+          label TEXT PRIMARY KEY, sealed BLOB NOT NULL,
+          updated_at INTEGER NOT NULL);
         """)
 
 
@@ -166,7 +172,85 @@ def _call_provider(history):
     return body["choices"][0]["message"]["content"]
 
 
-# ------------------------------------------------------- memory rooms ---
+# ---------------------------------------------- browser + secure fill ---
+class _PlaywrightDriver:
+    """The AI's full browser on the VPS. Lazy: playwright + chromium are
+    installed on the real VPS; when they are missing the factory returns
+    None and every op fails honestly instead of pretending."""
+
+    def __init__(self):
+        from playwright.sync_api import sync_playwright
+        self._pw = sync_playwright().start()
+        self._contexts = {}
+
+    def _page(self, session):
+        ctx = self._contexts.get(session)
+        if ctx is None:
+            ctx = self._pw.chromium.launch(headless=True).new_context()
+            self._contexts[session] = ctx
+        return ctx.pages[0] if ctx.pages else ctx.new_page()
+
+    def op(self, session, action, args):
+        page = self._page(session)
+        if action == "navigate":
+            page.goto(args.get("url", "about:blank"), wait_until="domcontentloaded")
+            return {"url": page.url, "title": page.title()}
+        if action == "click":
+            page.click(args["selector"])
+            return {"ok": True}
+        if action == "type":
+            page.type(args["selector"], args.get("text", ""))
+            return {"ok": True}
+        if action == "read":
+            return {"text": page.inner_text("body")[:8000]}
+        if action == "screenshot":
+            path = f"/tmp/gork-{session}-{int(time.time())}.png"
+            page.screenshot(path=path)
+            return {"screenshot": path}
+        raise RuntimeError("unknown browser action: " + str(action))
+
+    def fill_active(self, session, text):
+        """Fill the ACTIVE input without the AI ever learning the value."""
+        page = self._page(session)
+        return page.evaluate(
+            """t => {
+              const el = document.activeElement;
+              if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA'
+                          && !el.isContentEditable)) return false;
+              el.value = t;
+              el.dispatchEvent(new Event('input', {bubbles: true}));
+              return true;
+            }""", text)
+
+    def close(self, session):
+        ctx = self._contexts.pop(session, None)
+        if ctx:
+            ctx.close()
+
+
+_BROWSER_DRIVER = None
+_BROWSER_TRIED = False
+
+
+def _browser_driver():
+    """One lazy driver instance; None when playwright is not installed."""
+    global _BROWSER_DRIVER, _BROWSER_TRIED
+    if not _BROWSER_TRIED:
+        _BROWSER_TRIED = True
+        try:
+            _BROWSER_DRIVER = _PlaywrightDriver()
+        except Exception:  # noqa: BLE001 — no engine on this VPS
+            _BROWSER_DRIVER = None
+    return _BROWSER_DRIVER
+
+
+_NO_ENGINE = {
+    "ok": False,
+    "error": "browser engine not installed on the VPS "
+             "(pip install playwright && playwright install chromium)",
+}
+
+
 def _memory_map(c):
     """The full room map the agent sees: every room, every block (title +
     subcategory + size) — never the block contents."""
@@ -430,6 +514,21 @@ class Handler(BaseHTTPRequestHandler):
                 "sealed_with": SEALED_WITH if r else None,
                 "updated_at": r["updated_at"] if r else None,
                 "scopes_expected": SCOPES_EXPECTED})
+        if path == "/v1/accounts":
+            with db() as c:
+                rows = c.execute("SELECT site,username,label,updated_at "
+                                 "FROM accounts ORDER BY updated_at "
+                                 "DESC").fetchall()
+            return self._json(200, {"accounts": [
+                {"site": r["site"], "username": r["username"],
+                 "label": r["label"], "updated_at": r["updated_at"]}
+                for r in rows]})
+        if path == "/v1/vault/status":
+            with db() as c:
+                rows = c.execute("SELECT label FROM vault_secrets "
+                                 "ORDER BY label").fetchall()
+            return self._json(200, {"labels": [r["label"] for r in rows],
+                                    "sealed_with": SEALED_WITH})
         if path == "/v1/memory/map":
             with db() as c:
                 return self._json(200, _memory_map(c))
@@ -480,6 +579,65 @@ class Handler(BaseHTTPRequestHandler):
                     (job_id, "youtube", "ingest",
                      json.dumps({"url": url}), "queued", now, now))
             return self._json(201, {"id": job_id, "status": "queued"})
+        if path == "/v1/accounts":
+            body = self._read_json()
+            site = (body.get("site") or "").strip()
+            username = (body.get("username") or "").strip()
+            if not site or not username:
+                return self._json(400, {"error": "site and username are required"})
+            with _LOCK, db() as c:
+                c.execute(
+                    "INSERT OR REPLACE INTO accounts (site,username,label,"
+                    "updated_at) VALUES (?,?,?,?)",
+                    (site, username, (body.get("label") or "").strip(),
+                     int(time.time() * 1000)))
+            return self._json(201, {"stored": True})
+        if path == "/v1/vault/secret":
+            body = self._read_json()
+            label = (body.get("label") or "").strip()
+            secret = body.get("secret") or ""
+            if not label or not secret:
+                return self._json(400, {"error": "label and secret are required"})
+            blob = seal(secret.encode())
+            with _LOCK, db() as c:
+                c.execute(
+                    "INSERT OR REPLACE INTO vault_secrets (label,sealed,"
+                    "updated_at) VALUES (?,?,?)",
+                    (label, blob, int(time.time() * 1000)))
+            return self._json(201, {"stored": True, "label": label,
+                                    "sealed_with": SEALED_WITH})
+        if path == "/v1/browser/op":
+            body = self._read_json()
+            action = body.get("action") or ""
+            session = (body.get("session") or "default").strip()
+            if action == "fill_secret":
+                label = (body.get("label") or "").strip()
+                with _LOCK, db() as c:
+                    row = c.execute("SELECT sealed FROM vault_secrets "
+                                    "WHERE label=?", (label,)).fetchone()
+                if not row:
+                    return self._json(200, {
+                        "filled": False, "error": "unknown label: " + label})
+                secret = unseal(row["sealed"]).decode()
+                driver = _browser_driver()
+                if driver is None:
+                    return self._json(200, _NO_ENGINE)
+                try:
+                    ok = driver.fill_active(session, secret)
+                except Exception:  # noqa: BLE001 — never echo the value
+                    return self._json(200, {
+                        "filled": False,
+                        "error": "fill failed (secret not exposed)"})
+                return self._json(200, {"filled": bool(ok), "label": label})
+            driver = _browser_driver()
+            if driver is None:
+                return self._json(200, _NO_ENGINE)
+            try:
+                result = driver.op(session, action, body)
+            except Exception as e:  # noqa: BLE001 — honest, redacted
+                return self._json(200, {"ok": False,
+                                        "error": redact({"error": str(e)})["error"]})
+            return self._json(200, {"ok": True, "result": result})
         if path == "/v1/memory/op":
             body = self._read_json()
             ops = body.get("ops")

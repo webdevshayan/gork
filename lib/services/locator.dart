@@ -12,6 +12,7 @@ import 'memory_store.dart';
 import 'notifications.dart';
 import 'outbox.dart';
 import 'panels_store.dart';
+import 'browser_service.dart';
 import 'memory_rooms.dart';
 import 'projects_store.dart';
 import 'scheduler.dart';
@@ -103,9 +104,12 @@ class Locator {
     integrations: integrations,
     handoff: handoff,
     memoryRooms: memoryRooms,
+    browser: browser,
   );
 
   static MemoryRoomsService get memoryRooms => MemoryRoomsService();
+
+  static BrowserService get browser => BrowserService();
 
   static AgentService get agent =>
       AgentService(chat, toolRegistry, memory, memoryRooms: memoryRooms);
