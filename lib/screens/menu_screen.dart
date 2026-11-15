@@ -6,6 +6,7 @@ import '../services/handoff_service.dart';
 import '../services/locator.dart';
 import '../services/profile_info.dart';
 import '../widgets/glass.dart';
+import 'accounts_screen.dart';
 import 'cloud_computer_screen.dart';
 import 'google_accounts_screen.dart';
 import 'integrations_screen.dart';
@@ -122,6 +123,15 @@ class _MenuScreenState extends State<MenuScreen> {
                 key: const ValueKey('menu-accounts'),
                 icon: Icons.link,
                 label: 'Accounts',
+                // Movement 52: every website account the user logged into
+                // from the app, in one place.
+                onTap: () => _push(context, const AccountsScreen()),
+              ),
+              Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: const ValueKey('menu-integrations'),
+                icon: Icons.extension_outlined,
+                label: 'Integrations',
                 onTap: () => _push(context, const IntegrationsScreen()),
               ),
               Divider(color: GlassColors.divider, height: 1),

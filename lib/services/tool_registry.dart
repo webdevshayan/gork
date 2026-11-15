@@ -1,3 +1,4 @@
+import 'browser_service.dart';
 import 'github_service.dart';
 import 'gmail_service.dart';
 import 'handoff_service.dart';
@@ -29,6 +30,7 @@ class ToolRegistry {
   final Integrations? integrations;
   final HandoffService? handoff;
   final MemoryRoomsService? memoryRooms;
+  final BrowserService? browser;
 
   ToolRegistry({
     required this.memory,
@@ -40,6 +42,7 @@ class ToolRegistry {
     this.integrations,
     this.handoff,
     this.memoryRooms,
+    this.browser,
   });
 
   List<ToolDef> get defs => const [
@@ -84,6 +87,40 @@ class ToolRegistry {
             },
           },
           'required': ['ops'],
+        }),
+        ToolDef(
+            'browser',
+            'The full browser on your VPS. Actions: navigate (url), click '
+            '(selector), type (selector, text), read (page text), '
+            'screenshot. SECURE FILL RULE: when a form asks for a password, '
+            'auth code or anything private, NEVER type its value — you do '
+            'not have it and must not ask for it. Fill every non-secret '
+            'field, keep that field focused, then call with action '
+            '"fill_secret" and a label you generate (e.g. "gmail-login"). '
+            'The vault fills the active input for you; the value is never '
+            'shown to you, on any website.', {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'navigate', 'click', 'type', 'read', 'screenshot',
+                'fill_secret'
+              ],
+            },
+            'session': {
+              'type': 'string',
+              'description': 'Browser session id; reuse one to keep state.'
+            },
+            'url': {'type': 'string'},
+            'selector': {'type': 'string'},
+            'text': {'type': 'string'},
+            'label': {
+              'type': 'string',
+              'description': 'fill_secret only: the vault label you generate.'
+            },
+          },
+          'required': ['action'],
         }),
         ToolDef('create_project', 'Create a project workspace with notes.', {
           'type': 'object',
@@ -235,6 +272,13 @@ class ToolRegistry {
           return 'error: room memory is not available on this device';
         }
         return rooms.execute(args);
+
+      case 'browser':
+        final svc = browser;
+        if (svc == null) {
+          return 'error: the AI browser is not available on this device';
+        }
+        return svc.execute(args);
 
       case 'create_project':
         final title = (args['title'] as String?)?.trim() ?? '';
