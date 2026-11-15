@@ -92,14 +92,19 @@ class BottomInputBar extends StatelessWidget {
                             height: 44,
                             margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
                             decoration: BoxDecoration(
-                              // dark theme: light circle, dark arrow.
+                              // Ink circle with the opposite-tone arrow:
+                              // white arrow on black (light), black on
+                              // near-white (dark).
                               color: GlassColors.text,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.arrow_upward,
                               size: 22,
-                              color: Colors.black,
+                              color: GlassColors.brightness.value ==
+                                      Brightness.dark
+                                  ? Colors.black
+                                  : Colors.white,
                             ),
                           ),
                         )
