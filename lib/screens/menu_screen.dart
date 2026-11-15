@@ -9,7 +9,9 @@ import '../widgets/glass.dart';
 import 'accounts_screen.dart';
 import 'cloud_computer_screen.dart';
 import 'google_accounts_screen.dart';
+import 'inbox_screen.dart';
 import 'integrations_screen.dart';
+import 'panels_screen.dart';
 import 'profile_edit_screen.dart';
 import 'providers_screen.dart';
 import 'search_screen.dart';
@@ -19,9 +21,13 @@ import 'theme_page.dart';
 import 'updates_screen.dart';
 
 /// The profile/menu surface (opened from the avatar): big identity header,
-/// a card of rows (Profile / Scheduled Tasks / Accounts / Google / Theme),
-/// a Security card, the AI Providers row, the Sync-to-daemon action and the
-/// Search pill. No wallet (removed, Movement 50), no upsell, no plan rows.
+/// a card of rows covering EVERY settings surface (Profile / Scheduled
+/// Tasks / Accounts / Integrations / Google / Inbox / Panels / Cloud
+/// Computer / Theme), a Security card, the AI Providers row, the
+/// Sync-to-daemon action, Updates and the Search pill. Movement 55: Inbox,
+/// Panels and Cloud Computer were reachable from nowhere — now they are
+/// listed here like every other settings screen. No wallet (removed,
+/// Movement 50), no upsell, no plan rows.
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key, this.onBack, this.onOpenChat});
 
@@ -84,6 +90,8 @@ class _MenuScreenState extends State<MenuScreen> {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      // Movement 55: clip — scrolled rows must not paint behind the nav pill.
+      clipBehavior: Clip.hardEdge,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
         Text(
@@ -140,6 +148,29 @@ class _MenuScreenState extends State<MenuScreen> {
                 icon: Icons.account_circle_outlined,
                 label: 'Google',
                 onTap: () => _push(context, const GoogleAccountsScreen()),
+              ),
+              Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: const ValueKey('menu-inbox'),
+                icon: Icons.inbox_outlined,
+                label: 'Inbox',
+                // Movement 55: the agent Inbox was built but never linked
+                // from the menu — every settings surface is listed here.
+                onTap: () => _push(context, const InboxScreen()),
+              ),
+              Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: const ValueKey('menu-panels'),
+                icon: Icons.grid_view_outlined,
+                label: 'Panels',
+                onTap: () => _push(context, const PanelsScreen()),
+              ),
+              Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: const ValueKey('menu-cloud'),
+                icon: Icons.cloud_outlined,
+                label: 'Cloud Computer',
+                onTap: () => _push(context, const CloudComputerScreen()),
               ),
               Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(

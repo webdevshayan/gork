@@ -153,61 +153,6 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-            // Cloud Console credentials → the VPS vault (Movement 49).
-            GlassContainer(
-              radius: 24,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Google Cloud Console',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: GlassColors.text)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Upload the credentials.json from Cloud Console once — it '
-                    'is sealed on the VPS and never read back.',
-                    style: TextStyle(fontSize: 13, color: GlassColors.textDim),
-                  ),
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    key: const ValueKey('gconsole-upload'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _uploadCredentials,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Text('Upload credentials.json',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white)),
-                    ),
-                  ),
-                  if (_credsOnVps != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _credsOnVps!
-                          ? 'Credentials sealed on the VPS ✓'
-                          : 'No credentials stored yet.',
-                      key: const ValueKey('gconsole-status'),
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: _credsOnVps!
-                              ? GlassColors.text
-                              : GlassColors.textDim),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
           const AmbientBackdrop(),
           SafeArea(
             child: ListView(
@@ -294,6 +239,65 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   variant: ButtonVariant.secondary,
                   expands: true,
                 ),
+                // Movement 55: the Cloud Console card used to be the
+                // FIRST Stack child — painted UNDER the AmbientBackdrop and
+                // never seen (the invisible 'Google Cloud Console → Upload').
+                // It lives in the list now, so Menu → Google → Google Cloud
+                // Console → Upload is actually reachable.
+                GlassContainer(
+                  radius: 24,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Google Cloud Console',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: GlassColors.text)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Upload the credentials.json from Cloud Console once — it '
+                      'is sealed on the VPS and never read back.',
+                      style: TextStyle(fontSize: 13, color: GlassColors.textDim),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      key: const ValueKey('gconsole-upload'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _uploadCredentials,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Text('Upload credentials.json',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                      ),
+                    ),
+                    if (_credsOnVps != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _credsOnVps!
+                            ? 'Credentials sealed on the VPS ✓'
+                            : 'No credentials stored yet.',
+                        key: const ValueKey('gconsole-status'),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: _credsOnVps!
+                                ? GlassColors.text
+                                : GlassColors.textDim),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
                 const SizedBox(height: 8),
                 Text(
                   'One-time setup — it stays connected until you remove it. '

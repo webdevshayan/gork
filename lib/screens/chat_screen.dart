@@ -654,6 +654,9 @@ class ChatScreenState extends State<ChatScreen> {
   Widget _buildMessages() {
     return CustomScrollView(
       controller: _scroll,
+      // Movement 55: the viewport clips — scrolled bubbles must not paint
+      // behind the top bar and its nav pill (the bleed in the screenshots).
+      clipBehavior: Clip.hardEdge,
       slivers: [
         const SliverPadding(padding: EdgeInsets.symmetric(vertical: 16)),
         ..._threadSlivers(_messages),
@@ -673,6 +676,7 @@ class ChatScreenState extends State<ChatScreen> {
             )
           : CustomScrollView(
               controller: _scroll,
+              clipBehavior: Clip.hardEdge,
               slivers: [
                 const SliverPadding(padding: EdgeInsets.symmetric(vertical: 16)),
                 ..._threadSlivers(_messages),
@@ -686,8 +690,9 @@ class ChatScreenState extends State<ChatScreen> {
     ];
     return CustomScrollView(
       controller: _scroll,
+      clipBehavior: Clip.hardEdge,
       slivers: [
-        const SliverPadding(padding: EdgeInsets.all(16)),
+        const SliverPadding(padding: EdgeInsets.symmetric(vertical: 16)),
         if (hits.isEmpty)
           SliverToBoxAdapter(
             child: GlassContainer(

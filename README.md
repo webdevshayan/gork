@@ -6,7 +6,8 @@
 
 One chat that knows your life. Projects that hold your work. A daemon that
 runs 24/7 on hardware you own. Bring your own API key — there are no accounts,
-no servers, no subscriptions.
+no hosted servers, no subscriptions; anything that runs around the clock runs
+on hardware *you* control.
 
 [Download the APK](https://github.com/webdevshayan/gork/releases) ·
 [Self-host the daemon](#self-host-the-247-daemon) ·
@@ -29,11 +30,13 @@ and the moment the subscription ends, the memory of your life walks out the
 door with them.
 
 gork is the opposite bet. **Your keys never leave your phone** (encrypted in
-the Android keystore), **your history lives in your device storage**, and the
-piece that needs to run 24/7 — the companion daemon — runs on a VPS or a Termux
-box *you* control, reachable through a shared secret only your phone knows.
-The app talks to whatever OpenAI-compatible endpoint you point it at: OpenAI,
-OpenRouter, Gemini, Anthropic, a local llama.cpp server, anything.
+the Android keystore) — with exactly one exception, your choice: Google Cloud
+Console credentials you *opt* to upload travel once to a VPS *you* own and are
+sealed there, never read back. **Your history lives in your device storage**,
+and the piece that needs to run 24/7 — the companion daemon — runs on a VPS or
+a Termux box *you* control, reachable through a shared secret only your phone
+knows. The app talks to whatever OpenAI-compatible endpoint you point it at:
+OpenAI, OpenRouter, Gemini, Anthropic, a local llama.cpp server, anything.
 
 And it is built in public, one *movement* at a time: every pull request is a
 small, working, fully tested step, merged only when the whole suite is green.
@@ -43,9 +46,9 @@ No roadmap theater — the [movement log](docs/BUILD_LOG.md) is the roadmap.
 
 | Area | What works today |
 |---|---|
-| Chat | Glass chat UI, safe markdown answers (CommonMark + GFM, no web view, HTML inert), persisted history, provider picker |
-| Attachments | The + menu really attaches: Camera, Photos and Files land in the thread and mirror into the project folder |
-| Agent | Tool-calling loop (memory, projects, tasks, panels, vault, weather) — up to 3 rounds on the OpenAI tool protocol |
+| Chat | Glass chat UI, safe markdown answers (CommonMark + GFM, no web view, HTML inert), persisted history, provider picker — the Chat tab is ONE never-deleted global conversation |
+| Attachments | The + menu really attaches: Camera, Photos and Files land in the global chat — nothing in the app ever creates a second conversation |
+| Agent | Tool-calling loop (memory, projects, tasks, panels, vault, weather) — up to 6 rounds on the OpenAI tool protocol |
 | Memory | Cross-session facts, injected into every conversation |
 | Projects | Folders that hold their own chats plus shared resources — files, images, notes |
 | Search | The menu Search pill opens real chat search — hits across conversations, feature jumps, recent threads |
@@ -58,8 +61,9 @@ No roadmap theater — the [movement log](docs/BUILD_LOG.md) is the roadmap.
 
 The interface follows one rule: **every pixel answers to the reference
 design.** Frosted glass over an offline ambient sky (bundled asset — nothing
-fetched), white wash in light mode, dark scrim in dark mode, a black pill for
-the active tab, and no black flash on cold start.
+fetched), white wash in light mode, dark scrim in dark mode, the active tab
+inverting against the glass (ink pill in light mode, near-white in dark), and
+no black flash on cold start. The Android system bars follow the theme too.
 
 ## Get the app
 
