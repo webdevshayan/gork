@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/history_store.dart';
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
+import '../widgets/attach_menu.dart';
 import '../widgets/glass.dart';
 import 'chat_screen.dart';
 import 'hark_home.dart';
@@ -23,9 +24,6 @@ import '../widgets/bottom_input_bar.dart';
 import '../constants/design_tokens.dart';
 
 enum HarkTab { home, chat, projects }
-
-/// What the + (attachment) menu offers.
-enum AttachKind { camera, photos, files }
 
 /// The glass shell, pixel-matched to the reference screenshots:
 /// ambient backdrop + top bar (context button / nav pill / avatar) + dynamic
@@ -284,9 +282,11 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
               bottom: 96,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: _AttachMenu(
-                  onDismiss: _toggleAttach,
-                  onPick: _pickAttachment,
+                child: AttachMenu(
+                  onPick: (kind) {
+                    _toggleAttach();
+                    _pickAttachment(kind);
+                  },
                 ),
               ),
             ),
@@ -543,51 +543,6 @@ class _AvatarSheet extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// The + dropdown on Home: add a file, an image, or a new panel — a more
-/// opaque glass dropdown right under the left button, like the reference.
-class _AttachMenu extends StatelessWidget {
-  const _AttachMenu({required this.onDismiss, required this.onPick});
-
-  final VoidCallback onDismiss;
-  final ValueChanged<AttachKind> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      key: const ValueKey('attach-menu'),
-      radius: 24,
-      opacity: 0.6,
-      width: 220,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _row(context, Icons.photo_camera_outlined, 'Camera', AttachKind.camera),
-          Divider(color: GlassColors.divider, height: 1),
-          _row(context, Icons.image_outlined, 'Photos', AttachKind.photos),
-          Divider(color: GlassColors.divider, height: 1),
-          _row(context, Icons.folder_outlined, 'Files', AttachKind.files),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(
-    BuildContext context,
-    IconData icon,
-    String label,
-    AttachKind kind,
-  ) {
-    return GlassMenuRow(
-      icon: icon,
-      label: label,
-      onTap: () {
-        onDismiss();
-        onPick(kind);
-      },
     );
   }
 }

@@ -4,7 +4,8 @@ import '../constants/design_tokens.dart';
 
 enum ButtonVariant { primary, secondary, ghost }
 
-/// Token-driven button. Default radius md, label uses bodySmall semibold.
+/// Token-driven button. Capsule-rounded (radius full), label bodySmall semibold.
+/// Movement 50: black & white only — primary is ink/near-white, never blue.
 class GButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -47,7 +48,7 @@ class GButton extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(RadiusTokens.md),
+        borderRadius: BorderRadius.circular(RadiusTokens.full),
         border: border,
       ),
       child: Text(
@@ -64,7 +65,7 @@ class GButton extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(RadiusTokens.md),
+            borderRadius: BorderRadius.circular(RadiusTokens.full),
             onTap: onPressed,
             child: content,
           ),

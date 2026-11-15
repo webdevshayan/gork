@@ -3,9 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gork/screens/projects_screen.dart';
-import 'package:gork/screens/wallet_screen.dart';
+import 'package:gork/screens/security_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
+import 'package:gork/services/vault_store.dart';
 
 void main() {
   setUp(() async {
@@ -55,34 +56,27 @@ void main() {
         'apt install git');
   });
 
-  testWidgets('vault entry: create, hidden by default, reveal, copy',
+  testWidgets('security screen lists vault entries but never the secret',
       (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('No wallets yet'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Name (e.g. Metamask, Binance)').first,
-        'Mail login');
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Seed phrase / private key / card number').first,
-        's3cret!');
-    await tester.tap(find.text('Save wallet'));
+    // Movement 50: the wallet feature is removed; the vault is shown on the
+    // Security screen — by name and username only, the secret never renders.
+    await Locator.vault.save(const VaultEntry(
+      id: 'v1',
+      title: 'Mail login',
+      username: 'shayanalibuilds@gmail.com',
+      secret: 's3cret!',
+      notes: '',
+      createdAt: 1,
+      aiAccess: true,
+    ));
+    await tester.pumpWidget(const MaterialApp(home: SecurityScreen()));
     await tester.pumpAndSettle();
 
     expect(find.text('Mail login'), findsOneWidget);
-    expect(find.text('••••••••••••'), findsOneWidget);
-    expect(find.text('s3cret!'), findsNothing); // hidden
-
-    await tester.tap(find.text('Reveal'));
-    await tester.pumpAndSettle();
-    expect(find.text('s3cret!'), findsOneWidget);
-
-    await tester.tap(find.text('Hide'));
-    await tester.pumpAndSettle();
-    expect(find.text('s3cret!'), findsNothing);
+    expect(find.text('shayanalibuilds@gmail.com'), findsOneWidget);
+    expect(find.text('s3cret!'), findsNothing,
+        reason: 'the secret is never rendered, not even revealed');
+    expect(find.text('Reveal'), findsNothing,
+        reason: 'there is no reveal path on the security surface');
   });
 }

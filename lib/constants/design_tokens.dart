@@ -11,13 +11,14 @@ class Spacing {
   static const double xxl = 48;
 }
 
-/// Corner radius tokens. Default for buttons and inputs is md.
+/// Corner radius tokens. Movement 50: corners are NEVER edgy — the smallest
+/// radius in the app is 10. Buttons are capsules (use RadiusTokens.full).
 /// Concentric rule: inner radius = outer radius - padding.
 class RadiusTokens {
-  static const double sm = 4;
-  static const double md = 8;
-  static const double lg = 12;
-  static const double xl = 16;
+  static const double sm = 10;
+  static const double md = 14;
+  static const double lg = 20;
+  static const double xl = 24;
   static const double full = 9999;
 }
 
@@ -68,7 +69,9 @@ class Palette {
     textPrimary: Color(0xFF111418),
     textSecondary: Color(0xFF4A5158),
     textTertiary: Color(0xFF6B7280),
-    primary: Color(0xFF2563EB),
+    // Movement 50: black & white only — the "primary" accent is ink in light
+    // mode (black buttons, white labels), never blue or any other hue.
+    primary: Color(0xFF111418),
     onPrimary: Color(0xFFFFFFFF),
     success: Color(0xFF15803D),
     warning: Color(0xFFB45309),
@@ -83,7 +86,8 @@ class Palette {
     textPrimary: Color(0xFFF2F4F7),
     textSecondary: Color(0xFFA8B0BA),
     textTertiary: Color(0xFF8A93A0),
-    primary: Color(0xFF6EA8FE),
+    // Dark mode mirrors it: white buttons, black labels.
+    primary: Color(0xFFF2F4F7),
     onPrimary: Color(0xFF0F1115),
     success: Color(0xFF4ADE80),
     warning: Color(0xFFFBBF24),

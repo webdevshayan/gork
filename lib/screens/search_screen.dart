@@ -13,7 +13,6 @@ import 'projects_screen.dart';
 import 'providers_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
-import 'wallet_screen.dart';
 import '../constants/design_tokens.dart';
 
 /// What the search covers — the entry point preselects the scope (home =
@@ -54,7 +53,6 @@ class _SearchScreenState extends State<SearchScreen> {
     _Jump('Inbox', Icons.inbox_outlined, InboxScreen()),
     _Jump('Panels', Icons.dashboard_outlined, PanelsScreen()),
     _Jump('Projects', Icons.folder_outlined, ProjectsScreen()),
-    _Jump('Wallet', Icons.account_balance_wallet_outlined, WalletScreen()),
     _Jump('Cloud Computer', Icons.dns_outlined, CloudComputerScreen()),
     _Jump('Integrations', Icons.extension_outlined, IntegrationsScreen()),
     _Jump('Scheduled Tasks', Icons.schedule_outlined, TasksScreen()),

@@ -32,12 +32,21 @@ void main() {
   });
 
   group('radius tokens', () {
-    test('values', () {
-      expect(RadiusTokens.sm, 4);
-      expect(RadiusTokens.md, 8);
-      expect(RadiusTokens.lg, 12);
-      expect(RadiusTokens.xl, 16);
+    test('values — never edgy (Movement 50)', () {
+      expect(RadiusTokens.sm, 10);
+      expect(RadiusTokens.md, 14);
+      expect(RadiusTokens.lg, 20);
+      expect(RadiusTokens.xl, 24);
       expect(RadiusTokens.full, 9999);
+    });
+  });
+
+  group('the palette is black & white (Movement 50)', () {
+    test('primary is ink, never blue', () {
+      expect(Palette.light.primary, const Color(0xFF111418));
+      expect(Palette.dark.primary, const Color(0xFFF2F4F7));
+      expect(Palette.light.primary, isNot(const Color(0xFF2563EB)));
+      expect(Palette.dark.primary, isNot(const Color(0xFF6EA8FE)));
     });
   });
 

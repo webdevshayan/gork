@@ -1,8 +1,10 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../constants/design_tokens.dart';
 import '../services/history_store.dart';
+import '../widgets/attach_menu.dart';
 import '../widgets/bottom_input_bar.dart';
 import '../services/locator.dart';
 import '../widgets/ambient_backdrop.dart';
@@ -151,15 +153,31 @@ class _ChatPageInputBarState extends State<_ChatPageInputBar> {
   }
 
   Future<void> _attach() async {
+    // The + ALWAYS shows the dropdown first (Camera / Photos / Files) —
+    // the picker itself opens only after a row is chosen.
+    final AttachKind? kind = await AttachMenu.show(context);
+    if (kind == null || !mounted) return;
     try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
-        imageQuality: 82,
-      );
-      if (picked == null || !mounted) return;
-      await widget.chatKey.currentState
-          ?.attachImage(picked.path, name: picked.name);
+      switch (kind) {
+        case AttachKind.camera:
+        case AttachKind.photos:
+          final picked = await ImagePicker().pickImage(
+            source: kind == AttachKind.camera
+                ? ImageSource.camera
+                : ImageSource.gallery,
+            maxWidth: 1280,
+            imageQuality: 82,
+          );
+          if (picked == null || !mounted) return;
+          await widget.chatKey.currentState
+              ?.attachImage(picked.path, name: picked.name);
+        case AttachKind.files:
+          final result = await FilePicker.platform.pickFiles(withData: false);
+          final file = result?.files.single;
+          if (file == null || file.path == null || !mounted) return;
+          await widget.chatKey.currentState
+              ?.attachFile(file.path!, file.name);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
