@@ -222,7 +222,7 @@ void main() {
     expect(find.text('Resets'), findsNothing);
     expect(find.text('Usage and plan'), findsNothing);
     for (final row in [
-      'Profile', 'Scheduled Tasks', 'Accounts', 'Wallet', 'Security',
+      'Profile', 'Scheduled Tasks', 'Accounts', 'Security',
       'AI Providers', 'Sync to daemon',
     ]) {
       expect(find.text(row, skipOffstage: false), findsOneWidget);

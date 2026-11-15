@@ -50,6 +50,14 @@ void main() {
       await tester.drag(find.byType(ListView).first, const Offset(0, -300));
       await tester.pump(const Duration(milliseconds: 200));
     }
+    // The menu got shorter (wallet removed) — a partially-visible straddle
+    // target passes the evaluate() check but its center can sit below the
+    // fold. ensureVisible scrolls it fully into view before the tap.
+    await tester.pumpAndSettle();
+    if (target.evaluate().isNotEmpty) {
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+    }
   }
 
   Future<void> bindServices() async {

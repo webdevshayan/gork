@@ -12,15 +12,15 @@ import 'integrations_screen.dart';
 import 'profile_edit_screen.dart';
 import 'providers_screen.dart';
 import 'search_screen.dart';
+import 'security_screen.dart';
 import 'tasks_screen.dart';
 import 'theme_page.dart';
 import 'updates_screen.dart';
-import 'wallet_screen.dart';
 
 /// The profile/menu surface (opened from the avatar): big identity header,
-/// the gork wordmark card, a card of rows (Profile / Scheduled Tasks /
-/// Accounts / Google / Wallet), a Security card, the AI Providers row, the
-/// Sync-to-daemon action and the Search pill. No upsell, no plan rows.
+/// a card of rows (Profile / Scheduled Tasks / Accounts / Google / Theme),
+/// a Security card, the AI Providers row, the Sync-to-daemon action and the
+/// Search pill. No wallet (removed, Movement 50), no upsell, no plan rows.
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key, this.onBack, this.onOpenChat});
 
@@ -133,13 +133,6 @@ class _MenuScreenState extends State<MenuScreen> {
               ),
               Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(
-                key: const ValueKey('menu-wallet'),
-                icon: Icons.account_balance_wallet_outlined,
-                label: 'Wallet',
-                onTap: () => _push(context, const WalletScreen()),
-              ),
-              Divider(color: GlassColors.divider, height: 1),
-              GlassMenuRow(
                 key: const ValueKey('menu-theme'),
                 icon: Icons.dark_mode_outlined,
                 label: 'Theme',
@@ -156,7 +149,7 @@ class _MenuScreenState extends State<MenuScreen> {
             key: const ValueKey('menu-security'),
             icon: Icons.shield_outlined,
             label: 'Security',
-            onTap: () => _push(context, const WalletScreen()),
+            onTap: () => _push(context, const SecurityScreen()),
           ),
         ),
         const SizedBox(height: 16),

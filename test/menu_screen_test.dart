@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/screens/menu_screen.dart';
-import 'package:gork/screens/wallet_screen.dart';
+import 'package:gork/screens/security_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,19 +67,25 @@ void main() {
     expect(find.text('Providers'), findsOneWidget);
   });
 
-  testWidgets('Wallet row opens the Wallet screen', (tester) async {
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('menu-wallet')));
-    await tester.pumpAndSettle();
-    expect(find.byType(WalletScreen), findsOneWidget);
-    expect(find.text('Wallet'), findsOneWidget);
-  });
-
-  testWidgets('Security row opens the Wallet screen (the secure store)',
+  testWidgets('no Wallet row — the feature is removed (Movement 50)',
       (tester) async {
     await _pump(tester);
+    expect(find.byKey(const ValueKey('menu-wallet')), findsNothing);
+    expect(find.text('Wallet'), findsNothing);
+    expect(find.textContaining('Wallet'), findsNothing);
+  });
+
+  testWidgets('Security row opens the Security screen (the vault)',
+      (tester) async {
+    await _pump(tester);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('menu-security')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const ValueKey('menu-security')));
     await tester.pumpAndSettle();
-    expect(find.byType(WalletScreen), findsOneWidget);
+    expect(find.byType(SecurityScreen), findsOneWidget);
+    expect(find.text('Security'), findsOneWidget);
   });
 }
