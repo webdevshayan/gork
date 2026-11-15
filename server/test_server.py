@@ -424,5 +424,58 @@ class BrowserAccountsTests(unittest.TestCase):
         self.assertIn('unknown', out.get('error', '').lower())
 
 
+class IntroTests(unittest.TestCase):
+    """Movement 53 — the intro messages are generated in ONE provider
+    request on the VPS and returned as an array; the client then sends
+    them as separate bubbles with human-like timing."""
+
+    @classmethod
+    def setUpClass(cls):
+        global BASE
+        cls._prev_base = BASE
+        BASE = 'http://127.0.0.1:18990'
+        cls._prev_db = G.DB_PATH
+        os.environ['GORK_VPS_TOKEN'] = 'test-token'
+        G.VPS_TOKEN = 'test-token'
+        G.DB_PATH = '/tmp/gork-intro-test.sqlite3'
+        if os.path.exists(G.DB_PATH):
+            os.remove(G.DB_PATH)
+        G.init_db()
+        cls.httpd, cls.stop = G.serve('127.0.0.1', 18990)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        global BASE
+        cls.stop.set()
+        cls.httpd.shutdown()
+        G.DB_PATH = cls._prev_db
+        BASE = cls._prev_base
+
+    def test_intro_generated_in_one_call(self):
+        with patch.object(G, 'PROVIDER_URL', 'https://fake-provider'), \
+             patch.object(G, '_call_provider', return_value=json.dumps({
+                 'messages': ['Hey Shayan, I am Hark.',
+                              'One idea per bubble.']})):
+            st, body = req('POST', '/v1/onboarding/intro',
+                           {'name': 'Shayan', 'email': 's@x.com'})
+        self.assertEqual(st, 200)
+        self.assertEqual(body['messages'],
+                         ['Hey Shayan, I am Hark.', 'One idea per bubble.'])
+
+    def test_intro_without_provider_is_honest(self):
+        with patch.object(G, '_BROWSER_DRIVER', None):
+            pass  # keep patch import used; provider env untouched
+        G.PROVIDER_URL_BACKUP = G.PROVIDER_URL
+        G.PROVIDER_URL = ''
+        try:
+            st, body = req('POST', '/v1/onboarding/intro', {'name': 'S'})
+            self.assertEqual(st, 503)
+            self.assertIn('provider', body['error'])
+        finally:
+            G.PROVIDER_URL = G.PROVIDER_URL_BACKUP
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

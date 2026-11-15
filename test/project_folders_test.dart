@@ -108,7 +108,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ChatScreen, skipOffstage: false), findsOneWidget,
         reason: 'the new project chat opens as its own screen');
-    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget,
+    expect(find.textContaining("I'm gork.", findRichText: true), findsNothing,
         reason: 'the pushed chat opened an empty project chat');
 
     // The message lands in the PROJECT chat, not the global latest.

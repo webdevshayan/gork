@@ -162,7 +162,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ChatScreen(key: chatKey)));
     await tester.pumpAndSettle();
 
-    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
+    expect(find.textContaining("I'm gork.", findRichText: true), findsNothing);
     expect(find.textContaining('gork PR #19', findRichText: true), findsOneWidget);
     // It sits below the fanned stack — scroll to it.
     await tester.scrollUntilVisible(

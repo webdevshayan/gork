@@ -176,7 +176,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
     expect(find.text(kDefaultName), findsNothing);
-    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
+    // Movement 53: the intro is dynamic — it plays as animated bubbles, so
+    // no static seed text remains on the empty surface.
+    expect(find.textContaining("I'm gork.", findRichText: true), findsNothing);
   });
 
   testWidgets('nav pill highlights the active tab and switches screens', (
@@ -193,7 +195,9 @@ void main() {
     expect(_navLabelColor(tester, 'Chat'), GlassColors.textOnChip);
     expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
     // Empty chat: seeded intro + the fanned GitHub link-preview stack.
-    expect(find.text("Hey Shayan, I'm gork.", findRichText: true), findsOneWidget);
+    // Movement 53: the intro is dynamic — it plays as animated bubbles, so
+    // no static seed text remains on the empty surface.
+    expect(find.textContaining("I'm gork.", findRichText: true), findsNothing);
     expect(find.textContaining('gork PR #19', skipOffstage: false,
         findRichText: true), findsOneWidget);
     expect(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../providers/providers.dart';
@@ -10,6 +11,7 @@ import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
 import '../services/outbox.dart';
+import '../services/profile_info.dart';
 import '../services/projects_store.dart';
 import '../widgets/glass.dart';
 import '../widgets/markdown_view.dart';
@@ -21,7 +23,12 @@ class _UiMessage {
   final int? time;
   final ChatAttachment? attachment;
 
-  const _UiMessage(this.role, this.content, {this.time, this.attachment});
+  /// True when the bubble should enter like it was just sent by a real
+  /// person behind the app (the first-run intro sequence).
+  final bool animate;
+
+  const _UiMessage(this.role, this.content,
+      {this.time, this.attachment, this.animate = false});
 }
 
 /// The Chat tab, pixel-matched to the reference screenshots:
@@ -47,6 +54,7 @@ class ChatScreen extends StatefulWidget {
 
 class ChatScreenState extends State<ChatScreen> {
   Timer? _serverPoll;
+  Timer? _introTimer;
   final ScrollController _scroll = ScrollController();
   List<_UiMessage> _messages = [];
   String _conversationId = '';
@@ -57,16 +65,6 @@ class ChatScreenState extends State<ChatScreen> {
   List<String> _toolsUsed = [];
   String? _searchQuery;
   bool _showScrollButton = false;
-
-  /// The seeded intro from the reference: shown when this is a brand-new
-  /// conversation (never persisted, replaced by real history once it exists).
-  static const List<String> _introMessages = [
-    "Hey Shayan, I'm gork.",
-    "I keep track of life and work, trips and groceries. I pay bills "
-        "securely and find opportunities you'll love.",
-    "With your permission, I'll connect your email and calendar, catch up "
-        "on your life, and learn how I can help.",
-  ];
 
   @override
   void initState() {
@@ -146,6 +144,42 @@ class ChatScreenState extends State<ChatScreen> {
     }
     if (mounted) setState(() {});
     await _syncFromServer();
+    // First run of the global chat: the intro plays like a real person
+    // sending messages one after another (Movement 53).
+    if (widget.conversationId == kGlobalChatId &&
+        _messages.isEmpty &&
+        mounted &&
+        Locator.prefs.getBool('intro.done') != true) {
+      await _playIntro();
+    }
+  }
+
+  /// The first-run intro: ONE request generates every message (on the VPS
+  /// when configured, the reference set otherwise), and they then land as
+  /// separate bubbles with human-like timing. Persisted along the way so a
+  /// killed app resumes exactly where the sequence stopped.
+  Future<void> _playIntro() async {
+    await Locator.prefs.setBool('intro.done', true);
+    final name =
+        Locator.prefs.getString('profile.name') ?? kDefaultName;
+    final email = Locator.prefs.getString('profile.email');
+    final intro = await Locator.intro.fetchIntro(name: name, email: email);
+    if (!mounted) return;
+    for (var i = 0; i < intro.length; i++) {
+      // Human cadence: nobody sends bubbles at metronome intervals.
+      // A cancellable timer: disposal kills the sequence cleanly instead
+      // of leaving timers pending past the widget tree.
+      final beat = Completer<void>();
+      _introTimer = Timer(Duration(milliseconds: 750 + (i % 3) * 350), beat.complete);
+      await beat.future;
+      if (!mounted) return;
+      setState(() {
+        _messages.add(_UiMessage('assistant', intro[i],
+            time: DateTime.now().millisecondsSinceEpoch, animate: true));
+      });
+      await _persist();
+      _scrollToBottom();
+    }
   }
 
   /// History turn → API message. Text files feed the agent their real
@@ -370,6 +404,14 @@ class ChatScreenState extends State<ChatScreen> {
 
   /// Live search — the shell's search bar drives this. Empty string shows
   /// the filtered (empty result) state; null leaves search mode entirely.
+  /// Test hook: how many messages the visible state holds.
+  @visibleForTesting
+  int get messageCount => _messages.length;
+
+  /// Test hook: is the search-results branch showing?
+  @visibleForTesting
+  bool get searching => _searchQuery != null;
+
   void search(String? query) {
     setState(() => _searchQuery = (query == null || query.isEmpty)
         ? (query == null ? null : '')
@@ -495,23 +537,26 @@ class ChatScreenState extends State<ChatScreen> {
       attachment: m.attachment,
     );
     final bool left = !(m.role == 'user' || m.attachment != null);
-    return Column(
-      crossAxisAlignment:
-          left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-      children: [
-        bubble,
-        if (m.time != null)
-          Padding(
-            padding: EdgeInsets.only(
-                bottom: 8, left: left ? 4 : 0, right: left ? 0 : 4),
-            child: Text(
-              _timeLabel(m.time!),
-              style: TextStyle(fontSize: 11, color: GlassColors.textFaint),
-            ),
-          )
-        else
-          const SizedBox(height: 8),
-      ],
+    return _BubbleEntrance(
+      animate: m.animate,
+      child: Column(
+        crossAxisAlignment:
+            left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+        children: [
+          bubble,
+          if (m.time != null)
+            Padding(
+              padding: EdgeInsets.only(
+                  bottom: 8, left: left ? 4 : 0, right: left ? 0 : 4),
+              child: Text(
+                _timeLabel(m.time!),
+                style: TextStyle(fontSize: 11, color: GlassColors.textFaint),
+              ),
+            )
+          else
+            const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 
@@ -659,16 +704,72 @@ class ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _serverPoll?.cancel(); // local polling only — server work is never cancelled
+    _introTimer?.cancel(); // a disposed screen never finishes the intro
     _scroll.dispose();
     super.dispose();
+  }
+}
+
+/// How a bubble enters when it was just sent by a real person behind the
+/// app: fades in, rises a little and settles with a soft overshoot — used
+/// by the first-run intro sequence (Movement 53).
+class _BubbleEntrance extends StatefulWidget {
+  const _BubbleEntrance({required this.child, this.animate = false});
+
+  final Widget child;
+  final bool animate;
+
+  @override
+  State<_BubbleEntrance> createState() => _BubbleEntranceState();
+}
+
+class _BubbleEntranceState extends State<_BubbleEntrance>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate) {
+      _controller = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 320),
+      )..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return widget.child;
+    final curved =
+        CurvedAnimation(parent: controller, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.18),
+          end: Offset.zero,
+        ).animate(curved),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+          child: widget.child,
+        ),
+      ),
+    );
   }
 }
 
 /// Reference bubbles: AI = solid white, radius 32, left. User = glass
 /// white 0.4 + backdrop blur, radius 32, right. Attachment turns render the
 /// media as a card instead of text.
-class _Bubble extends StatelessWidget {
-  const _Bubble({
+class _Bubble extends StatelessWidget {  const _Bubble({
     required this.text,
     required this.isUser,
     this.attachment,
@@ -869,8 +970,9 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-/// Empty chat: the seeded intro sequence, then the fanned GitHub
-/// link-preview stack (three slightly rotated cards, like the reference).
+/// Empty chat: the fanned GitHub link-preview stack (three slightly rotated
+/// cards, like the reference). The INTRO is dynamic now (Movement 53) — it
+/// plays as real animated bubbles, never as static seeds here.
 class EmptyChat extends StatelessWidget {
   const EmptyChat({this.error});
 
@@ -899,8 +1001,6 @@ class EmptyChat extends StatelessWidget {
 
   List<Widget> buildChildren() {
     return [
-      for (final line in ChatScreenState._introMessages)
-        _Bubble(text: line, isUser: false),
       const SizedBox(height: 24),
       SizedBox(
         height: 320,

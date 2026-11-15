@@ -638,6 +638,37 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": False,
                                         "error": redact({"error": str(e)})["error"]})
             return self._json(200, {"ok": True, "result": result})
+        if path == "/v1/onboarding/intro":
+            # ONE provider request generates ALL the intro messages; the
+            # client sends them as separate bubbles with human-like timing.
+            body = self._read_json()
+            name = (body.get("name") or "there").strip()
+            email = (body.get("email") or "").strip()
+            if not PROVIDER_URL:
+                return self._json(503, {"error": "provider not configured "
+                                                "on the VPS"})
+            prompt = (
+                "Write the first-run greeting of a personal AI assistant "
+                "named Hark to its user. 3 to 4 SHORT messages, each one a "
+                "separate bubble, warm and concrete, one idea per message, "
+                "no markdown, no emoji. Reply with ONLY a JSON object: "
+                "{\"messages\": [\"...\", \"...\"]}. The user's name is "
+                f"{name}" + (f" (email {email})" if email else "") + ".")
+            try:
+                raw = _call_provider([{"role": "user", "content": prompt}])
+            except Exception as e:  # noqa: BLE001 — honest, redacted
+                return self._json(502, {
+                    "error": redact({"error": str(e)})["error"]})
+            m = re.search(r"\{.*\}", raw, re.S)
+            if not m:
+                return self._json(502, {"error": "provider did not return "
+                                                "JSON"})
+            messages = json.loads(m.group(0)).get("messages", [])
+            messages = [str(x) for x in messages if str(x).strip()]
+            if not messages:
+                return self._json(502, {"error": "provider returned no "
+                                                "messages"})
+            return self._json(200, {"messages": messages[:5]})
         if path == "/v1/memory/op":
             body = self._read_json()
             ops = body.get("ops")
