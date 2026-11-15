@@ -103,31 +103,50 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
     }
   }
 
-  /// An attachment composes a NEW thread full-screen (paths stay on-device;
-  /// when the thread belongs to a project folder the page mirrors it there).
+  /// Movement 55: this app has ONE conversation — the never-deleted global
+  /// chat (Movement 51). An attachment lands there: switch to the Chat tab
+  /// if needed, wait one frame so the screen exists, then hand it over.
+  /// Nothing in the app ever creates a new chat anymore.
   void _deliverAttachment(ChatAttachment attachment) {
-    Navigator.of(context).push(_slideUpRoute(
-      ChatPage(pendingAttachment: attachment, backLabel: 'Back'),
-    ));
+    _deliverToGlobalChat((state) async {
+      if (attachment.kind == 'image') {
+        await state.attachImage(attachment.path, name: attachment.name);
+      } else {
+        await state.attachFile(attachment.path, attachment.name);
+      }
+    });
   }
 
-  /// The glass input bar composes: submitting opens a NEW thread full-screen
-  /// with the message already flying (WhatsApp compose semantics).
+  /// Runs [action] against the global chat's ChatScreenState — immediately
+  /// when the Chat tab is live, otherwise after switching to it (one frame).
+  void _deliverToGlobalChat(Future<void> Function(ChatScreenState) action) {
+    if (_tab == HarkTab.chat && _globalChatKey.currentState != null) {
+      action(_globalChatKey.currentState!);
+      return;
+    }
+    setState(() {
+      _tab = HarkTab.chat;
+      _onMenu = false;
+      _attachOpen = false;
+      _lastCoreTab = HarkTab.chat;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = _globalChatKey.currentState;
+      if (state != null) action(state);
+    });
+  }
+
+  /// The glass input bar composes: submitting lands the message in THE
+  /// global chat (switching to the Chat tab first when the input is used
+  /// from Home or Projects) — no new thread is ever created.
   void _sendFromInput(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     _input.clear();
     setState(() => _attachOpen = false);
-    // On the Chat tab the input IS the global chat's input — the message
-    // lands in the never-deleted global conversation instead of composing
-    // a new thread.
-    if (_tab == HarkTab.chat && _globalChatKey.currentState != null) {
-      _globalChatKey.currentState!.send(trimmed);
-      return;
-    }
-    Navigator.of(context).push(_slideUpRoute(
-      ChatPage(initialMessage: trimmed, backLabel: 'Back'),
-    ));
+    _deliverToGlobalChat((state) async {
+      await state.send(trimmed);
+    });
   }
 
   /// ONE verb in the top-left: search. Scope follows the tab (home =

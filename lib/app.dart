@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'constants/ambient.dart';
 import 'constants/design_tokens.dart';
@@ -75,6 +76,23 @@ class GorkApp extends StatelessWidget {
             final Brightness resolved =
                 resolveBrightness(mode, platform, DateTime.now());
             GlassColors.brightness.value = resolved;
+            // Movement 55: the ANDROID system chrome follows the theme too —
+            // a dark app must not sit on a white system navigation bar (the
+            // v1.12.0 screenshot complaint). Status bar icons flip tone with
+            // it; this runs on every resolution, idempotent per value.
+            SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: resolved == Brightness.dark
+                  ? Brightness.light
+                  : Brightness.dark,
+              systemNavigationBarColor: resolved == Brightness.dark
+                  ? const Color(0xFF0F1115)
+                  : const Color(0xFFF6F7F9),
+              systemNavigationBarIconBrightness: resolved == Brightness.dark
+                  ? Brightness.light
+                  : Brightness.dark,
+              systemNavigationBarDividerColor: Colors.transparent,
+            ));
             themeSetting.value =
                 resolved == Brightness.dark ? 'Dark' : 'Light';
             final palette = resolved == Brightness.dark

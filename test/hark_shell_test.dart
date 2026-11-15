@@ -229,6 +229,13 @@ void main() {
       'Profile', 'Scheduled Tasks', 'Accounts', 'Security',
       'AI Providers', 'Sync to daemon',
     ]) {
+      // Movement 55 added Inbox/Panels/Cloud Computer rows — the list grew,
+      // so scroll to each row (lazy ListView) before asserting it.
+      await tester.scrollUntilVisible(
+        find.text(row, skipOffstage: false),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text(row, skipOffstage: false), findsOneWidget);
     }
     expect(find.text('Message Hark'), findsNothing,
@@ -336,12 +343,14 @@ void main() {
     ));
     expect(field.maxLines, 6);
 
-    // Sending jumps to the chat tab.
+    // Sending jumps to the Chat tab — THE one global chat (Movement 55:
+    // nothing in the app composes a new thread anymore).
     await tester.tap(find.byKey(const ValueKey('send-circle')));
     await tester.pumpAndSettle();
     expect(find.text('hello'), findsOneWidget,
-        reason: 'the message lands in the composed thread');
-    expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
-        reason: 'the composed thread is a pushed screen with a chevron back');
+        reason: 'the message lands in THE global chat');
+    expect(find.byIcon(Icons.search), findsOneWidget,
+        reason: 'the Chat tab is the global chat itself — not a pushed '
+            'screen, so the top-left stays the search button');
   });
 }

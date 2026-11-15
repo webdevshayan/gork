@@ -4,7 +4,7 @@ Every change to gork lands as a *movement*: one branch, one pull request, one
 squash commit, green tests before anything ships. This is the full history.
 The README stays clean — the receipts live here.
 
-| PR | What landed |
+| Movement | What landed |
 |---|---|
 | bootstrap | README + build environment report (`flutter doctor` ✓ Android) |
 | #1 | Flutter app skeleton + first passing test (red → green) |
@@ -47,12 +47,17 @@ The README stays clean — the receipts live here.
 | #47 | AI responses selectable; Updates page: full markdown notes, button on top |
 | #48 | VPS request persistence: server job queue + app outbox; device death/app inactive can't cancel work |
 | #49 | Cloud Console credentials sealed on the VPS (never read back); setup guide; YouTube frame+transcript ingestion |
-| #44 | Chat home: the Chat tab is a recent-threads list (title, snippet, WhatsApp time); ChatPage + BottomInputBar shared components; compose opens new threads |
-| #45 | One Projects UI: pushed screen = glass folder list; shared showProjectEditor sheet; ChatPage fallback hook; onAfterPush refresh |
+| #45 | Chat home: the Chat tab is a recent-threads list (title, snippet, WhatsApp time); ChatPage + BottomInputBar shared components; compose opens new threads |
+| #46 | One Projects UI: pushed screen = glass folder list; shared showProjectEditor sheet; ChatPage fallback hook; onAfterPush refresh |
 | #41 | WhatsApp chat list: sticky date badges (PinnedHeaderSliver), time-only stamps, no Read receipts, synchronous history preload |
 | #42 | One glass theme everywhere: Screen = glass scaffold (sky + chevron back) for ALL pushed screens, glass sheets, sliding nav pill + black active label, gork card removed |
 | #43 | Separate screens + scoped search: top-left = search on every tab, slide-up overlay with scope chips, project chats push as full screens, backdrop RepaintBoundary |
 | #44 | Accessibility loop: TalkBack labels, tab-control semantics, WCAG token guards, reusable GlassBackButton |
 | #40 | UI fixes from v1.7.0 screenshots: a const home short-circuited the shell rebuild on theme change (stale dark glass over the light backdrop, unreadable white name) — de-const the gate chain; and the attach box now matches the mic box so the + no longer rides 4dp low on a single line |
 | #39 | Theme modes become real: Light mode gets light glass (light fills, light borders, dark text), Dark stays, System follows the OS, **Auto follows the local clock** — one resolver drives MaterialApp, glass colors and the backdrop |
-| #49 | Google Messages chat polish (Movement 54): date badges go INLINE (only the badge for the messages being viewed is visible, never two pinned), 16dp side padding on the message list, every message is a theme-aware solid bubble (ink user / surface AI, tighter sender-side corner), active top-tab chip is ink + white label in light mode, avatar ring follows the palette (dark in dark mode, never white), and ALL glass chrome repaints the frame the theme resolves — send arrow flips tone too |
+| #50 | Chat + dropdown, wallet row removed, black & white rounded theme, Security screen (PR #46) |
+| #51 | Global chat: the Chat tab IS one never-deleted conversation; room-based memory on the VPS, one-call retrieval/mutation/add (PR #47) |
+| #52 | Accounts screen (every site account the browser logged into) + AI full browser on the VPS + secure paste-fill — AI never sees secrets (PR #48) |
+| #53 | Dynamic intro: one VPS request generates all first-run messages, played as separate animated bubbles (direct commit) |
+| #54 | Google Messages chat polish (PR #49): date badges go INLINE (only the badge for the messages being viewed is visible, never two pinned), 16dp side padding on the message list, every message is a theme-aware solid bubble (ink user / surface AI, tighter sender-side corner), active top-tab chip is ink + white label in light mode, avatar ring follows the palette (dark in dark mode, never white), and ALL glass chrome repaints the frame the theme resolves — send arrow flips tone too |
+| #55 | Screenshot-receipt fixes: Google Cloud Console card was painted UNDER the backdrop (invisible — the Menu → Google → Cloud Console → Upload path now works); Android system nav + status bars follow the theme (no white nav bar in dark mode); menu lists EVERY settings screen (Inbox / Panels / Cloud Computer added); attachments and compose land in THE global chat — nothing creates a new chat; chat viewport clips (no painting behind the nav pill); README + this log corrected against the code (keys-never-leave claim, 3→6 agent rounds, tab-pill wording, movement numbering) |
