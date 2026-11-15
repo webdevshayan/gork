@@ -8,6 +8,7 @@ import 'paypal_service.dart';
 import 'slack_service.dart';
 import 'spotify_service.dart';
 import 'strava_service.dart';
+import 'memory_rooms.dart';
 import 'memory_store.dart';
 import 'panels_store.dart';
 import 'projects_store.dart';
@@ -16,7 +17,8 @@ import 'vault_store.dart';
 import 'weather_service.dart';
 
 /// The tools gork may call during a chat. Every tool touches something real
-/// on the device: memory, projects, tasks, panels, vault, weather.
+/// on the device: memory, projects, tasks, panels, vault, weather — and the
+/// VPS room memory (Movement 51).
 class ToolRegistry {
   final MemoryStore memory;
   final ProjectsStore projects;
@@ -26,6 +28,7 @@ class ToolRegistry {
   final WeatherService weather;
   final Integrations? integrations;
   final HandoffService? handoff;
+  final MemoryRoomsService? memoryRooms;
 
   ToolRegistry({
     required this.memory,
@@ -36,6 +39,7 @@ class ToolRegistry {
     required this.weather,
     this.integrations,
     this.handoff,
+    this.memoryRooms,
   });
 
   List<ToolDef> get defs => const [
@@ -49,6 +53,37 @@ class ToolRegistry {
         ToolDef('list_memory', 'List everything remembered about the user.', {
           'type': 'object',
           'properties': {},
+        }),
+        ToolDef(
+            'memory_op',
+            'Room-based memory on your VPS. ONE call takes a list of ops: '
+            'retrieve (read a room/block), add (new block with title, '
+            'category, content), mutate (update a block by id), delete. '
+            'Retrieve, mutate and add always happen together in one call. '
+            'The current room map is in the system prompt.', {
+          'type': 'object',
+          'properties': {
+            'ops': {
+              'type': 'array',
+              'description': 'The ops to apply in this one call',
+              'items': {
+                'type': 'object',
+                'properties': {
+                  'kind': {
+                    'type': 'string',
+                    'enum': ['retrieve', 'add', 'mutate', 'delete']
+                  },
+                  'room': {'type': 'string'},
+                  'block': {'type': 'string'},
+                  'title': {'type': 'string'},
+                  'category': {'type': 'string'},
+                  'content': {'type': 'string'},
+                },
+                'required': ['kind'],
+              },
+            },
+          },
+          'required': ['ops'],
         }),
         ToolDef('create_project', 'Create a project workspace with notes.', {
           'type': 'object',
@@ -193,6 +228,13 @@ class ToolRegistry {
       case 'list_memory':
         final facts = memory.all();
         return facts.isEmpty ? 'memory is empty' : facts.join('\n');
+
+      case 'memory_op':
+        final rooms = memoryRooms;
+        if (rooms == null) {
+          return 'error: room memory is not available on this device';
+        }
+        return rooms.execute(args);
 
       case 'create_project':
         final title = (args['title'] as String?)?.trim() ?? '';

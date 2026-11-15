@@ -194,6 +194,10 @@ class ChatScreenState extends State<ChatScreen> {
       } else {
         setState(() => _loading = false);
       }
+      // Context-length-aware room extraction — the VPS distills the
+      // conversation into the memory rooms when the transcript grows past
+      // the model's usable context. Fire and forget: never blocks the chat.
+      unawaited(Locator.memoryRooms.maybeExtract(_conversationId));
       return;
     }
 

@@ -1,6 +1,7 @@
 import '../providers/providers.dart';
 import 'chat_service.dart';
 import 'llm_client.dart';
+import 'memory_rooms.dart';
 import 'memory_store.dart';
 import 'tool_registry.dart';
 
@@ -23,8 +24,10 @@ class AgentService {
   final ChatService _chat;
   final ToolRegistry _registry;
   final MemoryStore _memory;
+  final MemoryRoomsService? _memoryRooms;
 
-  AgentService(this._chat, this._registry, this._memory);
+  AgentService(this._chat, this._registry, this._memory, {MemoryRoomsService? memoryRooms})
+      : _memoryRooms = memoryRooms;
 
   Future<AgentResult> run({
     required String providerId,
@@ -32,11 +35,15 @@ class AgentService {
     List<ChatMessage> priorMessages = const [],
     int maxRounds = 6,
   }) async {
+    // The agent always knows which rooms exist and which blocks are in
+    // them — the map rides in the system prompt (null when no VPS).
+    final roomBlock = await _memoryRooms?.promptBlock();
     final systemText = 'You are gork, the user\u2019s personal AI assistant '
         'running on their Android phone. Be direct and concrete. '
         'Use the provided tools when they help. '
         'Sensitive actions (vault writes, task scheduling) must be described '
-        'clearly before calling them.${_memory.systemPromptBlock()}';
+        'clearly before calling them.${_memory.systemPromptBlock()}'
+        '${roomBlock ?? ''}';
 
     var messages = <ChatMessage>[
       ChatMessage('system', systemText),

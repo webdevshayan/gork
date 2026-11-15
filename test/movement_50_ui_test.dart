@@ -106,9 +106,11 @@ void main() {
   }
 
   Future<void> openThread(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey('tab-chat')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('thread-th1')));
+    // Movement 51: the Chat tab is now the global chat — a SPECIFIC chat is
+    // a pushed ChatPage (as from search or a project), so push it directly.
+    await tester.pumpWidget(
+      MaterialApp(home: ChatPage(conversationId: 'th1')),
+    );
     await tester.pumpAndSettle();
   }
 

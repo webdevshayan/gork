@@ -160,6 +160,163 @@ class ServerTests(unittest.TestCase):
             st, ing = req('GET', '/v1/ingests')
             self.assertTrue(any(i['video_id'] == 'abc123'
                                 for i in ing['ingests']))
+class MemoryRoomsTests(unittest.TestCase):
+    """Movement 51 — room-based memory: rooms → blocks → subcategories.
+    Retrieval, mutation and adding happen in ONE call (/v1/memory/op);
+    the map endpoint gives the agent full room/block context without ever
+    dumping every block's content."""
+
+    @classmethod
+    def setUpClass(cls):
+        global BASE
+        cls._prev_base = BASE
+        BASE = f'http://127.0.0.1:18988'
+        cls._prev_db = G.DB_PATH
+        os.environ['GORK_VPS_TOKEN'] = 'test-token'
+        G.VPS_TOKEN = 'test-token'
+        G.DB_PATH = '/tmp/gork-memory-test.sqlite3'
+        if os.path.exists(G.DB_PATH):
+            os.remove(G.DB_PATH)
+        G.init_db()
+        cls.httpd, cls.stop = G.serve('127.0.0.1', 18988)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        global BASE
+        cls.stop.set()
+        cls.httpd.shutdown()
+        G.DB_PATH = cls._prev_db
+        BASE = cls._prev_base
+
+    def setUp(self):
+        with G._LOCK, G.db() as c:
+            c.execute("DELETE FROM memory_blocks")
+
+    def _wait_done(self, jid, timeout=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            _, r = req('GET', f'/v1/jobs/{jid}')
+            if r['status'] in ('done', 'failed'):
+                return r
+            time.sleep(0.1)
+        return r
+
+    def test_map_starts_empty_and_needs_auth(self):
+        st, _ = req('GET', '/v1/memory/map', auth=False)
+        self.assertEqual(st, 401)
+        st, body = req('GET', '/v1/memory/map')
+        self.assertEqual(st, 200)
+        self.assertEqual(body['rooms'], [])
+
+    def test_one_call_adds_retrieves_and_mutates(self):
+        st, out = req('POST', '/v1/memory/op', {'ops': [
+            {'kind': 'add', 'room': 'Work', 'title': 'Taleem ERP',
+             'category': 'projects', 'content': 'Taleem ERP ships Friday.'},
+            {'kind': 'retrieve', 'room': 'Work'},
+        ]})
+        self.assertEqual(st, 200)
+        self.assertEqual(len(out['results']), 2)
+        self.assertTrue(out['results'][0]['ok'])
+        self.assertIn('Taleem ERP', out['map']['rooms'][0]['blocks'][0]['title'])
+        blocks = out['results'][1]['blocks']
+        self.assertEqual(len(blocks), 1)
+        block_id = blocks[0]['id']
+
+        # Second ONE-call round: mutate the block and retrieve it back.
+        st, out = req('POST', '/v1/memory/op', {'ops': [
+            {'kind': 'mutate', 'block': block_id,
+             'content': 'Taleem ERP shipped. Next: onboarding.'},
+            {'kind': 'retrieve', 'room': 'Work'},
+        ]})
+        self.assertEqual(st, 200)
+        got = out['results'][1]['blocks']
+        self.assertEqual(got[0]['content'],
+                         'Taleem ERP shipped. Next: onboarding.')
+        self.assertEqual(got[0]['title'], 'Taleem ERP')
+        self.assertEqual(got[0]['category'], 'projects')
+
+    def test_map_shows_rooms_and_blocks_but_never_content(self):
+        req('POST', '/v1/memory/op', {'ops': [
+            {'kind': 'add', 'room': 'Personal', 'title': 'Birthday',
+             'category': 'dates', 'content': 'Dec 26'},
+            {'kind': 'add', 'room': 'Personal', 'title': 'Pet',
+             'category': 'family', 'content': 'Max the dog'},
+        ]})
+        st, body = req('GET', '/v1/memory/map')
+        self.assertEqual(st, 200)
+        rooms = {r['room']: r for r in body['rooms']}
+        self.assertIn('Personal', rooms)
+        titles = [b['title'] for b in rooms['Personal']['blocks']]
+        self.assertEqual(titles, ['Birthday', 'Pet'])
+        for b in rooms['Personal']['blocks']:
+            self.assertNotIn('content', b,
+                             'the map carries titles, never block content')
+            self.assertIn('chars', b)
+
+    def test_delete_op_and_unknown_room(self):
+        st, out = req('POST', '/v1/memory/op', {'ops': [
+            {'kind': 'add', 'room': 'R', 'title': 'T', 'category': 'c',
+             'content': 'x'},
+        ]})
+        block_id = out['results'][0]['id']
+        st, out = req('POST', '/v1/memory/op', {'ops': [
+            {'kind': 'delete', 'block': block_id},
+            {'kind': 'retrieve', 'room': 'Missing'},
+        ]})
+        self.assertEqual(st, 200)
+        self.assertTrue(out['results'][0]['ok'])
+        self.assertEqual(out['results'][1]['blocks'], [])
+
+    def test_extract_within_context_is_a_noop(self):
+        st, job = req('POST', '/v1/messages',
+                      {'conversation_id': 'mem-conv', 'text': 'tiny talk'})
+        self.assertEqual(st, 201)
+        st, enq = req('POST', '/v1/memory/extract',
+                      {'conversation_id': 'mem-conv',
+                       'context_chars': 1000000})
+        self.assertEqual(st, 201)
+        r = self._wait_done(enq['id'])
+        self.assertEqual(r['status'], 'done')
+        self.assertFalse(r['result']['extracted'])
+
+    def test_extract_runs_provider_and_applies_ops(self):
+        # Enough history to cross the threshold, a stub provider that
+        # returns memory ops as JSON, then verify the rooms update.
+        with G._LOCK, G.db() as c:
+            now = int(time.time() * 1000)
+            for i in range(4):
+                c.execute(
+                    "INSERT INTO jobs (id,kind,conversation_id,payload,"
+                    "status,created_at,updated_at) VALUES "
+                    "(?,?,?,?,?,?,?)",
+                    (f'ext{i}', 'message', 'big-conv',
+                     json.dumps({'text': 'fact ' * 600}), 'done', now, now))
+            c.execute(
+                "UPDATE jobs SET result=? WHERE id='ext0'",
+                (json.dumps({'reply': 'reply ' * 600}),))
+        import urllib.request as _u
+        with patch.object(G, '_call_provider',
+                          return_value=json.dumps({'ops': [
+                              {'kind': 'add', 'room': 'Work',
+                               'title': 'From extraction',
+                               'category': 'auto',
+                               'content': 'extracted memory block'}]})):
+            st, enq = req('POST', '/v1/memory/extract',
+                          {'conversation_id': 'big-conv',
+                           'context_chars': 4000})
+            self.assertEqual(st, 201)
+            # The worker runs in its own thread — poll while the stub is
+            # still patched, or it hits the real (unconfigured) provider.
+            r = self._wait_done(enq['id'])
+        self.assertTrue(r['status'] == 'done', r.get('error'))
+        self.assertTrue(r['result']['extracted'])
+        st, body = req('GET', '/v1/memory/map')
+        rooms = {x['room']: x for x in body['rooms']}
+        self.assertIn('Work', rooms)
+        titles = [b['title'] for b in rooms['Work']['blocks']]
+        self.assertIn('From extraction', titles)
 
 
 if __name__ == '__main__':

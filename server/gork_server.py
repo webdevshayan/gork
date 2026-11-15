@@ -115,6 +115,10 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS ingests (
           video_id TEXT PRIMARY KEY, title TEXT, transcript TEXT,
           frames TEXT, updated_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS memory_blocks (
+          id TEXT PRIMARY KEY, room TEXT NOT NULL, title TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '',
+          updated_at INTEGER NOT NULL);
         """)
 
 
@@ -160,6 +164,90 @@ def _call_provider(history):
     with urllib.request.urlopen(req, timeout=120) as resp:
         body = json.loads(resp.read().decode())
     return body["choices"][0]["message"]["content"]
+
+
+# ------------------------------------------------------- memory rooms ---
+def _memory_map(c):
+    """The full room map the agent sees: every room, every block (title +
+    subcategory + size) — never the block contents."""
+    rows = c.execute(
+        "SELECT id,room,title,category,updated_at,"
+        "length(content) AS chars FROM memory_blocks "
+        "ORDER BY room,updated_at").fetchall()
+    rooms = {}
+    order = []
+    for r in rows:
+        room = r["room"]
+        if room not in rooms:
+            rooms[room] = []
+            order.append(room)
+        rooms[room].append({"id": r["id"], "title": r["title"],
+                            "category": r["category"],
+                            "chars": r["chars"],
+                            "updated_at": r["updated_at"]})
+    return {"rooms": [{"room": k, "blocks": rooms[k]} for k in order]}
+
+
+def _memory_ops(c, ops):
+    """THE one call: retrieve + mutate + add (and delete) together. Ops are
+    applied atomically; retrieval results come back alongside the map."""
+    results = []
+    for op in ops:
+        kind = op.get("kind", "")
+        if kind == "add":
+            room = (op.get("room") or "").strip()
+            title = (op.get("title") or "").strip()
+            if not room or not title:
+                results.append({"ok": False,
+                                "error": "add needs room and title"})
+                continue
+            block_id = uuid.uuid4().hex[:12]
+            c.execute(
+                "INSERT INTO memory_blocks (id,room,title,category,content,"
+                "updated_at) VALUES (?,?,?,?,?,?)",
+                (block_id, room, title,
+                 (op.get("category") or "").strip(),
+                 op.get("content") or "", int(time.time() * 1000)))
+            results.append({"ok": True, "id": block_id,
+                            "block": block_id})
+        elif kind == "mutate":
+            block_id = op.get("block") or ""
+            row = c.execute("SELECT id FROM memory_blocks WHERE id=?",
+                            (block_id,)).fetchone()
+            if not row:
+                results.append({"ok": False, "error": "no such block"})
+                continue
+            for field in ("title", "category", "content"):
+                if field in op:
+                    c.execute(f"UPDATE memory_blocks SET {field}=?,"
+                              "updated_at=? WHERE id=?",
+                              (op[field], int(time.time() * 1000),
+                               block_id))
+            results.append({"ok": True, "block": block_id})
+        elif kind == "retrieve":
+            room = (op.get("room") or "").strip()
+            block = op.get("block")
+            if block:
+                rows = c.execute(
+                    "SELECT id,room,title,category,content,updated_at "
+                    "FROM memory_blocks WHERE id=?", (block,)).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT id,room,title,category,content,updated_at "
+                    "FROM memory_blocks WHERE room=? ORDER BY updated_at",
+                    (room,)).fetchall()
+            results.append({"ok": True, "blocks": [
+                {"id": r["id"], "room": r["room"], "title": r["title"],
+                 "category": r["category"], "content": r["content"],
+                 "updated_at": r["updated_at"]} for r in rows]})
+        elif kind == "delete":
+            c.execute("DELETE FROM memory_blocks WHERE id=?",
+                      (op.get("block") or "",))
+            results.append({"ok": True, "block": op.get("block")})
+        else:
+            results.append({"ok": False,
+                            "error": "unknown op kind: " + str(kind)})
+    return {"results": results, "map": _memory_map(c)}
 
 
 def yt_ingest(url):
@@ -208,6 +296,42 @@ def _process_job(c, row):
         return json.dumps({"video_id": ing["video_id"],
                            "title": ing["title"],
                            "transcript": ing["transcript"]})
+    if row["kind"] == "memory_extract":
+        # Context-length-aware extraction: when the conversation's transcript
+        # grows past the model's usable context, distill the tail into the
+        # room-based memory (rooms → blocks → subcategories) so the agent
+        # keeps full coverage of everything without the raw transcript.
+        conv = payload.get("conversation_id", "default")
+        context_chars = max(1, int(payload.get("context_chars", 400000)))
+        threshold = int(context_chars * 0.6)
+        history = _conversation_history(c, conv)
+        total = sum(len(m.get("content", "")) for m in history)
+        if total <= threshold:
+            return json.dumps({"extracted": False,
+                               "reason": "within context",
+                               "chars": total, "threshold": threshold})
+        tail = history[-12:]
+        prompt = (
+            "Distill this conversation tail into the room-based memory "
+            "system. Rooms are categories of information; each room holds "
+            "blocks; a block has a title, a subcategory and the content.\n"
+            "Respond with ONLY a JSON object: {\"ops\": [...]} where every "
+            "op is one of:\n"
+            '  {"kind":"add","room":..., "title":..., "category":..., '
+            '"content":...}\n'
+            '  {"kind":"mutate","block":<id from the map>, "content":...}\n'
+            "The current room map follows. Merge into it — do not duplicate "
+            "existing blocks.\nMAP: " + json.dumps(_memory_map(c)) +
+            "\nTAIL: " + json.dumps(tail))
+        raw = _call_provider([{"role": "user", "content": prompt}])
+        m = re.search(r"\{.*\}", raw, re.S)
+        if not m:
+            raise RuntimeError("provider did not return JSON ops")
+        ops = json.loads(m.group(0)).get("ops", [])
+        out = _memory_ops(c, ops)
+        return json.dumps({"extracted": True, "applied": len(ops),
+                           "chars": total, "threshold": threshold,
+                           "map": out["map"]})
     raise RuntimeError("unknown job kind: " + row["kind"])
 
 
@@ -306,6 +430,9 @@ class Handler(BaseHTTPRequestHandler):
                 "sealed_with": SEALED_WITH if r else None,
                 "updated_at": r["updated_at"] if r else None,
                 "scopes_expected": SCOPES_EXPECTED})
+        if path == "/v1/memory/map":
+            with db() as c:
+                return self._json(200, _memory_map(c))
         if path == "/v1/ingests":
             with db() as c:
                 rows = c.execute("SELECT * FROM ingests ORDER BY "
@@ -352,6 +479,30 @@ class Handler(BaseHTTPRequestHandler):
                     "(?,?,?,?,?,?,?)",
                     (job_id, "youtube", "ingest",
                      json.dumps({"url": url}), "queued", now, now))
+            return self._json(201, {"id": job_id, "status": "queued"})
+        if path == "/v1/memory/op":
+            body = self._read_json()
+            ops = body.get("ops")
+            if not isinstance(ops, list) or not ops:
+                return self._json(400, {"error": "ops must be a non-empty list"})
+            with _LOCK, db() as c:
+                out = _memory_ops(c, ops)
+            return self._json(200, out)
+        if path == "/v1/memory/extract":
+            body = self._read_json()
+            conv = (body.get("conversation_id") or "default").strip()
+            job_id = uuid.uuid4().hex[:12]
+            now = int(time.time() * 1000)
+            with _LOCK, db() as c:
+                c.execute(
+                    "INSERT INTO jobs (id,kind,conversation_id,payload,"
+                    "status,created_at,updated_at) VALUES "
+                    "(?,?,?,?,?,?,?)",
+                    (job_id, "memory_extract", conv,
+                     json.dumps({"conversation_id": conv,
+                                 "context_chars": body.get("context_chars",
+                                                           400000)}),
+                     "queued", now, now))
             return self._json(201, {"id": job_id, "status": "queued"})
         if path == "/v1/credentials/google":
             body = self._read_json()
