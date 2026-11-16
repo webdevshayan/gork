@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,7 +84,7 @@ void main() {
     expect(attach2.right, greaterThan(bar2.center.dx));
   });
 
-  testWidgets('backdrop swaps to the bundled night sky in dark mode',
+  testWidgets('backdrop swaps to the dark gruvbox gradient in dark mode',
       (tester) async {
     themeSetting.value = 'Dark';
     await tester.pumpWidget(const MediaQuery(
@@ -93,20 +95,13 @@ void main() {
       ),
     ));
     await tester.pump();
-    final image = tester.widget<Image>(
-        find.byKey(const ValueKey('ambient-night')));
-    expect(image.image, isA<AssetImage>());
-    expect((image.image as AssetImage).assetName, 'assets/ambient/night.jpg');
-    expect(image.fit, BoxFit.cover);
-    // absolute cover: the image sits inside a Positioned.fill (all-zero insets)
-    final positioned = tester.widget<Positioned>(find.byType(Positioned).first);
-    expect(positioned.left, 0);
-    expect(positioned.top, 0);
-    expect(positioned.right, 0);
-    expect(positioned.bottom, 0);
+    // Movement 57: no photo layers at all — the gradient IS the backdrop.
+    expect(find.byType(Image), findsNothing);
+    final gradient = _gradientOf(tester);
+    expect(gradient.colors.first.computeLuminance(), lessThan(0.2));
   });
 
-  testWidgets('backdrop keeps the day sky asset in light mode',
+  testWidgets('backdrop keeps the light gruvbox gradient in light mode',
       (tester) async {
     themeSetting.value = 'Light';
     await tester.pumpWidget(const MediaQuery(
@@ -117,18 +112,19 @@ void main() {
       ),
     ));
     await tester.pump();
-    final image = tester.widget<Image>(
-        find.byKey(const ValueKey('ambient-day')));
-    expect((image.image as AssetImage).assetName, 'assets/ambient/sky.jpg');
+    expect(find.byType(Image), findsNothing);
+    expect(_gradientOf(tester).colors.first.computeLuminance(),
+        greaterThan(0.3));
   });
 
-  test('the night sky is a bundled offline asset', () async {
-    final data = await rootBundle.load('assets/ambient/night.jpg');
-    expect(data.lengthInBytes, greaterThan(10000));
+  test('the ambient photos are gone from pubspec and disk', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    expect(pubspec.contains('assets/ambient'), isFalse);
+    expect(Directory('assets/ambient').existsSync(), isFalse);
   });
 
-  testWidgets('dark placeholder gradient — never a white startup flash in '
-      'dark mode', (tester) async {
+  testWidgets('dark gradient — never a white startup flash in dark mode',
+      (tester) async {
     themeSetting.value = 'Dark';
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
@@ -138,11 +134,12 @@ void main() {
       ),
     ));
     await tester.pump();
-    final placeholder = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey('ambient-placeholder')),
-    );
-    final colors = (placeholder.decoration as BoxDecoration).gradient
-        as LinearGradient;
-    expect(colors.colors.first.computeLuminance(), lessThan(0.2));
+    expect(_gradientOf(tester).colors.first.computeLuminance(), lessThan(0.2));
   });
 }
+
+LinearGradient _gradientOf(WidgetTester tester) =>
+    ((tester.widget<DecoratedBox>(
+                find.byKey(const ValueKey('ambient-backdrop-gradient'))))
+            .decoration as BoxDecoration)
+        .gradient as LinearGradient;

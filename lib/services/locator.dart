@@ -33,6 +33,10 @@ class Locator {
   static NotificationService? _notifications;
   static http.Client? _httpClient;
 
+  /// True when the locator is bound (real device run or a test that bound
+  /// fakes) — gates location-aware ambient logic that needs prefs.
+  static bool get bound => _prefs != null;
+
   static void bind({
     SecureStore? store,
     ChatService? chat,

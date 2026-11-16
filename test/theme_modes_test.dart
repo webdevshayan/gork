@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/constants/ambient.dart';
 import 'package:gork/constants/design_tokens.dart';
+import 'package:gork/services/weather_service.dart';
 import 'package:gork/screens/gork_shell.dart';
 import 'package:gork/widgets/bottom_input_bar.dart';
 import 'package:gork/screens/theme_page.dart';
@@ -75,12 +76,14 @@ void main() {
   });
 
   group('GlassColors — the glass switches with the resolved brightness', () {
-    test('dark stays the Movement 34 glass exactly', () {
+    test('dark keeps the glass derived from the resolved palette', () {
       GlassColors.brightness.value = Brightness.dark;
       expect(GlassColors.fill.computeLuminance(), lessThan(0.2));
       expect(GlassColors.text, const Color(0xFFF2F4F7));
-      expect(GlassColors.fill, const Color(0xB312141A));
-      expect(GlassColors.fillStrong, const Color(0xCC12141A));
+      expect(GlassColors.fill,
+          resolvedPalette.value.surface.withValues(alpha: 0.70));
+      expect(GlassColors.fillStrong,
+          resolvedPalette.value.surface.withValues(alpha: 0.80));
     });
 
     test('light mode gets light fills, light borders, dark text', () {
@@ -94,9 +97,11 @@ void main() {
       expect(GlassColors.text, Palette.light.textPrimary);
       expect(GlassColors.textDim, Palette.light.textSecondary);
       expect(GlassColors.textFaint, Palette.light.textTertiary);
-      // Borders and dividers are quiet dark hairlines in light mode.
-      expect(GlassColors.border.computeLuminance(), lessThan(0.5));
-      expect(GlassColors.divider.computeLuminance(), lessThan(0.5));
+      // Borders and dividers derive from the palette border, translucent.
+      expect(GlassColors.border,
+          resolvedPalette.value.border.withValues(alpha: 0.85));
+      expect(GlassColors.divider,
+          resolvedPalette.value.border.withValues(alpha: 0.70));
     });
   });
 
@@ -169,56 +174,53 @@ void main() {
   });
 
   group('backdrop — Auto is the local clock, System is the OS', () {
-    testWidgets('Auto at 22:30 dims dark even on a light platform',
+    testWidgets('Auto in the local deep night dims dark on a light platform',
         (tester) async {
-      AmbientBackdrop.clock =
-          () => DateTime(2026, 11, 14, 22, 30);
+      // Sun-relative clock: 3 hours past sunset at the stored location —
+      // night, no matter which timezone the test box runs in.
+      final DateTime sunset = sunsetFor(
+          Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+      AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
       themeSetting.value = 'Auto';
       await tester.pumpWidget(_wrap(Brightness.light));
       await tester.pump();
-      expect(
-        tester
-            .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
-            .color,
-        Colors.black.withValues(alpha: 0.30),
-      );
+      expect(_gradientOf(tester).colors.first.computeLuminance(),
+          lessThan(0.2));
     });
 
-    testWidgets('Auto at noon stays light even on a dark platform',
+    testWidgets('Auto in the local morning stays light on a dark platform',
         (tester) async {
-      AmbientBackdrop.clock = () => DateTime(2026, 11, 14, 12, 0);
+      // 2 hours past sunrise at the stored location — full daylight.
+      final DateTime sunrise = sunriseFor(
+          Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+      AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
       themeSetting.value = 'Auto';
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
-      expect(
-        tester
-            .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
-            .color,
-        Colors.white.withValues(alpha: 0.25),
-      );
+      expect(_gradientOf(tester).colors.first.computeLuminance(),
+          greaterThan(0.3));
     });
 
     testWidgets('System follows the platform brightness', (tester) async {
       themeSetting.value = 'System';
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
-      expect(
-        tester
-            .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
-            .color,
-        Colors.black.withValues(alpha: 0.30),
-      );
+      expect(_gradientOf(tester).colors.first.computeLuminance(),
+          lessThan(0.2));
       await tester.pumpWidget(_wrap(Brightness.light));
       await tester.pump();
-      expect(
-        tester
-            .widget<Container>(find.byKey(const ValueKey('theme-scrim')))
-            .color,
-        Colors.white.withValues(alpha: 0.25),
-      );
+      expect(_gradientOf(tester).colors.first.computeLuminance(),
+          greaterThan(0.3));
     });
   });
 }
+
+DecoratedBox _backdropOf(WidgetTester tester) => tester.widget<DecoratedBox>(
+    find.byKey(const ValueKey('ambient-backdrop-gradient')));
+
+LinearGradient _gradientOf(WidgetTester tester) =>
+    (_backdropOf(tester).decoration as BoxDecoration).gradient
+        as LinearGradient;
 
 Widget _wrap(Brightness platform) {
   return MediaQuery(

@@ -305,7 +305,13 @@ void main() {
     expect(Locator.prefs.getString('ui.theme'), 'Dark');
     expect(tester.widget<GlassRadio>(find.byType(GlassRadio).at(3)).selected,
         isTrue);
-    expect(find.byKey(const ValueKey('theme-scrim')), findsOneWidget);
+    // Movement 57: the scrim is gone — Dark mode IS the dark gruvbox
+    // gradient now.
+    final backdrop = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('ambient-backdrop-gradient')));
+    final colors =
+        (backdrop.decoration as BoxDecoration).gradient as LinearGradient;
+    expect(colors.colors.first.computeLuminance(), lessThan(0.2));
         expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
         reason: 'back affordances are chevrons everywhere');
   });

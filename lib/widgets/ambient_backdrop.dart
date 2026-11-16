@@ -1,13 +1,11 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../constants/ambient.dart';
+import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 
 /// Theme override chosen on the Theme page (Auto/System/Light/Dark).
-/// 'Dark' swaps the backdrop to the night sky and dims it; the other modes
-/// leave the day sky untouched.
+/// The app shell publishes the RESOLVED mode here every cycle.
 final ValueNotifier<String?> themeSetting = ValueNotifier<String?>(null);
 
 /// The raw mode chosen on the Theme page ('Auto' / 'System' / 'Light' /
@@ -35,25 +33,16 @@ Future<void> initProfilePhoto() async {
   avatarPath.value = Locator.prefs.getString('profile.photoPath');
 }
 
-/// Full-screen ambient backdrop. Both photos are bundled assets — the app is
-/// fully offline. The image is painted absolutely (Positioned.fill + cover)
-/// over a matching gradient so there is never a flash while it decodes:
-/// a light sky gradient in light mode, a deep night gradient in dark mode.
-///
-/// Overlays (contrast pass):
-///   * Light mode gets a white wash over the day sky.
-///   * Dark mode gets the moon + night-sky photo under a soft black scrim.
+/// Full-screen ambient gradient (Movement 57). The old photo assets are
+/// gone — the backdrop IS the theme now: a phase + weather gradient
+/// (gruvbox-inspired) painted behind every glass surface. No decoding, no
+/// flash, fully offline, and it shifts with the sun and the sky outside.
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
 
-  static const String _dayAsset = 'assets/ambient/sky.jpg';
-  static const String _nightAsset = 'assets/ambient/night.jpg';
-
-  static const Color _lightScrim = Colors.white;
-  static const Color _darkScrim = Colors.black;
-
   /// Injectable clock — tests pin Auto's local-time behavior without
-  /// waiting for the real hour of the day.
+  /// waiting for the real hour of the day. The app shell also reads this
+  /// for its resolution, so tests can move the sun for everything at once.
   static DateTime Function() clock = DateTime.now;
 
   @override
@@ -66,60 +55,30 @@ class AmbientBackdrop extends StatelessWidget {
         // The shell publishes the RESOLVED mode here ('Light'/'Dark');
         // 'Auto'/'System'/null resolve locally so the backdrop stays
         // correct even when used standalone (tests, early frames).
-        final Brightness effective = resolveBrightness(mode, platform, clock());
+        final Brightness effective = resolveBrightness(mode, platform,
+            clock(),
+            lat: Locator.bound ? Locator.ambientLat : null,
+            lon: Locator.bound ? Locator.ambientLon : null);
         final bool dark = effective == Brightness.dark;
+        // Inside the app the shell publishes the (solar) phase via the
+        // scope; standalone — read the clock directly.
+        final scope = context
+            .dependOnInheritedWidgetOfExactType<AmbientScope>();
+        final AmbientPhase phase =
+            scope?.phase ?? phaseFor(clock());
+        final AmbientWeather weather =
+            scope?.weather ?? ambient.weather;
         return SizedBox.expand(
           key: const ValueKey('ambient-backdrop'),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Always painted first: no jarring background while the asset
-              // decodes (cold start included).
-              DecoratedBox(
-                key: const ValueKey('ambient-placeholder'),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: dark
-                        ? const [
-                            Color(0xFF0B1026),
-                            Color(0xFF05070F),
-                            Color(0xFF0A0F1E),
-                          ]
-                        : const [
-                            Color(0xFF8FC0E8),
-                            Color(0xFFC9E2F2),
-                            Color(0xFFF7ECD4),
-                          ],
-                  ),
-                ),
+          child: DecoratedBox(
+            key: const ValueKey('ambient-backdrop-gradient'),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: ambientGradient(phase, dark, weather: weather),
               ),
-              // Absolute cover: the photo fills the screen no matter the
-              // aspect ratio, behind everything.
-              Positioned.fill(
-                // RepaintBoundary: holding an overscroll repaints the glass
-                // BackdropFilters every frame — the sky's raster must NOT be
-                // re-filtered with them or the blur visibly collapses.
-                child: RepaintBoundary(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                    child: Image.asset(
-                      key: ValueKey(dark ? 'ambient-night' : 'ambient-day'),
-                      dark ? _nightAsset : _dayAsset,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                key: const ValueKey('theme-scrim'),
-                color: dark
-                    ? _darkScrim.withValues(alpha: 0.30)
-                    : _lightScrim.withValues(alpha: 0.25),
-              ),
-            ],
+            ),
           ),
         );
       },

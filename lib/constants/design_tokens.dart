@@ -127,17 +127,35 @@ class TypeScale {
       color: color);
 }
 
+/// The ambient palette published by the app shell on every resolution —
+/// the phase + weather neutrals (Movement 57). `paletteOf` and the glass
+/// colors read THIS, so cards, borders and fills follow the time of day
+/// and the weather together with the app background.
+final ValueNotifier<Palette> resolvedPalette =
+    ValueNotifier<Palette>(Palette.dark);
+
 /// Resolve the semantic palette for the current brightness.
 ///
 /// Movement 34 locked this to dark glass. Movement 39 unlocks it: the app
 /// shell resolves the theme mode (Light / Dark / System / Auto-by-clock)
 /// and publishes the result to [GlassColors.brightness] — every consumer
 /// of this function follows that resolution, so pages can never disagree
-/// with the shell.
-Palette paletteOf(BuildContext context) =>
-    GlassColors.brightness.value == Brightness.dark
-        ? Palette.dark
-        : Palette.light;
+/// with the shell. Movement 57: the palette itself is now the ambient
+/// phase+weather palette published by the shell, not the flat base.
+Palette paletteOf(BuildContext context) => resolvedPalette.value;
+
+/// Palette paletteOf reads — defined before [GlassColors] so its notifier
+/// initializer can reference the coherence function below.
+///
+/// Coherence: whenever the resolved brightness flips WITHOUT the shell
+/// around (tests, early frames), the palette follows to the flat base —
+/// the app shell immediately refines it with the ambient phase+weather
+/// palette right after publishing the brightness (Movement 57).
+void _onBrightnessChanged() {
+  resolvedPalette.value = GlassColors.brightness.value == Brightness.dark
+      ? Palette.dark
+      : Palette.light;
+}
 
 /// Colors for the glass shell. Named after their role, not their look —
 /// pages must stay consistent. Both looks are full citizens: dark glass
@@ -149,48 +167,51 @@ class GlassColors {
 
   /// What the app resolved right now. Defaults to dark — the Movement 34
   /// glass — so tests and early frames see exactly the shipped look.
+  /// The listener keeps [resolvedPalette] coherent whenever brightness
+  /// flips without the shell around (tests, early frames); the shell
+  /// refines it with the phase+weather palette right after.
   static final ValueNotifier<Brightness> brightness =
-      ValueNotifier<Brightness>(Brightness.dark);
+      ValueNotifier<Brightness>(Brightness.dark)
+        ..addListener(_onBrightnessChanged);
 
   static bool get _dark => brightness.value == Brightness.dark;
 
-  /// Translucent glass fill (sits over the ambient backdrop).
+  /// The current ambient palette (phase + weather neutrals).
+  static Palette get _p => resolvedPalette.value;
+
+  /// Translucent glass fill (sits over the ambient gradient). Derived from
+  /// the phase surface so the glass warms and cools with the day.
   static Color get fill =>
-      _dark ? const Color(0xB312141A) : const Color(0xE6FFFFFF);
+      _p.surface.withValues(alpha: _dark ? 0.70 : 0.90);
 
   /// Same fill, more opaque for primary chrome (input bar, nav pills).
   static Color get fillStrong =>
-      _dark ? const Color(0xCC12141A) : const Color(0xF2FFFFFF);
+      _p.surface.withValues(alpha: _dark ? 0.80 : 0.95);
 
-  /// Hairline border — light on dark glass, quiet dark on light glass.
+  /// Hairline border — the ambient border color (themed per phase).
   /// Never the old white 0.5 edge.
   static Color get border =>
-      _dark ? const Color(0x1FF2F4F7) : const Color(0x33111418);
+      _p.border.withValues(alpha: _dark ? 0.60 : 0.85);
 
   /// Primary text on glass.
-  static Color get text =>
-      _dark ? const Color(0xFFF2F4F7) : const Color(0xFF111418);
+  static Color get text => _p.textPrimary;
 
   /// Secondary text on glass.
-  static Color get textDim =>
-      _dark ? const Color(0xFFA8B0BA) : const Color(0xFF4A5158);
+  static Color get textDim => _p.textSecondary;
 
   /// Tertiary/faint text on glass.
-  static Color get textFaint =>
-      _dark ? const Color(0xFF8A93A0) : const Color(0xFF6B7280);
+  static Color get textFaint => _p.textTertiary;
 
   /// Hairline divider on glass.
   static Color get divider =>
-      _dark ? const Color(0x2EF2F4F7) : const Color(0x2E111418);
+      _p.border.withValues(alpha: _dark ? 0.50 : 0.70);
 
   /// The active nav-tab chip: ink (black) in light mode with a white label —
   /// Movement 54 — and near-white in dark mode with a black label. The active
   /// tab always inverts against the glass around it so it reads instantly.
-  static Color get chip =>
-      _dark ? const Color(0xF2FFFFFF) : const Color(0xE6111418);
+  static Color get chip => _p.primary.withValues(alpha: 0.93);
 
   /// Label on the active chip — black on the near-white chip in dark mode,
   /// white on the ink chip in light mode.
-  static Color get textOnChip =>
-      _dark ? const Color(0xFF111418) : const Color(0xFFF2F4F7);
+  static Color get textOnChip => _p.onPrimary;
 }

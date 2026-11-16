@@ -18,6 +18,7 @@ import 'package:gork/screens/profile_edit_screen.dart';
 import 'package:gork/services/google_accounts.dart';
 import 'package:gork/services/integrations.dart';
 import 'package:gork/services/locator.dart';
+import 'package:gork/services/profile_info.dart';
 import 'package:gork/services/secure_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -173,6 +174,7 @@ void main() {
       });
       final prefs = await SharedPreferences.getInstance();
       Locator.bind(prefs: prefs);
+      initProfile(); // the identity is notifier-driven (Movement 57)
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
 
       expect(find.text('Edited Name'), findsOneWidget);

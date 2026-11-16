@@ -181,16 +181,23 @@ void main() {
       expect(tester.getTopLeft(find.byType(SearchScreen)).dy, 0);
     });
 
-    testWidgets('the backdrop image layers are repaint-isolated',
+    testWidgets('the backdrop is a plain gradient — nothing to decode',
         (tester) async {
       await pumpShell(tester);
-      // Holding an overscroll repaints glass BackdropFilters; the backdrop's
-      // image layers must sit inside RepaintBoundaries so the blur never
-      // collapses mid-scroll.
+      // Movement 57: the photo layers are gone. The backdrop paints only
+      // theme colors — no Image widgets anywhere, so nothing can stutter
+      // the glass blur mid-scroll.
       expect(
         find.descendant(
           of: find.byType(AmbientBackdrop),
-          matching: find.byType(RepaintBoundary),
+          matching: find.byType(Image),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AmbientBackdrop),
+          matching: find.byType(DecoratedBox),
         ),
         findsAtLeastNWidgets(1),
       );

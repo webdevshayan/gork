@@ -4,27 +4,8 @@ import 'package:flutter/services.dart';
 import 'constants/ambient.dart';
 import 'constants/design_tokens.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/locator.dart';
 import 'widgets/ambient_backdrop.dart';
-
-/// Ambient scope: exposes phase + wet-weather flag down the tree.
-class AmbientScope extends InheritedWidget {
-  final AmbientPhase phase;
-  final bool wet;
-
-  const AmbientScope({
-    super.key,
-    required this.phase,
-    required this.wet,
-    required super.child,
-  });
-
-  static AmbientScope of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<AmbientScope>()!;
-
-  @override
-  bool updateShouldNotify(AmbientScope oldWidget) =>
-      oldWidget.phase != phase || oldWidget.wet != wet;
-}
 
 class GorkApp extends StatelessWidget {
   const GorkApp({super.key});
@@ -59,35 +40,51 @@ class GorkApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Outermost listener: the raw mode chosen on the Theme page. Any tap
     // there resolves instantly; the ambient version keeps the resolution
-    // fresh for Auto (its timer ticks every 15 minutes).
+    // fresh for Auto (its timer ticks every 5 minutes) and for the weather.
     return ValueListenableBuilder<String>(
       valueListenable: themeModeSetting,
       builder: (context, mode, __) {
         return ValueListenableBuilder<int>(
           valueListenable: ambient.version,
           builder: (context, _, ___) {
-            final phase = phaseFor(DateTime.now());
+            // Movement 57: the phase follows the user's SUN when the
+            // locator is bound (real sunrise/sunset at their stored
+            // location) and the wall clock when it is not (tests).
+            final bool located = Locator.bound;
+            final DateTime now = AmbientBackdrop.clock();
+            final AmbientPhase phase = located
+                ? phaseForAt(now,
+                    lat: Locator.ambientLat, lon: Locator.ambientLon)
+                : phaseFor(now);
+            final AmbientWeather weather = ambient.weather;
             final wet = ambient.wetWeather;
             final platform = WidgetsBinding
                 .instance.platformDispatcher.platformBrightness;
             // Movement 39: one resolution for everything — MaterialApp
             // themeMode, glass colors and the ambient backdrop all follow
             // this single answer.
-            final Brightness resolved =
-                resolveBrightness(mode, platform, DateTime.now());
+            final Brightness resolved = resolveBrightness(
+                mode, platform, now,
+                lat: located ? Locator.ambientLat : null,
+                lon: located ? Locator.ambientLon : null);
             GlassColors.brightness.value = resolved;
             // Movement 55: the ANDROID system chrome follows the theme too —
             // a dark app must not sit on a white system navigation bar (the
-            // v1.12.0 screenshot complaint). Status bar icons flip tone with
-            // it; this runs on every resolution, idempotent per value.
+            // v1.12.0 screenshot complaint). Movement 57: the nav bar takes
+            // the AMBIENT background, so the three-button bar glows warm at
+            // sunset and cream at noon with everything else.
+            final palette = resolved == Brightness.dark
+                ? ambientPalette(Palette.dark, phase,
+                    wet: wet, weather: weather)
+                : ambientPalette(Palette.light, phase,
+                    wet: wet, weather: weather);
+            resolvedPalette.value = palette;
             SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
               statusBarIconBrightness: resolved == Brightness.dark
                   ? Brightness.light
                   : Brightness.dark,
-              systemNavigationBarColor: resolved == Brightness.dark
-                  ? const Color(0xFF0F1115)
-                  : const Color(0xFFF6F7F9),
+              systemNavigationBarColor: palette.background,
               systemNavigationBarIconBrightness: resolved == Brightness.dark
                   ? Brightness.light
                   : Brightness.dark,
@@ -95,11 +92,11 @@ class GorkApp extends StatelessWidget {
             ));
             themeSetting.value =
                 resolved == Brightness.dark ? 'Dark' : 'Light';
-            final palette = resolved == Brightness.dark
-                ? ambientPalette(Palette.dark, phase, wet: wet)
-                : ambientPalette(Palette.light, phase, wet: wet);
-            return AmbientScope(phase: phase, wet: wet, child: Builder(
-                builder: (context) {
+            return AmbientScope(
+                phase: phase,
+                wet: wet,
+                weather: weather,
+                child: Builder(builder: (context) {
               return MaterialApp(
                 title: 'gork',
                 theme: _theme(palette, Brightness.light),
@@ -120,6 +117,3 @@ class GorkApp extends StatelessWidget {
     );
   }
 }
-
-/// Ambient controller singleton: main() refreshes it on a timer.
-final AmbientController ambient = AmbientController();

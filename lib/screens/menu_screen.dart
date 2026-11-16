@@ -41,24 +41,6 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  /// The identity, read synchronously at build time — no async gap, no
-  /// notifier race. Safe when the locator is unbound (widget tests).
-  String get _name {
-    try {
-      return Locator.prefs.getString('profile.name') ?? kDefaultName;
-    } catch (_) {
-      return kDefaultName;
-    }
-  }
-
-  String get _email {
-    try {
-      return Locator.prefs.getString('profile.email') ?? kDefaultEmail;
-    } catch (_) {
-      return kDefaultEmail;
-    }
-  }
-
   void _push(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
@@ -89,13 +71,18 @@ class _MenuScreenState extends State<MenuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    return ValueListenableBuilder<String>(
+      valueListenable: profileName,
+      builder: (context, name, _) => ValueListenableBuilder<String>(
+        valueListenable: profileEmail,
+        builder: (context, email, _) {
+          return ListView(
       // Movement 55: clip — scrolled rows must not paint behind the nav pill.
       clipBehavior: Clip.hardEdge,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
         Text(
-          _name,
+          name,
           style: TextStyle(
             fontSize: 40,
             fontWeight: FontWeight.w600,
@@ -104,7 +91,7 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          _email,
+          email,
           style: TextStyle(fontSize: 16, color: GlassColors.textDim),
         ),
         const SizedBox(height: 24),
@@ -263,6 +250,9 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
         ),
       ],
+    );
+        },
+      ),
     );
   }
 }

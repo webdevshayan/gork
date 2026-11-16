@@ -20,6 +20,7 @@ class BottomInputBar extends StatefulWidget {
     required this.onSend,
     required this.onAttach,
     this.hint = 'Message Gork',
+    this.attachLink,
   });
 
   final TextEditingController controller;
@@ -27,6 +28,10 @@ class BottomInputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final VoidCallback onAttach;
   final String hint;
+
+  /// When provided, the + button is a CompositedTransformTarget — the shell
+  /// pins its attach dropdown to the top edge of this trigger (Movement 57).
+  final LayerLink? attachLink;
 
   @override
   State<BottomInputBar> createState() => _BottomInputBarState();
@@ -128,19 +133,35 @@ class _BottomInputBarState extends State<BottomInputBar> {
                     ),
                   ),
                 ),
-                GestureDetector(
-                  key: const ValueKey('attach-button'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.onAttach,
-                  child: Padding(
-                    // 14, not 10: this box must match the mic's 52dp box —
-                    // the row is END-aligned (bottom-pinned for multi-line),
-                    // and a shorter box made the + ride ~4dp below the mic
-                    // on a single line.
-                    padding: EdgeInsets.all(14),
-                    child: Icon(Icons.add, size: 24, color: GlassColors.textDim),
+                if (widget.attachLink != null)
+                  CompositedTransformTarget(
+                    link: widget.attachLink!,
+                    child: GestureDetector(
+                      key: const ValueKey('attach-button'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onAttach,
+                      child: Padding(
+                        // 14, not 10: this box must match the mic's 52dp box —
+                        // the row is END-aligned (bottom-pinned for
+                        // multi-line), and a shorter box made the + ride ~4dp
+                        // below the mic on a single line.
+                        padding: EdgeInsets.all(14),
+                        child: Icon(Icons.add,
+                            size: 24, color: GlassColors.textDim),
+                      ),
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    key: const ValueKey('attach-button'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onAttach,
+                    child: Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Icon(Icons.add,
+                          size: 24, color: GlassColors.textDim),
+                    ),
                   ),
-                ),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 150),
                   transitionBuilder: (child, anim) =>

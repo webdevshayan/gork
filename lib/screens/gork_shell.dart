@@ -46,6 +46,11 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
 
+  /// The + button registers itself here (Movement 57): the attach menu is
+  /// a CompositedTransformFollower pinned to the TOP of the trigger —
+  /// content-sized, never absolute-positioned or stretched to a screen.
+  final LayerLink _attachLink = LayerLink();
+
   void _selectTab(GorkTab tab) {
     setState(() {
       _tab = tab;
@@ -249,7 +254,23 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final bool showInput = !_onMenu;
-    return Scaffold(
+    // Movement 57 — system back is reversible everywhere: on a core tab it
+    // returns to Home, on the settings surface it closes the surface, with
+    // the attach menu open it dismisses the menu — and only on Home with
+    // nothing open does back actually leave the app.
+    return PopScope(
+      canPop: !_onMenu && !_attachOpen && _tab == GorkTab.home,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (didPop) return;
+        if (_attachOpen) {
+          setState(() => _attachOpen = false);
+        } else if (_onMenu) {
+          _closeMenu();
+        } else {
+          _selectTab(GorkTab.home);
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
@@ -292,26 +313,43 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
                     focusNode: _inputFocus,
                     onSend: _sendFromInput,
                     onAttach: _toggleAttach,
+                    attachLink: _attachLink,
                   ),
               ],
             ),
           ),
           if (_attachOpen && !_onMenu)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 96,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: AttachMenu(
-                  onPick: (kind) {
-                    _toggleAttach();
-                    _pickAttachment(kind);
-                  },
-                ),
+            // The dropdown sits directly ON TOP of its trigger: bottom edge
+            // flush with the top edge of the + button, right-aligned to it,
+            // sized to its content (220 wide) — no absolute geometry.
+            Positioned.fill(
+              child: Stack(
+                children: [
+                  // Tap-away scrim (transparent): back-tap closes the menu.
+                  GestureDetector(
+                    key: const ValueKey('attach-scrim'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggleAttach,
+                    child: const SizedBox.expand(),
+                  ),
+                  CompositedTransformFollower(
+                    link: _attachLink,
+                    targetAnchor: Alignment.topRight,
+                    followerAnchor: Alignment.bottomRight,
+                    offset: const Offset(0, -8),
+                    showWhenUnlinked: false,
+                    child: AttachMenu(
+                      onPick: (kind) {
+                        _toggleAttach();
+                        _pickAttachment(kind);
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -519,8 +557,21 @@ class _AvatarSheet extends StatelessWidget {
       );
       if (picked == null) return;
       final dir = await getApplicationSupportDirectory();
-      final file = File('${dir.path}/gork-avatar.jpg');
+      // Movement 57 — a UNIQUE file per upload. Rewriting the same
+      // 'gork-avatar.jpg' path kept Flutter's ImageCache serving the OLD
+      // bytes (the "re-upload doesn't update the photo" bug); a fresh path
+      // busts the cache, and the previous file is deleted right after.
+      final file = File(
+          '${dir.path}/gork-avatar-${DateTime.now().millisecondsSinceEpoch}.jpg');
       await file.writeAsBytes(await picked.readAsBytes());
+      final String? old = Locator.prefs.getString('profile.photoPath');
+      if (old != null && old != file.path) {
+        try {
+          await File(old).delete();
+        } catch (_) {
+          // The stale file is already gone — nothing to clean.
+        }
+      }
       await Locator.prefs.setString('profile.photoPath', file.path);
       avatarPath.value = file.path;
     } catch (_) {

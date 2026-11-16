@@ -72,6 +72,47 @@ DateTime sunsetFor(double lat, double lon, DateTime dateUtc) {
   ).add(Duration(minutes: sunsetMinutes.round()));
 }
 
+/// Local solar sunrise time — the mirror of [sunsetFor] (same NOAA math,
+/// minus the hour angle instead of plus).
+DateTime sunriseFor(double lat, double lon, DateTime dateUtc) {
+  double rad(double d) => d * math.pi / 180.0;
+  double deg(double d) => d * 180.0 / math.pi;
+
+  final int n = dateUtc.difference(DateTime(dateUtc.year)).inDays + 1;
+  final double gamma = 2.0 * math.pi / 365.0 * (n - 1);
+  final double eqTime =
+      229.18 *
+      (0.000075 +
+          0.001868 * math.cos(gamma) -
+          0.032077 * math.sin(gamma) -
+          0.014615 * math.cos(2 * gamma) -
+          0.040849 * math.sin(2 * gamma));
+  final double decl =
+      0.006918 -
+      0.399912 * math.cos(gamma) +
+      0.070257 * math.sin(gamma) -
+      0.006758 * math.cos(2 * gamma) +
+      0.000907 * math.sin(2 * gamma) -
+      0.002697 * math.cos(3 * gamma) +
+      0.00148 * math.sin(3 * gamma);
+
+  final double latR = rad(lat);
+  double cosOmega =
+      math.cos(rad(90.8333)) / (math.cos(latR) * math.cos(decl)) -
+      math.tan(latR) * math.tan(decl);
+  if (cosOmega > 1) cosOmega = 1;
+  if (cosOmega < -1) cosOmega = -1;
+  final double omega = math.acos(cosOmega);
+
+  final double solarNoon = 720 - 4.0 * lon - eqTime;
+  final double sunriseMinutes = solarNoon - 4.0 * deg(omega);
+  return DateTime.utc(
+    dateUtc.year,
+    dateUtc.month,
+    dateUtc.day,
+  ).add(Duration(minutes: sunriseMinutes.round()));
+}
+
 class WeatherService {
   final http.Client _http;
 
