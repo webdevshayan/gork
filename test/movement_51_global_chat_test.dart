@@ -106,7 +106,7 @@ void main() {
     final now = DateTime.now().millisecondsSinceEpoch;
     await Locator.history.save(Conversation(
       id: kGlobalChatId,
-      title: 'Hark',
+      title: 'Gork',
       providerId: 'openai',
       updatedAt: now,
       messages: [ChatTurn('user', 'the full story of everything', time: now)],

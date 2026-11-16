@@ -992,7 +992,7 @@ class EmptyChat extends StatelessWidget {
       lift: 44,
     ),
     _PreviewCard(
-      title: 'Movement 19: Hark-style glass UI rebuild',
+      title: 'Movement 19: Gork-style glass UI rebuild',
       footer: 'GitHub · gork PR #19',
       angle: 0,
       lift: 0,

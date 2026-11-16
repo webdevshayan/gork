@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../constants/design_tokens.dart';
 import 'glass.dart';
 
-/// The pinned glass input bar, pixel-matched: hint "Message Hark", + and mic
+/// The pinned glass input bar, pixel-matched: hint "Message Gork", + and mic
 /// on the right; the mic becomes a black send circle when there is text.
 /// Shared by the shell and the pushed chat screens.
-class BottomInputBar extends StatelessWidget {
+///
+/// Movement 56: the mic now actually listens — speech_to_text dictation
+/// fills the draft with the recognized words (device locale, partial
+/// results so the field types along). When the field already has text the
+/// mic is replaced by the send circle, as before.
+class BottomInputBar extends StatefulWidget {
   const BottomInputBar({
     super.key,
     required this.controller,
     required this.focusNode,
     required this.onSend,
     required this.onAttach,
-    this.hint = 'Message Hark',
+    this.hint = 'Message Gork',
   });
 
   final TextEditingController controller;
@@ -23,11 +29,69 @@ class BottomInputBar extends StatelessWidget {
   final String hint;
 
   @override
+  State<BottomInputBar> createState() => _BottomInputBarState();
+}
+
+class _BottomInputBarState extends State<BottomInputBar> {
+  final SpeechToText _speech = SpeechToText();
+  bool _listening = false;
+
+  @override
+  void dispose() {
+    if (_listening) _speech.stop();
+    super.dispose();
+  }
+
+  /// Toggle dictation. The first tap initializes the engine (this is also
+  /// where Android surfaces the RECORD_AUDIO runtime dialog); results are
+  /// written into the draft as they arrive.
+  Future<void> _toggleMic() async {
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    try {
+      final available = await _speech.initialize();
+      if (!available) throw Exception('speech engine unavailable');
+      if (!mounted) return;
+      setState(() => _listening = true);
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          widget.controller.value = TextEditingValue(
+            text: result.recognizedWords,
+            selection: TextSelection.collapsed(
+                offset: result.recognizedWords.length),
+          );
+          if (result.finalResult && mounted) {
+            setState(() => _listening = false);
+          }
+        },
+        listenOptions: SpeechListenOptions(
+          cancelOnError: true,
+          partialResults: true,
+        ),
+      );
+    } catch (e) {
+      debugPrint('voice input failed: $e');
+      if (mounted) setState(() => _listening = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content:
+              Text('Voice input is unavailable — check the microphone permission.')));
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
+      valueListenable: widget.controller,
       builder: (context, value, _) {
         final bool hasText = value.text.trim().isNotEmpty;
+        final String hint = _listening ? 'Listening…' : widget.hint;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           child: GlassContainer(
@@ -40,10 +104,10 @@ class BottomInputBar extends StatelessWidget {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: controller,
-                    focusNode: focusNode,
+                    controller: widget.controller,
+                    focusNode: widget.focusNode,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: onSend,
+                    onSubmitted: widget.onSend,
                     // The message area auto-resizes with the text instead of
                     // clipping long messages.
                     minLines: 1,
@@ -67,7 +131,7 @@ class BottomInputBar extends StatelessWidget {
                 GestureDetector(
                   key: const ValueKey('attach-button'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: onAttach,
+                  onTap: widget.onAttach,
                   child: Padding(
                     // 14, not 10: this box must match the mic's 52dp box —
                     // the row is END-aligned (bottom-pinned for multi-line),
@@ -85,7 +149,7 @@ class BottomInputBar extends StatelessWidget {
                       ? GestureDetector(
                           key: const ValueKey('send-button'),
                           behavior: HitTestBehavior.opaque,
-                          onTap: () => onSend(controller.text),
+                          onTap: () => widget.onSend(widget.controller.text),
                           child: Container(
                             key: const ValueKey('send-circle'),
                             width: 44,
@@ -108,13 +172,20 @@ class BottomInputBar extends StatelessWidget {
                             ),
                           ),
                         )
-                      : Padding(
-                          key: ValueKey('mic-icon'),
-                          padding: EdgeInsets.all(14),
-                          child: Icon(
-                            Icons.mic_none,
-                            size: 24,
-                            color: GlassColors.textDim,
+                      : GestureDetector(
+                          key: const ValueKey('mic-button'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _toggleMic,
+                          child: Padding(
+                            key: ValueKey('mic-icon'),
+                            padding: EdgeInsets.all(14),
+                            child: Icon(
+                              _listening ? Icons.mic : Icons.mic_none,
+                              size: 24,
+                              color: _listening
+                                  ? GlassColors.text
+                                  : GlassColors.textDim,
+                            ),
                           ),
                         ),
                 ),

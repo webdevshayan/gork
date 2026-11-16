@@ -4,7 +4,7 @@ import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 import '../widgets/g_button.dart';
 import '../widgets/screen.dart';
-import 'hark_shell.dart';
+import 'gork_shell.dart';
 import 'providers_screen.dart';
 
 /// First-run onboarding: three pages, then the flag is set forever.
@@ -180,7 +180,7 @@ class _OnboardingGateState extends State<OnboardingGate> {
   Widget build(BuildContext context) {
     // Non-const — same reason as the home: in app.dart. A const shell is
     // skipped on ancestor rebuilds and never re-reads GlassColors.
-    if (_done) return HarkShell();
+    if (_done) return GorkShell();
     return OnboardingScreen(onFinished: () => setState(() => _done = true));
   }
 }

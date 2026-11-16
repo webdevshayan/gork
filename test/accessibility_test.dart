@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
-import 'package:gork/screens/hark_shell.dart';
+import 'package:gork/screens/gork_shell.dart';
 import 'package:gork/screens/profile_edit_screen.dart';
 import 'package:gork/screens/search_screen.dart';
 import 'package:gork/services/locator.dart';

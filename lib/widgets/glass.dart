@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
 
-/// Hark-style glass primitives — every floating surface in the shell is built
+/// Gork-style glass primitives — every floating surface in the shell is built
 /// from these. Spec: ClipRRect + BackdropFilter(blur 10) + dark glass fill
 /// + thin light border. Cards use radius 16, pills and input bars use 30.
 class GlassContainer extends StatelessWidget {

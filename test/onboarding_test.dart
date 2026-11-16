@@ -68,7 +68,7 @@ void main() {
 
     expect(find.text('Sehwan Taluka, PK'), findsOneWidget,
         reason: 'home now leads with the weather card');
-    expect(find.text('Message Hark'), findsOneWidget);
+    expect(find.text('Message Gork'), findsOneWidget);
     expect(Locator.prefs.getBool('onboarding.done'), isTrue);
   });
 

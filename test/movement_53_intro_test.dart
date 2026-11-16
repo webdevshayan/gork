@@ -106,7 +106,7 @@ void main() {
     }
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Hark.', findRichText: true), findsOneWidget,
+    expect(find.textContaining('Gork.', findRichText: true), findsOneWidget,
         reason: 'the first bubble landed');
     expect(find.byType(SelectionArea), findsWidgets,
         reason: 'intro bubbles are selectable, like real AI replies');

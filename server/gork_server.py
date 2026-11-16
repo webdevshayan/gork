@@ -649,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "on the VPS"})
             prompt = (
                 "Write the first-run greeting of a personal AI assistant "
-                "named Hark to its user. 3 to 4 SHORT messages, each one a "
+                "named Gork to its user. 3 to 4 SHORT messages, each one a "
                 "separate bubble, warm and concrete, one idea per message, "
                 "no markdown, no emoji. Reply with ONLY a JSON object: "
                 "{\"messages\": [\"...\", \"...\"]}. The user's name is "

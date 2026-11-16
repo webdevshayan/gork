@@ -12,7 +12,7 @@ import '../widgets/ambient_backdrop.dart';
 import '../widgets/attach_menu.dart';
 import '../widgets/glass.dart';
 import 'chat_screen.dart';
-import 'hark_home.dart';
+import 'gork_home.dart';
 import 'menu_screen.dart';
 import 'panels_screen.dart';
 import 'projects_screen.dart';
@@ -22,36 +22,36 @@ import 'search_screen.dart';
 import '../widgets/bottom_input_bar.dart';
 import '../constants/design_tokens.dart';
 
-enum HarkTab { home, chat, projects }
+enum GorkTab { home, chat, projects }
 
 /// The glass shell, pixel-matched to the reference screenshots:
 /// ambient backdrop + top bar (context button / nav pill / avatar) + dynamic
 /// body + pinned bottom input. The left button changes per surface
 /// (Home = +, Chat = search, Projects/Menu = ☰); the ☰ opens the full
 /// profile/menu surface where no tab is selected.
-class HarkShell extends StatefulWidget {
-  const HarkShell({super.key});
+class GorkShell extends StatefulWidget {
+  const GorkShell({super.key});
 
   @override
-  State<HarkShell> createState() => _HarkShellState();
+  State<GorkShell> createState() => _GorkShellState();
 }
 
-class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
-  HarkTab _tab = HarkTab.home;
+class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
+  GorkTab _tab = GorkTab.home;
   bool _onMenu = false;
   bool _attachOpen = false;
-  HarkTab _lastCoreTab = HarkTab.home;
+  GorkTab _lastCoreTab = GorkTab.home;
   String? _chatConversationId;
   final GlobalKey<ChatScreenState> _globalChatKey = GlobalKey<ChatScreenState>();
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
 
-  void _selectTab(HarkTab tab) {
+  void _selectTab(GorkTab tab) {
     setState(() {
       _tab = tab;
       _onMenu = false;
       _attachOpen = false;
-      if (tab != HarkTab.projects) _lastCoreTab = tab;
+      if (tab != GorkTab.projects) _lastCoreTab = tab;
     });
   }
 
@@ -120,15 +120,15 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
   /// Runs [action] against the global chat's ChatScreenState — immediately
   /// when the Chat tab is live, otherwise after switching to it (one frame).
   void _deliverToGlobalChat(Future<void> Function(ChatScreenState) action) {
-    if (_tab == HarkTab.chat && _globalChatKey.currentState != null) {
+    if (_tab == GorkTab.chat && _globalChatKey.currentState != null) {
       action(_globalChatKey.currentState!);
       return;
     }
     setState(() {
-      _tab = HarkTab.chat;
+      _tab = GorkTab.chat;
       _onMenu = false;
       _attachOpen = false;
-      _lastCoreTab = HarkTab.chat;
+      _lastCoreTab = GorkTab.chat;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = _globalChatKey.currentState;
@@ -181,11 +181,11 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
   /// screen (its own backdrop hides the content behind it).
   void _openSearch() {
     final SearchScope scope = switch (_tab) {
-      HarkTab.chat => SearchScope.chat,
-      HarkTab.projects => SearchScope.projects,
-      HarkTab.home => SearchScope.all,
+      GorkTab.chat => SearchScope.chat,
+      GorkTab.projects => SearchScope.projects,
+      GorkTab.home => SearchScope.all,
     };
-    final String? conversationId = _tab == HarkTab.chat
+    final String? conversationId = _tab == GorkTab.chat
         ? kGlobalChatId
         : null;
     Navigator.of(context).push(_slideUpRoute(SearchScreen(
@@ -272,9 +272,9 @@ class _HarkShellState extends State<HarkShell> with WidgetsBindingObserver {
                           onBack: _closeMenu,
                           onOpenChat: _openProjectChat,
                         )
-                      : _tab == HarkTab.home
-                      ? const HarkHome()
-                      : _tab == HarkTab.chat
+                      : _tab == GorkTab.home
+                      ? const GorkHome()
+                      : _tab == GorkTab.chat
                       ? // Movement 51: the Chat tab IS the global chat —
                         // one conversation, never deleted, full context.
                         ChatScreen(
@@ -328,17 +328,17 @@ class _TopBar extends StatelessWidget {
     required this.onAvatar,
   });
 
-  final HarkTab tab;
+  final GorkTab tab;
   final bool onMenu;
   final IconData leftIcon;
   final VoidCallback onLeftButton;
-  final ValueChanged<HarkTab> onSelect;
+  final ValueChanged<GorkTab> onSelect;
   final VoidCallback onAvatar;
 
-  static const List<(String, HarkTab)> _tabs = [
-    ('Home', HarkTab.home),
-    ('Chat', HarkTab.chat),
-    ('Projects', HarkTab.projects),
+  static const List<(String, GorkTab)> _tabs = [
+    ('Home', GorkTab.home),
+    ('Chat', GorkTab.chat),
+    ('Projects', GorkTab.projects),
   ];
 
   @override
@@ -476,7 +476,7 @@ class _Avatar extends StatelessWidget {
               key: const ValueKey('avatar'),
               behavior: HitTestBehavior.opaque,
               onTap: context
-                  .findAncestorStateOfType<_HarkShellState>()
+                  .findAncestorStateOfType<_GorkShellState>()
                   ?._onAvatarTap,
               child: Container(
                 width: 44,

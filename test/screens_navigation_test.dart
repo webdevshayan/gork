@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/screens/chat_screen.dart';
-import 'package:gork/screens/hark_shell.dart';
+import 'package:gork/screens/gork_shell.dart';
 import 'package:gork/screens/projects_screen.dart';
 import 'package:gork/screens/search_screen.dart';
 import 'package:gork/services/history_store.dart';

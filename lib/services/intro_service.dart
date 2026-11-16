@@ -62,7 +62,7 @@ class IntroService {
 
   /// The shipped reference set — warm, short, one idea per bubble.
   static List<String> defaults(String name) => [
-        'Hey $name, I\u2019m Hark.',
+        'Hey $name, I\u2019m Gork.',
         'I keep track of life and work, trips and groceries. I pay bills '
             'securely and find opportunities you\u2019ll love.',
         'With your permission, I\u2019ll connect your email and calendar, '

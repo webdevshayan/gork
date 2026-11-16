@@ -456,13 +456,13 @@ class IntroTests(unittest.TestCase):
     def test_intro_generated_in_one_call(self):
         with patch.object(G, 'PROVIDER_URL', 'https://fake-provider'), \
              patch.object(G, '_call_provider', return_value=json.dumps({
-                 'messages': ['Hey Shayan, I am Hark.',
+                 'messages': ['Hey Shayan, I am Gork.',
                               'One idea per bubble.']})):
             st, body = req('POST', '/v1/onboarding/intro',
                            {'name': 'Shayan', 'email': 's@x.com'})
         self.assertEqual(st, 200)
         self.assertEqual(body['messages'],
-                         ['Hey Shayan, I am Hark.', 'One idea per bubble.'])
+                         ['Hey Shayan, I am Gork.', 'One idea per bubble.'])
 
     def test_intro_without_provider_is_honest(self):
         with patch.object(G, '_BROWSER_DRIVER', None):

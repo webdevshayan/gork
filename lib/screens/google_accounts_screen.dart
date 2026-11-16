@@ -63,12 +63,26 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
 
   /// The Cloud Console credentials JSON travels to the VPS vault exactly
   /// once; nothing is ever read back (status boolean only).
+  ///
+  /// Movement 56: the picker used FileType.custom + ['json'], which filters
+  /// by MIME. Files downloaded from a browser often carry
+  /// application/octet-stream, so the system document picker hid them and
+  /// "no file could be uploaded". Pick ANY file, then validate the
+  /// extension here in Dart.
   Future<void> _uploadCredentials() async {
     try {
-      final picked = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: ['json']);
+      final picked = await FilePicker.platform.pickFiles(withData: false);
       if (picked == null || picked.files.single.path == null) return;
-      await _uploader.upload(picked.files.single.path!);
+      final file = picked.files.single;
+      if (!file.name.toLowerCase().endsWith('.json')) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(
+              'That is not a .json file — pick the credentials file '
+              'downloaded from Google Cloud Console.')));
+        return;
+      }
+      await _uploader.upload(file.path!);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()

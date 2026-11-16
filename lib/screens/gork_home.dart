@@ -11,14 +11,14 @@ import '../constants/design_tokens.dart';
 /// card + two more-opaque inner tiles: conditions / sunset), the
 /// "Create a new panel" pill, then any manual panels. No header — identity
 /// lives on the menu surface.
-class HarkHome extends StatefulWidget {
-  const HarkHome({super.key});
+class GorkHome extends StatefulWidget {
+  const GorkHome({super.key});
 
   @override
-  State<HarkHome> createState() => _HarkHomeState();
+  State<GorkHome> createState() => _GorkHomeState();
 }
 
-class _HarkHomeState extends State<HarkHome> {
+class _GorkHomeState extends State<GorkHome> {
   WeatherNow? _weather;
   bool _weatherFailed = false;
 

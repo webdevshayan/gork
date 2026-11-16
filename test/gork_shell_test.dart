@@ -74,7 +74,7 @@ void main() {
     expect(find.text('Sunset'), findsOneWidget);
     expect(find.text('5:40 PM'), findsOneWidget);
     expect(find.text('Create a new panel'), findsOneWidget);
-    expect(find.text('Message Hark'), findsOneWidget);
+    expect(find.text('Message Gork'), findsOneWidget);
     expect(find.byIcon(Icons.mic_none), findsOneWidget);
   });
 
@@ -201,7 +201,7 @@ void main() {
     expect(find.textContaining('gork PR #19', skipOffstage: false,
         findRichText: true), findsOneWidget);
     expect(
-      find.text('Message Hark'),
+      find.text('Message Gork'),
       findsOneWidget,
       reason: 'input bar stays visible on the chat tab',
     );
@@ -238,7 +238,7 @@ void main() {
       );
       expect(find.text(row, skipOffstage: false), findsOneWidget);
     }
-    expect(find.text('Message Hark'), findsNothing,
+    expect(find.text('Message Gork'), findsNothing,
         reason: 'the input bar is hidden on the settings surface');
     // No tab is selected on the settings surface.
     expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
