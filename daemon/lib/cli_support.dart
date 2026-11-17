@@ -98,6 +98,17 @@ String configPath({Map<String, String>? env}) {
   return '$userHome/.gork-daemon/config.env';
 }
 
+/// Where the daemon's mutable state lives (vault.json, the agent-browser
+/// profile) — GORK_HOME, else ~/.gork-daemon. Same derivation as
+/// DaemonControl.stateDir; lives here so the HTTP server can wire the vault
+/// route without dragging the whole controller in.
+String stateDirPath({Map<String, String>? env}) {
+  final e = env ?? Platform.environment;
+  final home = e['GORK_HOME'] ?? '';
+  if (home.isNotEmpty) return home;
+  return '${e['HOME'] ?? '.'}/.gork-daemon';
+}
+
 class LlmPreset {
   const LlmPreset(this.id, this.label, this.baseUrl, this.model);
 

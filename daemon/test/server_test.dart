@@ -289,4 +289,61 @@ void main() {
       expect(res.statusCode, 401);
     });
   });
+
+  group('GET /v1/vault — the sealed vault, labels only', () {
+    Future<Directory> seededVault() async {
+      final dir = await Directory.systemTemp.createTemp('gork-vault-test');
+      // Deliberately unsorted on disk + values that must never leak.
+      await writeVaultSecret(dir.path, 'zeta-login', 'zeta-value-9');
+      await writeVaultSecret(dir.path, 'alpha-login', 'alpha-value-1');
+      return dir;
+    }
+
+    test('lists labels sorted and NEVER the values', () async {
+      final dir = await seededVault();
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(_req('GET', '/v1/vault'));
+      expect(res.statusCode, 200);
+      final body = await _body(res);
+      expect(body['count'], 2);
+      expect(
+        [for (final e in body['entries'] as List) e['label']],
+        ['alpha-login', 'zeta-login'],
+      );
+      final raw = jsonEncode(body);
+      expect(raw, isNot(contains('zeta-value-9')));
+      expect(raw, isNot(contains('alpha-value-1')));
+    });
+
+    test('an empty vault answers an empty list, not an error', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-vault-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(_req('GET', '/v1/vault'));
+      expect(res.statusCode, 200);
+      final body = await _body(res);
+      expect(body['count'], 0);
+      expect(body['entries'], isEmpty);
+    });
+
+    test('stays behind the shared-secret gate like every other route',
+        () async {
+      final dir = await seededVault();
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          vaultDir: dir.path);
+      final res = await handler(_req('GET', '/v1/vault'));
+      expect(res.statusCode, 401);
+    });
+
+    test('an unwired daemon answers 500 honestly instead of faking empty',
+        () async {
+      final handler = buildHandler(makeDaemon());
+      final res = await handler(_req('GET', '/v1/vault'));
+      expect(res.statusCode, 500);
+      final body = await _body(res);
+      expect(body['error'], contains('vault not wired'));
+    });
+  });
 }

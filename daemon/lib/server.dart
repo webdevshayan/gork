@@ -89,17 +89,22 @@ Middleware requireSecret(String? secret) {
 
 /// The full HTTP handler: router wrapped in the secret gate. [config] and
 /// [configOverlay] wire up POST /config (the app's Sync-to-daemon action).
+/// [vaultDir] wires up GET /v1/vault (the sealed vault's labels).
 Handler buildHandler(
   Daemon daemon, {
   String? secret,
   ConfigStore? config,
   Map<String, String>? configOverlay,
   AgentBrowser? browser,
+  String? vaultDir,
 }) =>
     const Pipeline()
         .addMiddleware(requireSecret(secret))
         .addHandler(buildRouter(daemon,
-            config: config, configOverlay: configOverlay, browser: browser));
+            config: config,
+            configOverlay: configOverlay,
+            browser: browser,
+            vaultDir: vaultDir));
 
 /// Keys the phone may write through POST /config. GORK_PORT is allowed (it
 /// only takes effect on restart) and GORK_CONNECTOR_* come from the
@@ -115,7 +120,8 @@ const Set<String> kConfigurableKeys = {
 Router buildRouter(Daemon daemon,
     {ConfigStore? config,
     Map<String, String>? configOverlay,
-    AgentBrowser? browser}) {
+    AgentBrowser? browser,
+    String? vaultDir}) {
   final router = Router();
 
   router.get('/health', (Request request) async {
@@ -244,6 +250,20 @@ Router buildRouter(Daemon daemon,
     });
   });
 
+  // The sealed vault's LABELS for the phone's Security screen. Values never
+  // leave the box: this endpoint answers with names only — a value has
+  // exactly one way out, fill_secret, straight into the page's active input.
+  router.get('/v1/vault', (Request request) async {
+    if (vaultDir == null) {
+      return _json({'error': 'vault not wired in this daemon'}, 500);
+    }
+    final labels = readVault(vaultDir).keys.toList()..sort();
+    return _json({
+      'entries': [for (final label in labels) {'label': label}],
+      'count': labels.length,
+    });
+  });
+
   // Movement 58 — the agent browser: PRIVATE (dedicated 0700 profile,
   // vault values never echoed), PERSISTENT (cookies survive restarts),
   // LIGHTWEIGHT (one headless Chromium over raw CDP, spawned lazily).
@@ -295,7 +315,11 @@ Future<void> main(List<String> args) async {
   final browser = AgentBrowser();
   final secret = Platform.environment['GORK_SECRET'];
   final handler = buildHandler(daemon,
-      secret: secret, config: config, configOverlay: overlay, browser: browser);
+      secret: secret,
+      config: config,
+      configOverlay: overlay,
+      browser: browser,
+      vaultDir: stateDirPath());
 
   // The agent browser must not outlive the daemon: SIGTERM (gork daemon
   // stop / systemd) closes it, then exits.

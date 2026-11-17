@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
+import '../services/browser_service.dart';
 import '../services/locator.dart';
 import '../services/vault_store.dart';
 import '../widgets/ambient_backdrop.dart';
@@ -9,9 +10,16 @@ import '../widgets/glass.dart';
 /// Security — the credentials vault surface. Secrets (passwords, auth codes)
 /// live in the vault and are only ever filled into forms at the user's
 /// command; this screen shows WHAT is stored but never the secret itself.
+/// Two sources, both listed by name only:
+///   * this phone — the on-device encrypted vault;
+///   * the VPS agent — the daemon's sealed vault (gork vault set), which is
+///     what fill_secret actually draws from in the AI browser.
 /// The wallet feature was removed (Movement 50); Security owns its own page.
 class SecurityScreen extends StatefulWidget {
-  const SecurityScreen({super.key});
+  const SecurityScreen({super.key, this.browser});
+
+  /// Test seam: the VPS client the screen reads vault labels from.
+  final BrowserService? browser;
 
   @override
   State<SecurityScreen> createState() => _SecurityScreenState();
@@ -19,18 +27,47 @@ class SecurityScreen extends StatefulWidget {
 
 class _SecurityScreenState extends State<SecurityScreen> {
   List<VaultEntry>? _entries;
+  BrowserService? _browser;
+  List<String>? _vpsLabels; // null = the fetch is still in flight
+  bool _vpsReachable = false;
 
   @override
   void initState() {
     super.initState();
+    final browser = widget.browser ?? BrowserService();
+    _browser = browser;
     Locator.vault.all().then((entries) {
       if (mounted) setState(() => _entries = entries);
     });
+    if (browser.configured) {
+      browser.vaultLabels().then((labels) {
+        if (!mounted) return;
+        setState(() {
+          _vpsReachable = labels != null;
+          _vpsLabels = labels ?? const [];
+        });
+      });
+    }
   }
+
+  Widget _sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text(
+          text.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+            color: GlassColors.textFaint,
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     final entries = _entries;
+    final browser = _browser;
+    final vpsLabels = _vpsLabels;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -97,6 +134,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                _sectionLabel('On this phone'),
                 if (entries == null)
                   GlassContainer(
                     radius: 28,
@@ -166,6 +204,90 @@ class _SecurityScreenState extends State<SecurityScreen> {
                       ],
                     ),
                   ),
+                const SizedBox(height: 16),
+                if (browser == null || !browser.configured)
+                  GlassContainer(
+                    radius: 28,
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'The AI browser and its sealed vault run on your VPS '
+                      'agent. Connect one in Cloud Computer and its entries '
+                      'are listed here too — by name, never by value.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.4,
+                        color: GlassColors.textDim,
+                      ),
+                    ),
+                  )
+                else ...[
+                  _sectionLabel('On your VPS agent'),
+                  if (vpsLabels == null)
+                    GlassContainer(
+                      radius: 28,
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: GlassColors.textDim,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    )
+                  else if (!_vpsReachable)
+                    GlassContainer(
+                      radius: 28,
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        "Couldn't reach the VPS agent — is the daemon "
+                        'running? Check the connection in Cloud Computer.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: GlassColors.textDim,
+                        ),
+                      ),
+                    )
+                  else if (vpsLabels.isEmpty)
+                    GlassContainer(
+                      radius: 28,
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        'No secrets on the agent yet. Add one on the box: '
+                        'gork vault set <label> (the value comes from stdin, '
+                        'never argv).',
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: GlassColors.textDim,
+                        ),
+                      ),
+                    )
+                  else
+                    GlassContainer(
+                      radius: 28,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(
+                        children: [
+                          for (final (i, label) in vpsLabels.indexed) ...[
+                            if (i > 0)
+                              Divider(color: GlassColors.divider, height: 1),
+                            GlassMenuRow(
+                              key: ValueKey('vps-vault-$label'),
+                              icon: Icons.dns_outlined,
+                              label: label,
+                              trailing: Icon(
+                                Icons.lock_outline,
+                                size: 16,
+                                color: GlassColors.textFaint,
+                                semanticLabel:
+                                    'value never leaves the agent',
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

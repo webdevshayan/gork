@@ -64,6 +64,29 @@ class BrowserService {
       {String session = 'default'}) =>
       op('fill_secret', session: session, args: {'label': label});
 
+  /// The labels in the VPS's sealed vault — the names the AI can fill by.
+  /// Labels only: values never travel. Returns null when the VPS is
+  /// unreachable (or answers non-200) so callers can show an honest
+  /// "couldn't reach" state instead of a fake "nothing saved".
+  Future<List<String>?> vaultLabels() async {
+    final base = url;
+    if (base == null) return null;
+    try {
+      final res = await _http.get(
+        Uri.parse('$base/v1/vault'),
+        headers: _headers(await _store.read('vps.token')),
+      );
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return [
+        for (final e in (body['entries'] as List? ?? const []))
+          ((e as Map<String, dynamic>)['label'] ?? '').toString()
+      ].where((l) => l.isNotEmpty).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Every account the user has logged into from the app, per website.
   Future<List<Map<String, dynamic>>> accounts() async {
     final base = url;
