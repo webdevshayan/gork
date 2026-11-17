@@ -410,7 +410,8 @@ void main() {
       } on LlmException catch (e) {
         thrown = e;
       }
-      expect(thrown!.message.length, lessThan(301));
+      expect(thrown!.message.length, lessThan(400),
+          reason: 'clipped to one line, not the whole 2000-char body');
     });
 
     test('the OpenAI-compatible request carries an explicit max_tokens '

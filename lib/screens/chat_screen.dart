@@ -1040,7 +1040,7 @@ class EmptyChat extends StatelessWidget {
       ),
       const SizedBox(height: 16),
       if (error != null) ...[
-        ErrorDetailsCard(summary: error, details: errorDetails),
+        ErrorDetailsCard(summary: error!, details: errorDetails),
         Text(
           'Tip: add a provider key first (Menu → Security → Providers).',
           style: TextStyle(fontSize: 14, color: GlassColors.text),
