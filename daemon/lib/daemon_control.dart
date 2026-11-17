@@ -73,10 +73,11 @@ class DaemonControl {
       if (!quiet) out('daemon already running (pid ${runningPid() ?? '?'})');
       return true;
     }
-    final src = _sourceDir();
+    final (src, probed) = _findSourceDir();
     if (src == null) {
       if (!quiet) {
-        out('error: daemon source not found — re-run the gork installer');
+        out('error: daemon source not found (probed: ${probed.join(", ")}) '
+            '— re-run the gork installer');
       }
       return false;
     }
@@ -178,7 +179,13 @@ class DaemonControl {
     return env;
   }
 
-  String? _sourceDir() {
+  /// Locates the daemon source: $GORK_SRC_DIR (env, then config.env), the two
+  /// standard install roots, then a daemon/ dir around the current one. The
+  /// second element lists every candidate probed — the start error includes
+  /// it, so a field failure (e.g. a stale install tree missing
+  /// bin/gork_daemon.dart) is diagnosable from the message alone.
+  (String?, List<String>) _findSourceDir() {
+    final probed = <String>[];
     final fromConfig = config().read()['GORK_SRC_DIR'];
     final candidates = [
       _env['GORK_SRC_DIR'] ?? '',
@@ -194,10 +201,11 @@ class DaemonControl {
           : '${Directory.current.path}/daemon',
     ]) {
       if (dir.isEmpty) continue;
-      final d = Directory('$dir/bin/gork_daemon.dart');
-      if (d.existsSync()) return dir;
+      final entry = '$dir/bin/gork_daemon.dart';
+      probed.add(entry);
+      if (File(entry).existsSync()) return (dir, probed);
     }
-    return null;
+    return (null, probed);
   }
 }
 

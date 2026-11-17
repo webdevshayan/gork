@@ -122,6 +122,27 @@ install_packages() {
 }
 
 # --- repo --------------------------------------------------------------------
+DAEMON_ENTRYPOINT="daemon/bin/gork_daemon.dart" # relative to the repo root
+
+update_repo() { # $1 = repo root -> hard-syncs it to origin's default branch.
+  # A naive `git pull --ff-only || true` silently does nothing when the clone
+  # diverged from upstream (rewritten history, renamed branch, one offline
+  # fetch) — which is exactly how stale installs end up missing new source
+  # files while every later re-run claims "Updating...". $root is a managed
+  # install dir (the installer created it), so a hard reset to origin is safe.
+  local root="$1" branch
+  branch="$(git ls-remote --symref "$root" HEAD 2>/dev/null \
+    | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2; exit }')"
+  branch="${branch:-main}"
+  git -C "$root" fetch --depth 1 origin "$branch" >/dev/null 2>&1 || return 1
+  git -C "$root" reset --hard FETCH_HEAD >/dev/null 2>&1 || return 1
+  git -C "$root" clean -xfd >/dev/null 2>&1 || true
+}
+
+clone_repo() { # $1 = target dir
+  git clone --depth 1 https://github.com/webdevshayan/gork.git "$1" >&2
+}
+
 install_repo() { # prints ONLY the daemon source dir on stdout; logs -> stderr
   local root
   if [ "$IS_TERMUX" -eq 1 ]; then
@@ -133,10 +154,28 @@ install_repo() { # prints ONLY the daemon source dir on stdout; logs -> stderr
   fi
   if [ -d "$root/.git" ]; then
     echo "-- Updating gork in $root..." >&2
-    (cd "$root" && git pull --ff-only >/dev/null 2>&1 || true)
+    update_repo "$root" || {
+      echo "   in-place update failed -> re-cloning $root..." >&2
+      rm -rf "$root"
+      clone_repo "$root"
+    }
   else
     echo "-- Cloning gork into $root..." >&2
-    git clone --depth 1 https://github.com/webdevshayan/gork.git "$root" >&2
+    clone_repo "$root"
+  fi
+  # The one file every backend needs is the daemon entrypoint. A stale or
+  # broken checkout can lack it while daemon/pubspec.yaml still exists —
+  # `dart pub get` then passes and the daemon can never start ("daemon source
+  # not found"). Never continue without proof the entrypoint is really there.
+  if [ ! -f "$root/$DAEMON_ENTRYPOINT" ]; then
+    echo "   $DAEMON_ENTRYPOINT missing after update -> re-cloning $root..." >&2
+    rm -rf "$root"
+    clone_repo "$root"
+  fi
+  if [ ! -f "$root/$DAEMON_ENTRYPOINT" ]; then
+    echo "ERROR: $root/$DAEMON_ENTRYPOINT is missing even after a fresh clone." >&2
+    echo "       github.com/webdevshayan/gork looks broken — report this." >&2
+    return 1
   fi
   echo "-- Installing daemon dependencies..." >&2
   (cd "$root/daemon" && dart pub get >/dev/null)

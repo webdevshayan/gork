@@ -135,7 +135,8 @@ test_install_repo_stdout_is_only_path() {
   cat > "$FAKEBIN/git" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
-  clone) mkdir -p "$5/.git" "$5/daemon" 2>/dev/null || true ;;
+  clone) mkdir -p "$5/.git" "$5/daemon/bin" 2>/dev/null || true
+         : > "$5/daemon/bin/gork_daemon.dart" 2>/dev/null || true ;;
 esac
 exit 0
 EOF
@@ -154,6 +155,68 @@ EOF
         || fail "install_repo printed $lines lines (logs leaked into stdout): '$out'" ;;
     *) fail "install_repo stdout does not end in /daemon: '$out'" ;;
   esac
+}
+
+test_install_repo_repairs_a_stale_clone() {
+  # The field failure this suite now locks: a clone old enough to have
+  # daemon/pubspec.yaml but NOT daemon/bin/gork_daemon.dart, while upstream
+  # moved on with REWRITTEN history (force-push) — so the old installer's
+  # `git pull --ff-only || true` silently did nothing on every re-run and the
+  # daemon ended with "error: daemon source not found". install_repo must
+  # self-heal: fetch+reset, else re-clone, and never proceed without the
+  # entrypoint.
+  rm -f "$FAKEBIN/git" # the REAL git is required here (the fake dart stays)
+  local remote="$TMP/stale-remote" seed="$TMP/stale-seed" home="$TMP/stale-home"
+  rm -rf "$remote" "$seed" "$home"
+  git init -q --bare -b main "$remote"
+  mkdir -p "$seed/daemon"
+  printf 'name: gork_daemon\n' > "$seed/daemon/pubspec.yaml"
+  git -C "$seed" init -q -b main
+  git -C "$seed" add -A
+  git -C "$seed" -c user.email=t@local -c user.name=test commit -qm 'old tree'
+  git -C "$seed" push -q "$remote" main
+  git clone -q "$remote" "$home/.gork"
+  # Upstream adds the entrypoint and rewrites history: a ff-only pull from
+  # the stale clone is now impossible — exactly the user's broken install.
+  mkdir -p "$seed/daemon/bin"
+  printf 'void main() {}\n' > "$seed/daemon/bin/gork_daemon.dart"
+  git -C "$seed" add -A
+  git -C "$seed" -c user.email=t@local -c user.name=test commit -qm 'rewritten upstream'
+  git -C "$seed" push -qf "$remote" main
+  local out rc=0
+  out="$(run_install_snippet "HOME='$home' install_repo")" || rc=$?
+  [ "$rc" -eq 0 ] && pass "install_repo self-heals a stale clone" \
+    || fail "install_repo failed on a stale clone (rc=$rc): $out"
+  [ -f "$home/.gork/daemon/bin/gork_daemon.dart" ] \
+    && pass "stale clone now has the daemon entrypoint" \
+    || fail "entrypoint still missing after install_repo"
+  case "$out" in
+    "$home/.gork/daemon") pass "stdout is still exactly the source dir" ;;
+    *) fail "stdout polluted: '$out'" ;;
+  esac
+}
+
+test_install_repo_fails_loudly_when_source_missing() {
+  # Even a "successful" clone without the entrypoint must not pass silently —
+  # the old installer printed green progress lines and let `gork daemon start`
+  # discover the truth later. Now the installer itself must refuse.
+  cat > "$FAKEBIN/git" <<'EOF'
+#!/usr/bin/env bash
+# A clone that "works" but carries no daemon entrypoint.
+case "$1" in
+  clone) mkdir -p "$5/daemon" 2>/dev/null || true ;;
+esac
+exit 0
+EOF
+  chmod +x "$FAKEBIN/git"
+  local home="$TMP/broken-home" errout rc=0
+  rm -rf "$home"; mkdir -p "$home"
+  errout="$(run_install_snippet "HOME='$home' install_repo" 2>&1 >/dev/null)" || rc=$?
+  [ "$rc" -ne 0 ] && pass "install_repo exits non-zero without the entrypoint" \
+    || fail "install_repo succeeded without daemon/bin/gork_daemon.dart"
+  printf '%s' "$errout" | grep -q "missing even after a fresh clone" \
+    && pass "failure names the missing entrypoint" \
+    || fail "failure message unclear: $errout"
 }
 
 # ---- gork-daemonctl ---------------------------------------------------------
@@ -265,6 +328,8 @@ for t in test_no_systemd_dir_means_ctl test_real_systemd_detected \
          test_termux_services_detected test_forced_backend_wins \
          test_no_termux_prefix_means_not_services test_config_written_and_kept \
          test_gen_secret_is_hex test_install_repo_stdout_is_only_path \
+         test_install_repo_repairs_a_stale_clone \
+         test_install_repo_fails_loudly_when_source_missing \
          test_ctl_start_stop_status_with_fake_daemon \
          test_ctl_start_reports_failure_honestly \
          test_ctl_start_reports_dead_port_honestly \

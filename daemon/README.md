@@ -177,6 +177,13 @@ bash test/installer_test.sh   # backend detection, ctl lifecycle, honest starts,
   not real systemd. The installer now detects this and uses `gork daemon
   start` instead; older installs left a dead unit behind, which is why
   nothing was listening.
+- **`error: daemon source not found (probed: ...) — re-run the gork installer`** —
+  the install tree is stale or broken: `bin/gork_daemon.dart` is missing where
+  the installer put the source. Older installers swallowed a failed
+  `git pull`, so an outdated clone kept "passing" while the daemon could
+  never start. The installer now verifies the entrypoint after every
+  update, hard-syncs to origin (fetch + reset, or a fresh re-clone), and
+  refuses to continue without it — re-running the installer repairs the box.
 - **`port 8787 already serves /health, but no pidfile points at it`** — a
   stale daemon from a previous install still owns the port. Find it with
   `ss -tlnp | grep 8787`, kill it, start again (or change `GORK_PORT`).

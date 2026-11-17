@@ -246,6 +246,38 @@ void main() {
       expect(out.join('\n'), contains('daemon not running'));
     });
 
+    test('daemon start with a broken source dir lists every probed path',
+        () async {
+      // The real CLI in a separate process whose cwd is OUTSIDE the daemon
+      // tree — otherwise the dev-checkout fallback would rescue the broken
+      // install and hide the failure. Reproduces the field bug: the wrapper
+      // pinned GORK_SRC_DIR at a tree without bin/gork_daemon.dart.
+      final sandbox = Directory.systemTemp.createTempSync('gork-cli-nosrc');
+      addTearDown(() => sandbox.deleteSync(recursive: true));
+      final result = await Process.run(
+        Platform.executable, // the VM running these tests — never a PATH guess
+        <String>[
+          'run',
+          '${Directory.current.path}/bin/gork_cli.dart',
+          'daemon', 'start',
+        ],
+        workingDirectory: sandbox.path,
+        environment: <String, String>{
+          'HOME': sandbox.path,
+          'GORK_HOME': '${sandbox.path}/state',
+          'GORK_SRC_DIR': '${sandbox.path}/nowhere',
+          'GORK_PORT': '59991', // nothing listens here
+          'GORK_HEALTH_TIMEOUT': '1',
+        },
+      );
+      expect(result.exitCode, 1);
+      final printed = '${result.stdout}${result.stderr}';
+      expect(printed, contains('daemon source not found'));
+      // The failure must be diagnosable from the message alone.
+      expect(printed, contains('${sandbox.path}/nowhere/bin/gork_daemon.dart'));
+      expect(printed, contains('re-run the gork installer'));
+    });
+
     test('gork autostart installs the hooks idempotently', () async {
       final ctlHome = Directory.systemTemp.createTempSync('gork-cli-auto');
       addTearDown(() => ctlHome.deleteSync(recursive: true));
