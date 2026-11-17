@@ -6,6 +6,9 @@ import 'package:test/test.dart';
 import 'package:gork_daemon/cli_support.dart';
 import 'package:gork_daemon/server.dart';
 import 'package:gork_daemon/scheduler.dart';
+import 'package:gork_daemon/autostart.dart';
+import 'package:gork_daemon/daemon_control.dart';
+import 'package:gork_daemon/browser_agent.dart';
 
 class FakeLlm implements LlmCaller {
   @override
@@ -216,6 +219,119 @@ void main() {
       }
     });
 
+    test('gork daemon status/logs via the injected control', () async {
+      final ctlHome = Directory.systemTemp.createTempSync('gork-cli-ctl');
+      addTearDown(() => ctlHome.deleteSync(recursive: true));
+      final control = DaemonControl(env: {
+        'HOME': ctlHome.path,
+        'GORK_HOME': '${ctlHome.path}/state',
+        'GORK_PORT': '59977', // nothing listens here in tests
+      });
+      final out = <String>[];
+      final code = await runCli(['daemon', 'status'],
+          config: makeConfig(), control: control, out: out.add);
+      expect(code, 0);
+      expect(out.join('\n'), contains('daemon: down'));
+      expect(out.join('\n'), contains('59977'));
+
+      final code2 = await runCli(['daemon', 'logs'],
+          config: makeConfig(), control: control, out: out.add);
+      expect(code2, 0);
+      expect(out.join('\n'), contains('no log yet'));
+
+      // The shorthand: `gork status-lifecycle` without the daemon word.
+      final code3 = await runCli(['stop'],
+          config: makeConfig(), control: control, out: out.add);
+      expect(code3, 0);
+      expect(out.join('\n'), contains('daemon not running'));
+    });
+
+    test('gork autostart installs the hooks idempotently', () async {
+      final ctlHome = Directory.systemTemp.createTempSync('gork-cli-auto');
+      addTearDown(() => ctlHome.deleteSync(recursive: true));
+      final control = DaemonControl(env: {'HOME': ctlHome.path});
+      final out = <String>[];
+      final code = await runCli(['autostart'],
+          config: makeConfig(), control: control, out: out.add,
+          autostart: Autostart(env: {'HOME': ctlHome.path},
+              probe: '/x/bin/gork'));
+      expect(code, 0);
+      final printed = out.join('\n');
+      expect(printed, contains('boot script'));
+      expect(printed, contains('profile hook'));
+      expect(File('${ctlHome.path}/.termux/boot/gork-daemon.sh').existsSync(),
+          isTrue);
+      // Second run is idempotent.
+      final out2 = <String>[];
+      await runCli(['autostart'],
+          config: makeConfig(), control: control, out: out2.add,
+          autostart: Autostart(env: {'HOME': ctlHome.path},
+              probe: '/x/bin/gork'));
+      expect(out2.join('\n'), contains('already present'));
+    });
+
+    test('gork vault set/list/rm — the value comes from stdin, never argv',
+        () async {
+      final ctlHome = Directory.systemTemp.createTempSync('gork-cli-vault');
+      addTearDown(() => ctlHome.deleteSync(recursive: true));
+      final control = DaemonControl(env: {'HOME': ctlHome.path});
+      final out = <String>[];
+      final code = await runCli(['vault', 'set', 'gmail-login'],
+          config: makeConfig(), control: control, out: out.add,
+          readLine: () async => 'hunter2');
+      expect(code, 0);
+      final vaultFile = File(
+          '${ctlHome.path}/.gork-daemon/vault.json');
+      expect(vaultFile.existsSync(), isTrue);
+      expect(vaultFile.readAsStringSync(), contains('gmail-login'));
+      final printed = out.join('\n');
+      expect(printed, contains('never echoed back'));
+
+      final out2 = <String>[];
+      final code2 = await runCli(['vault', 'list'],
+          config: makeConfig(), control: control, out: out2.add);
+      expect(code2, 0);
+      expect(out2.join('\n'), contains('gmail-login'));
+      expect(out2.join('\n'), contains('values never shown'));
+
+      final out3 = <String>[];
+      final code3 = await runCli(['vault', 'rm', 'gmail-login'],
+          config: makeConfig(), control: control, out: out3.add);
+      expect(code3, 0);
+      expect(out3.join('\n'), contains('removed'));
+    });
+
+    test('gork browser open/read against a live daemon with a fake browser',
+        () async {
+      final cdp = FakeBrowserCdp();
+      final browser = AgentBrowser(
+        env: {'GORK_HOME': home.path, 'GORK_BROWSER': '/bin/true'},
+        launcher: (exec, args, env) async => cdp,
+      );
+      final daemonServer = await shelf_io.serve(
+        buildHandler(Daemon(FileTaskStore('${home.path}/tasks.json'),
+            FakeLlm(), const NoopNotifier()),
+            browser: browser),
+        '127.0.0.1',
+        0,
+      );
+      addTearDown(daemonServer.close);
+      final client = DaemonClient(
+        baseUrl: 'http://127.0.0.1:${daemonServer.port}',
+        secret: '',
+      );
+      final out = <String>[];
+      final code = await runCli(['browser', 'open', 'example.com'],
+          config: makeConfig(), client: client, out: out.add);
+      expect(code, 0);
+      expect(out.join('\n'), contains('https://example.com'));
+      final out2 = <String>[];
+      final code2 = await runCli(['browser', 'read'],
+          config: makeConfig(), client: client, out: out2.add);
+      expect(code2, 0);
+      expect(out2.join('\n'), contains('fake-page-text'));
+    });
+
     test('tasks flow through the CLI surface', () async {
       final config = makeConfig();
       final server = await _serve(home);
@@ -238,6 +354,29 @@ void main() {
       expect(out.join('\n'), contains('Standup'));
     });
   });
+}
+
+class FakeBrowserCdp implements CdpConnection {
+  @override
+  Future<Map<String, dynamic>> call(String method, Map<String, dynamic> params,
+      {String? sessionId}) async {
+    switch (method) {
+      case 'Target.createTarget':
+        return {'targetId': 't'};
+      case 'Target.attachToTarget':
+        return {'sessionId': 's'};
+      case 'Runtime.evaluate':
+        return {'result': {'value': 'fake-page-text'}};
+      default:
+        return {};
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> waitEvent(String method, String sessionId) async => {};
+
+  @override
+  Future<void> close() async {}
 }
 
 Future<HttpServer> _serve(Directory home) async {

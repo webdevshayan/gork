@@ -7,6 +7,37 @@ import 'package:shelf/shelf.dart';
 import 'package:gork_daemon/server.dart';
 import 'package:gork_daemon/scheduler.dart';
 import 'package:gork_daemon/cli_support.dart';
+import 'package:gork_daemon/browser_agent.dart';
+
+class FakeCdpConnection implements CdpConnection {
+  final List<String> methods = [];
+  @override
+  Future<Map<String, dynamic>> call(String method, Map<String, dynamic> params,
+      {String? sessionId}) async {
+    methods.add(method);
+    switch (method) {
+      case 'Target.createTarget':
+        return {'targetId': 't'};
+      case 'Target.attachToTarget':
+        return {'sessionId': 's'};
+      case 'Runtime.evaluate':
+        return {'result': {'value': 'ok'}};
+      default:
+        return {};
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> waitEvent(String method, String sessionId) async => {};
+
+  @override
+  Future<void> close() async {}
+}
+
+AgentBrowser fakeBrowser(FakeCdpConnection cdp) => AgentBrowser(
+      env: {'GORK_HOME': '/tmp/gork-server-test', 'GORK_BROWSER': '/bin/true'},
+      launcher: (exec, args, env) async => cdp,
+    );
 
 class FakeTaskStore implements TaskStore {
   final List<Task> items = [];
@@ -112,6 +143,60 @@ void main() {
     final list = await handler(_req('GET', '/tasks', headers: h));
     final body = await _body(list);
     expect((body['tasks'] as List).length, greaterThanOrEqualTo(1));
+  });
+
+  group('Movement 58 — the agent browser endpoints', () {
+    late FakeCdpConnection cdp;
+    setUp(() => cdp = FakeCdpConnection());
+
+    test('POST /v1/browser/op routes to the agent browser (Bearer auth)',
+        () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          browser: fakeBrowser(cdp));
+      final res = await handler(Request('POST', Uri.parse('http://test.local/v1/browser/op'),
+          headers: {
+            'authorization': 'Bearer s3cret',
+            'content-type': 'application/json',
+          },
+          body: jsonEncode({
+            'session': 'default',
+            'action': 'navigate',
+            'url': 'example.com',
+          })));
+      expect(res.statusCode, 200);
+      final body = await _body(res);
+      expect(body['ok'], isTrue);
+      expect(body['url'], 'https://example.com');
+      expect(cdp.methods, contains('Page.navigate'));
+    });
+
+    test('the browser routes are gated by the secret', () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          browser: fakeBrowser(cdp));
+      final res = await handler(Request('POST', Uri.parse('http://test.local/v1/browser/op'),
+          body: jsonEncode({'session': 'default', 'action': 'read'})));
+      expect(res.statusCode, 401);
+    });
+
+    test('GET /v1/browser/status describes the browser honestly',
+        () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret',
+          browser: fakeBrowser(cdp));
+      final res = await handler(_req('GET', '/v1/browser/status',
+          headers: {'x-gork-secret': 's3cret'}));
+      expect(res.statusCode, 200);
+      final body = await _body(res);
+      expect(body['actions'], contains('fill_secret'));
+      expect((body['actions'] as List), contains('navigate'));
+    });
+
+    test('without a browser wired the routes 404 (feature absent, not broken)',
+        () async {
+      final handler = buildHandler(makeDaemon(), secret: 's3cret');
+      final res = await handler(_req('GET', '/v1/browser/status',
+          headers: {'x-gork-secret': 's3cret'}));
+      expect(res.statusCode, 404);
+    });
   });
 
   group('POST /config — the app pushes its config, no file editing', () {

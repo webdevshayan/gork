@@ -90,22 +90,25 @@ class ToolRegistry {
         }),
         ToolDef(
             'browser',
-            'The full browser on your VPS. Actions: navigate (url), click '
-            '(selector), type (selector, text), read (page text), '
-            'screenshot. SECURE FILL RULE: when a form asks for a password, '
-            'auth code or anything private, NEVER type its value — you do '
-            'not have it and must not ask for it. Fill every non-secret '
-            'field, keep that field focused, then call with action '
-            '"fill_secret" and a label you generate (e.g. "gmail-login"). '
-            'The vault fills the active input for you; the value is never '
-            'shown to you, on any website.', {
+            'Your private, persistent browser on the VPS — use it like a '
+            'human: navigate (url), click (selector), type (selector, '
+            'text), read (page text or a selector), back, scroll (up/down), '
+            'screenshot (png), eval (js). Logins persist across sessions '
+            '(dedicated profile); secrets are handled by the vault. SECURE '
+            'FILL RULE: when a form asks for a password, auth code or '
+            'anything private, NEVER type its value — you do not have it '
+            'and must not ask for it. Fill every non-secret field, keep '
+            'that field focused, then call with action "fill_secret" and a '
+            'label you generate (e.g. "gmail-login"). The vault fills the '
+            'active input for you; the value is never shown to you, on any '
+            'website.', {
           'type': 'object',
           'properties': {
             'action': {
               'type': 'string',
               'enum': [
-                'navigate', 'click', 'type', 'read', 'screenshot',
-                'fill_secret'
+                'navigate', 'click', 'type', 'read', 'back', 'scroll',
+                'screenshot', 'fill_secret'
               ],
             },
             'session': {

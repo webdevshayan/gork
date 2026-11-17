@@ -94,6 +94,11 @@ install_packages() {
     echo "-- Installing base packages..."
     $SUDO apt-get update -y >/dev/null 2>&1 || true
     $SUDO apt-get install -y curl git unzip gpg ca-certificates >/dev/null 2>&1 || true
+    # The agent browser (Movement 58): headless chromium — best effort.
+    if ! command -v chromium >/dev/null 2>&1 && ! command -v google-chrome >/dev/null 2>&1; then
+      $SUDO apt-get install -y chromium 2>/dev/null \
+        || echo "   note: chromium not installed — 'apt install chromium' enables the agent browser" >&2
+    fi
     if ! command -v dart >/dev/null 2>&1; then
       echo "-- Installing Dart SDK..."
       $SUDO apt-get install -y gpg >/dev/null 2>&1 || true
@@ -201,6 +206,9 @@ GORKCLI
     $SUDO chmod 0755 /usr/local/bin/gork
     echo "-- gork CLI installed: /usr/local/bin/gork"
   fi
+  # Boot hooks (idempotent; the systemd unit is the primary path — the
+  # shell hooks are the belt to its braces).
+  /usr/local/bin/gork autostart 2>/dev/null || true
 }
 
 install_termux_services() { # $1 = daemon src dir
@@ -220,6 +228,16 @@ cd "$src"
 exec dart run bin/gork_daemon.dart
 RUN
   chmod +x "$PREFIX/var/service/gork-daemon/run"
+  # ONE command: gork (config, tasks, daemon lifecycle, browser, vault).
+  cat > "$PREFIX/bin/gork" <<GORKCLI
+#!/usr/bin/env bash
+# gork CLI wrapper (termux-services install)
+export GORK_HOME="$home"
+exec dart run "$src/bin/gork_cli.dart" "\$@"
+GORKCLI
+  chmod 0755 "$PREFIX/bin/gork"
+  echo "-- gork CLI installed: $PREFIX/bin/gork"
+  "$PREFIX/bin/gork" autostart || true
   if [ "${GORK_NO_START:-0}" = "1" ]; then
     echo "-- GORK_NO_START=1: service registered but not started."
     return 0
@@ -231,7 +249,7 @@ RUN
 
 install_ctl() { # $1 = daemon src dir ; returns 0 iff daemon verified running
   local src="$1" home="$HOME/.gork-daemon" bindir
-  echo "-- Installing gork-daemonctl (no init system needed)..."
+  echo "-- Installing the gork CLI (no init system needed)..."
   GORK_HOME="$home" GORK_SRC_DIR="$src" write_config
   if [ -n "${PREFIX:-}" ] && [ -w "$PREFIX/bin" ]; then
     bindir="$PREFIX/bin"                                  # Termux
@@ -242,45 +260,42 @@ install_ctl() { # $1 = daemon src dir ; returns 0 iff daemon verified running
     mkdir -p "$bindir"
     case ":$PATH:" in
       *":$bindir:"*) ;;
-      *) echo "   NOTE: add $bindir to your PATH to use 'gork-daemonctl' directly." >&2 ;;
+      *) echo "   NOTE: add $bindir to your PATH to use 'gork' directly." >&2 ;;
     esac
   fi
-  install -m 0755 "$src/gork-daemonctl" "$bindir/gork-daemonctl" 2>/dev/null \
-    || { cp "$src/gork-daemonctl" "$bindir/gork-daemonctl" && chmod 0755 "$bindir/gork-daemonctl"; }
-
-  # gork CLI — configure LLMs, tasks and everything from the terminal.
+  # ONE command (Movement 58): gork owns everything — config, LLM, tasks,
+  # daemon lifecycle (start/stop/status/logs), autostart, browser, vault.
   cat > "$bindir/gork" <<GORKCLI
 #!/usr/bin/env bash
 # gork CLI wrapper (ctl install)
-GORK_HOME="$home" exec dart run "$src/bin/gork_cli.dart" "\$@"
+export GORK_HOME="$home"
+export GORK_SRC_DIR="$src"
+exec dart run "$src/bin/gork_cli.dart" "\$@"
 GORKCLI
   chmod 0755 "$bindir/gork"
   echo "-- gork CLI installed: $bindir/gork (try: gork llm providers)"
+
+  # Back-compat shim: old cron/boot entries calling gork-daemonctl keep
+  # working, forwarded to the one command.
+  cat > "$bindir/gork-daemonctl" <<SHIM
+#!/usr/bin/env bash
+# deprecated shim — use: gork daemon <cmd>
+exec "$bindir/gork" daemon "\$@"
+SHIM
+  chmod 0755 "$bindir/gork-daemonctl"
+
+  # Boot-time auto-start, every layer, idempotent.
+  "$bindir/gork" autostart || true
 
   if [ "${GORK_NO_START:-0}" = "1" ]; then
     echo "-- GORK_NO_START=1: installed but not started."
     return 0
   fi
-
-  # Termux niceties: keep Android from killing us, start on boot if possible.
   if [ "$IS_TERMUX" -eq 1 ] && command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock 2>/dev/null || true
   fi
-  if [ "$IS_TERMUX" -eq 1 ] && [ -d "$HOME/.termux/boot" ]; then
-    cat > "$HOME/.termux/boot/gork-daemon.sh" <<BOOT
-#!/data/data/com.termux/files/usr/bin/sh
-termux-wake-lock
-"$bindir/gork-daemonctl" start
-BOOT
-    chmod +x "$HOME/.termux/boot/gork-daemon.sh"
-    echo "-- Termux:Boot script installed (~/.termux/boot/gork-daemon.sh)"
-  fi
-  if command -v crontab >/dev/null 2>&1 && ! crontab -l 2>/dev/null | grep -q gork-daemonctl; then
-    (crontab -l 2>/dev/null; echo "@reboot $bindir/gork-daemonctl start >> $home/gork-daemon.log 2>&1") | crontab - 2>/dev/null \
-      && echo "-- @reboot cron entry added (start on boot)." || true
-  fi
 
-  "$bindir/gork-daemonctl" start
+  "$bindir/gork" daemon start
 }
 
 # --- summary -----------------------------------------------------------------
@@ -290,6 +305,9 @@ print_summary() { # $1 backend $2 src-dir $3 config-file
   echo "== gork daemon is UP and /health answered. =="
   echo "   source : $src"
   echo "   config : $cfg   (LLM key, model, ntfy topic, secret)"
+  echo "   browser: the agent browser uses a private persistent profile at"
+  echo "            ~/.gork-daemon/browser-profile — cookies survive restarts;"
+  echo "            fill secrets with: gork vault set <label> (value from stdin)"
   if [ -f "$cfg" ]; then
     echo "   secret : $(grep -E '^GORK_SECRET=' "$cfg" | cut -d= -f2- | tr -d '"')"
     echo "            ^ set the same value in the app (Cloud Computer -> secret)."
@@ -298,16 +316,16 @@ print_summary() { # $1 backend $2 src-dir $3 config-file
     systemd)
       echo "   logs   : journalctl -u gork-daemon -f"
       echo "   restart: sudo systemctl restart gork-daemon   (after editing config)"
-      echo "   status : systemctl status gork-daemon"
+      echo "   status : systemctl status gork-daemon   (or: gork daemon status)"
       echo "   cli    : gork config list   (or: gork llm providers)" ;;
     termux-services)
       echo "   logs   : tail -f $HOME/.gork-daemon/gork-daemon.log"
       echo "   restart: sv restart gork-daemon   (after editing config)"
-      echo "   status : sv status gork-daemon" ;;
+      echo "   status : sv status gork-daemon   (or: gork daemon status)" ;;
     *)
-      echo "   logs   : gork-daemonctl logs"
-      echo "   restart: gork-daemonctl restart   (after editing config)"
-      echo "   status : gork-daemonctl status"
+      echo "   logs   : gork daemon logs"
+      echo "   restart: gork daemon restart   (after editing config)"
+      echo "   status : gork daemon status"
       echo "   cli    : gork config list   (or: gork llm providers)" ;;
   esac
 }
@@ -356,7 +374,7 @@ main() {
     case "$used" in
       systemd)         echo "   sudo systemctl start gork-daemon" ;;
       termux-services) echo "   sv up gork-daemon" ;;
-      *)               echo "   gork-daemonctl start" ;;
+      *)               echo "   gork daemon start" ;;
     esac
     return 0
   fi
@@ -368,7 +386,7 @@ main() {
   if poll_health "http://127.0.0.1:${GORK_PORT:-8787}/health" 40; then
     print_summary "$used" "$src" "$cfgfile"
   else
-    print_failure "$used" "Check: journalctl -u gork-daemon -n 50 / sv status gork-daemon / gork-daemonctl logs"
+    print_failure "$used" "Check: journalctl -u gork-daemon -n 50 / sv status gork-daemon / gork daemon logs"
   fi
 }
 

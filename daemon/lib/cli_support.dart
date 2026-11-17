@@ -4,6 +4,9 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+import 'autostart.dart';
+import 'daemon_control.dart';
+
 /// gork CLI plumbing — configuration without ever opening a file, plus an
 /// HTTP client for the running daemon. Everything here is pure enough to
 /// test: no stdout writes, no exit() calls (runCli owns those).
@@ -207,6 +210,28 @@ class DaemonClient {
     return _ok(response);
   }
 
+  Future<Map<String, dynamic>> browserStatus() async {
+    final response = await _http.get(
+      Uri.parse('$baseUrl/v1/browser/status'),
+      headers: _headers,
+    );
+    return _ok(response);
+  }
+
+  /// One agent-browser op (navigate / click / type / read / ...).
+  Future<Map<String, dynamic>> browserOp(
+    String action, {
+    String session = 'default',
+    Map<String, dynamic> args = const {},
+  }) async {
+    final response = await _http.post(
+      Uri.parse('$baseUrl/v1/browser/op'),
+      headers: _headers,
+      body: jsonEncode({'session': session, 'action': action, ...args}),
+    );
+    return _ok(response);
+  }
+
   /// One human line: daemon state + task count.
   Future<String> statusLine() async {
     final state = await health();
@@ -276,6 +301,9 @@ Future<int> runCli(
   required ConfigStore config,
   DaemonClient? client,
   void Function(String line) out = print,
+  DaemonControl? control,
+  Autostart? autostart,
+  Future<String> Function()? readLine,
 }) async {
   final defaultClient = client ??
       DaemonClient(
@@ -289,11 +317,11 @@ Future<int> runCli(
       return await action();
     } on DaemonApiError catch (e) {
       out('error: $e');
-      out('hint: is the daemon running?  gork-daemonctl start   (then: gork status)');
+      out('hint: is the daemon running?  gork daemon start   (then: gork status)');
       return 1;
     } catch (e) {
       out('error: $e');
-      out('hint: is the daemon running?  gork-daemonctl start   (then: gork status)');
+      out('hint: is the daemon running?  gork daemon start   (then: gork status)');
       return 1;
     }
   }
@@ -427,6 +455,133 @@ Future<int> runCli(
         }
       });
 
+    case 'daemon':
+    case 'start':
+    case 'stop':
+    case 'restart':
+    case 'logs': {
+      // Lifecycle lives in THIS command: `gork daemon start` and the
+      // `gork start` shorthand both land here. One CLI, everything.
+      final ctl = control ?? DaemonControl();
+      final String sub;
+      final bool quiet;
+      if (args.first == 'daemon') {
+        sub = args.elementAtOrNull(1) ?? 'status';
+        quiet = args.contains('--quiet');
+      } else {
+        sub = args.first;
+        quiet = args.contains('--quiet');
+      }
+      switch (sub) {
+        case 'start':
+          final ok = await ctl.start(quiet: quiet, out: out);
+          return ok ? 0 : 1;
+        case 'stop':
+          await ctl.stop(out: quiet ? (_) {} : out);
+          return 0;
+        case 'restart':
+          final ok = await ctl.restart(quiet: quiet, out: out);
+          return ok ? 0 : 1;
+        case 'status':
+          out(await ctl.statusLine());
+          return 0;
+        case 'health':
+          out(await ctl.isHealthy() ? 'healthy' : 'unhealthy');
+          return await ctl.isHealthy() ? 0 : 1;
+        case 'logs':
+          final n = args.where((a) => int.tryParse(a) != null).toList();
+          out(ctl.logs(n.isEmpty ? 40 : int.parse(n.last)));
+          return 0;
+        default:
+          out('usage: gork daemon start|stop|restart|status|health|logs [n]');
+          return 1;
+      }
+    }
+
+    case 'autostart': {
+      // Boot-time auto-start hooks: Termux:Boot, shell profiles,
+      // /etc/profile.d, cron @reboot. Idempotent — safe to re-run.
+      final auto = autostart ?? Autostart();
+      out('installing auto-start hooks (idempotent):');
+      for (final line in auto.apply()) {
+        out('  $line');
+      }
+      out('the daemon now starts when Termux / the distro starts.');
+      return 0;
+    }
+
+    case 'browser':
+      return requireDaemon(() async {
+        final sub = args.elementAtOrNull(1) ?? 'status';
+        switch (sub) {
+          case 'status':
+            final status = await defaultClient.browserStatus();
+            for (final entry in status.entries) {
+              out('${entry.key}: ${jsonEncode(entry.value)}');
+            }
+            return 0;
+          case 'open':
+            final url = args.elementAtOrNull(2);
+            if (url == null) {
+              out('usage: gork browser open <url> [session]');
+              return 1;
+            }
+            final result = await defaultClient.browserOp('navigate',
+                session: args.elementAtOrNull(3) ?? 'default',
+                args: {'url': url});
+            out(jsonEncode(result));
+            return (result['ok'] as bool? ?? false) ? 0 : 1;
+          case 'read':
+            final result = await defaultClient.browserOp('read',
+                session: args.elementAtOrNull(3) ?? 'default',
+                args: {'selector': args.elementAtOrNull(2) ?? ''});
+            out(result['text'] ?? jsonEncode(result));
+            return (result['ok'] as bool? ?? false) ? 0 : 1;
+          case 'close':
+            final result = await defaultClient.browserOp('close',
+                session: args.elementAtOrNull(2) ?? 'default');
+            out(jsonEncode(result));
+            return 0;
+          default:
+            out('usage: gork browser status | open <url> | read [selector] '
+                '| close');
+            return 1;
+        }
+      });
+
+    case 'vault': {
+      final sub = args.elementAtOrNull(1);
+      final ctl = control ?? DaemonControl();
+      final dir = ctl.stateDir;
+      switch (sub) {
+        case 'set':
+          final label = args.elementAtOrNull(2);
+          if (label == null || readLine == null) {
+            out('usage: gork vault set <label>   (value comes from stdin — '
+                'it must never land in shell history or argv)');
+            return 1;
+          }
+          final value = (await readLine()).trim();
+          if (value.isEmpty) {
+            out('error: empty value');
+            return 1;
+          }
+          return vaultSet(dir, label, value, out);
+        case 'list' || null:
+          return vaultList(dir, out);
+        case 'rm':
+          final label = args.elementAtOrNull(2);
+          if (label == null) {
+            out('usage: gork vault rm <label>');
+            return 1;
+          }
+          return vaultRemove(dir, label, out);
+        default:
+          out('usage: gork vault set <label> | list | rm <label>');
+          return 1;
+      }
+    }
+
     case 'status':
       return requireDaemon(() async {
         out(await defaultClient.statusLine());
@@ -450,9 +605,14 @@ Future<int> runCli(
 }
 
 const String _usage = '''usage: gork <command>
+  daemon start|stop|restart|status|logs   the daemon lifecycle (also: gork start)
+  autostart                               install boot hooks (Termux:Boot, shell
+                                          profiles, profile.d, cron @reboot)
   config set KEY VALUE | get KEY | list   configure without opening files
   llm providers | set <id> | test         pick + verify an LLM endpoint
   tasks add "T" "prompt" [min]            schedule AI tasks
   tasks list | remove <id> | run          manage tasks on the daemon
+  browser status|open <url>|read|close    drive the agent browser from the shell
+  vault set <label> | list | rm <label>   sealed secrets the browser can fill
   status                                  daemon liveness + task count
   secret                                  show the pairing secret for the app''';

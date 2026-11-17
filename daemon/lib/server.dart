@@ -6,6 +6,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
+import 'package:gork_daemon/browser_agent.dart';
 import 'package:gork_daemon/cli_support.dart';
 import 'package:gork_daemon/scheduler.dart';
 
@@ -74,7 +75,12 @@ Middleware requireSecret(String? secret) {
         // Liveness stays open: installers, uptime monitors and `curl` checks
         // must be able to verify the daemon without holding the secret.
         if (request.url.path == 'health') return inner(request);
-        if (request.headers['x-gork-secret'] == secret) return inner(request);
+        final bearer = (request.headers['authorization'] ?? '')
+            .replaceFirst(RegExp(r'^[Bb]earer '), '').trim();
+        if (request.headers['x-gork-secret'] == secret ||
+            bearer == secret) {
+          return inner(request);
+        }
         return Response(401,
             body: jsonEncode({'error': 'bad or missing X-Gork-Secret'}),
             headers: {'content-type': 'application/json'});
@@ -88,11 +94,12 @@ Handler buildHandler(
   String? secret,
   ConfigStore? config,
   Map<String, String>? configOverlay,
+  AgentBrowser? browser,
 }) =>
     const Pipeline()
         .addMiddleware(requireSecret(secret))
         .addHandler(buildRouter(daemon,
-            config: config, configOverlay: configOverlay));
+            config: config, configOverlay: configOverlay, browser: browser));
 
 /// Keys the phone may write through POST /config. GORK_PORT is allowed (it
 /// only takes effect on restart) and GORK_CONNECTOR_* come from the
@@ -106,7 +113,9 @@ const Set<String> kConfigurableKeys = {
 };
 
 Router buildRouter(Daemon daemon,
-    {ConfigStore? config, Map<String, String>? configOverlay}) {
+    {ConfigStore? config,
+    Map<String, String>? configOverlay,
+    AgentBrowser? browser}) {
   final router = Router();
 
   router.get('/health', (Request request) async {
@@ -235,6 +244,36 @@ Router buildRouter(Daemon daemon,
     });
   });
 
+  // Movement 58 — the agent browser: PRIVATE (dedicated 0700 profile,
+  // vault values never echoed), PERSISTENT (cookies survive restarts),
+  // LIGHTWEIGHT (one headless Chromium over raw CDP, spawned lazily).
+  // The phone's BrowserService speaks exactly this protocol:
+  //   POST /v1/browser/op  {session, action, url/selector/text/label}
+  if (browser != null) {
+    router.get('/v1/browser/status', (Request request) async {
+      return _json(browser.status());
+    });
+    router.post('/v1/browser/op', (Request request) async {
+      final raw = await request.readAsString();
+      final Map<String, dynamic> body;
+      try {
+        body = raw.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(raw) as Map<String, dynamic>;
+      } on FormatException {
+        return _json({'ok': false, 'error': 'body must be JSON'}, 400);
+      }
+      final session = body['session']?.toString() ?? 'default';
+      final action = body['action']?.toString() ?? '';
+      final args = (body['args'] as Map?)?.cast<String, dynamic>() ??
+          <String, dynamic>{
+            for (final e in body.entries)
+              if (e.key != 'session' && e.key != 'action') e.key: e.value,
+          };
+      return _json(await browser.op(session, action, args));
+    });
+  }
+
   return router;
 }
 
@@ -253,9 +292,21 @@ Future<void> main(List<String> args) async {
       topic == null || topic.isEmpty ? const NoopNotifier() : NtfyNotifier(topic);
 
   final daemon = Daemon(newTaskStore(), llm, notifier);
+  final browser = AgentBrowser();
   final secret = Platform.environment['GORK_SECRET'];
   final handler = buildHandler(daemon,
-      secret: secret, config: config, configOverlay: overlay);
+      secret: secret, config: config, configOverlay: overlay, browser: browser);
+
+  // The agent browser must not outlive the daemon: SIGTERM (gork daemon
+  // stop / systemd) closes it, then exits.
+  ProcessSignal.sigterm.watch().listen((_) async {
+    await browser.shutdown();
+    exit(0);
+  });
+  ProcessSignal.sigint.watch().listen((_) async {
+    await browser.shutdown();
+    exit(0);
+  });
 
   // 24/7 loop: check the schedule every minute.
   Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -271,4 +322,6 @@ Future<void> main(List<String> args) async {
       'gork daemon listening on http://${server.address.host}:${server.port}');
   stdout.writeln(
       'LLM: ${llm.describe()} | ntfy: ${topic ?? 'disabled'} | secret: ${secret == null || secret.isEmpty ? 'off' : 'on'}');
+  stdout.writeln(
+      'agent browser: ${browser.status()['binary']} | profile: ${browser.profileDir}');
 }
