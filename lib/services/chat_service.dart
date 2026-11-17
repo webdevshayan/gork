@@ -33,7 +33,13 @@ class ChatService {
     String? baseURL,
     String? defaultModel,
     List<ToolDef>? tools,
-    int maxTokens = 1024,
+
+    /// Output ceiling sent to the provider. 4096 covers every realistic
+    /// chat reply; a lower value truncates answers mid-sentence and a
+    /// missing one makes some providers assume the model maximum, which
+    /// OpenRouter then refuses when the balance cannot cover that worst
+    /// case (HTTP 402).
+    int maxTokens = 4096,
   }) async {
     final key = await _vault.getKey(providerId);
     if (key == null || key.isEmpty) {

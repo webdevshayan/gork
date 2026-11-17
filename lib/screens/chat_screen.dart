@@ -12,6 +12,7 @@ import '../services/locator.dart';
 import '../services/outbox.dart';
 import '../services/profile_info.dart';
 import '../services/projects_store.dart';
+import '../widgets/error_card.dart';
 import '../widgets/glass.dart';
 import '../widgets/markdown_view.dart';
 import '../constants/design_tokens.dart';
@@ -61,6 +62,10 @@ class ChatScreenState extends State<ChatScreen> {
   String? _providerId;
   bool _loading = false;
   String? _error;
+
+  /// The raw provider body behind [_error] — rendered only inside the
+  /// error card's expandable Details view, never as plain chat text.
+  String? _errorDetails;
   List<String> _toolsUsed = [];
   String? _searchQuery;
   bool _showScrollButton = false;
@@ -206,6 +211,7 @@ class ChatScreenState extends State<ChatScreen> {
         _UiMessage('user', text, time: DateTime.now().millisecondsSinceEpoch),
       );
       _error = null;
+      _errorDetails = null;
       if (_conversationId.isEmpty) {
         _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
         _title = text.length > 40 ? '${text.substring(0, 40)}…' : text;
@@ -258,9 +264,16 @@ class ChatScreenState extends State<ChatScreen> {
         _toolsUsed = result.toolsUsed;
         _loading = false;
       });
+    } on LlmException catch (e) {
+      setState(() {
+        _error = e.message;
+        _errorDetails = e.details;
+        _loading = false;
+      });
     } catch (e) {
       setState(() {
         _error = e.toString();
+        _errorDetails = null;
         _loading = false;
       });
     } finally {
@@ -335,6 +348,7 @@ class ChatScreenState extends State<ChatScreen> {
   Future<void> _attach(ChatAttachment attachment) async {
     setState(() {
       _error = null;
+      _errorDetails = null;
       if (_conversationId.isEmpty) {
         _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
         _title = attachment.name;
@@ -475,6 +489,7 @@ class ChatScreenState extends State<ChatScreen> {
       _conversationId = '';
       _title = 'New chat';
       _error = null;
+      _errorDetails = null;
       _toolsUsed = [];
     });
   }
@@ -608,7 +623,7 @@ class ChatScreenState extends State<ChatScreen> {
               child: searching
                   ? _buildSearchResults()
                   : _messages.isEmpty
-                      ? EmptyChat(error: _error)
+                      ? EmptyChat(error: _error, errorDetails: _errorDetails)
                       : _buildMessages(),
             ),
             if (!searching && _toolsUsed.isNotEmpty && !_loading)
@@ -626,13 +641,8 @@ class ChatScreenState extends State<ChatScreen> {
             if (_error != null && _messages.isNotEmpty && !searching)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFFB91C1C),
-                  ),
-                ),
+                child: ErrorDetailsCard(
+                    summary: _error!, details: _errorDetails),
               ),
           ],
         ),
@@ -672,7 +682,8 @@ class ChatScreenState extends State<ChatScreen> {
       return _messages.isEmpty
           ? ListView(
               padding: const EdgeInsets.all(16),
-              children: EmptyChat(error: _error).buildChildren(),
+              children: EmptyChat(error: _error, errorDetails: _errorDetails)
+                  .buildChildren(),
             )
           : CustomScrollView(
               controller: _scroll,
@@ -980,9 +991,10 @@ class _Bubble extends StatelessWidget {  const _Bubble({
 /// cards, like the reference). The INTRO is dynamic now (Movement 53) — it
 /// plays as real animated bubbles, never as static seeds here.
 class EmptyChat extends StatelessWidget {
-  const EmptyChat({this.error});
+  const EmptyChat({this.error, this.errorDetails});
 
   final String? error;
+  final String? errorDetails;
 
   static const List<_PreviewCard> _cards = [
     _PreviewCard(
@@ -1027,18 +1039,18 @@ class EmptyChat extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 16),
-      Text(
-        error ?? 'Say something below. Your keys stay on this device.',
-        style: TextStyle(
-            fontSize: 14, color: GlassColors.textDim),
-      ),
       if (error != null) ...[
-        const SizedBox(height: 8),
+        ErrorDetailsCard(summary: error, details: errorDetails),
         Text(
           'Tip: add a provider key first (Menu → Security → Providers).',
           style: TextStyle(fontSize: 14, color: GlassColors.text),
         ),
-      ],
+      ] else
+        Text(
+          'Say something below. Your keys stay on this device.',
+          style: TextStyle(
+              fontSize: 14, color: GlassColors.textDim),
+        ),
     ];
   }
 

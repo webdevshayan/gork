@@ -128,6 +128,32 @@ abstract class LlmCaller {
   String describe();
 }
 
+/// The provider's own one-line message out of an error body. Scheduled-task
+/// failures land in notifications, where a raw JSON dump (an OpenRouter 402
+/// alone carries kilobytes of repeated previous_errors) is pure noise.
+String _briefLlmError(String body) {
+  final raw = body.trim();
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) {
+      final err = decoded['error'];
+      if (err is Map<String, dynamic> &&
+          (err['message']?.toString() ?? '').isNotEmpty) {
+        final msg = err['message'].toString();
+        final metadata = err['metadata'];
+        final hint = metadata is Map<String, dynamic>
+            ? metadata['remedy_hint']?.toString()
+            : null;
+        final out = (hint == null || hint.isEmpty) ? msg : '$msg — $hint';
+        return out.length <= 300 ? out : out.substring(0, 300);
+      }
+    }
+  } catch (_) {
+    // not JSON — fall through to the clipped raw text
+  }
+  return raw.length <= 300 ? raw : raw.substring(0, 300);
+}
+
 class EnvLlmCaller implements LlmCaller {
   final http.Client _http;
 
@@ -169,6 +195,10 @@ class EnvLlmCaller implements LlmCaller {
           },
           body: jsonEncode({
             'model': _model,
+            // Cap the output ceiling: without it providers assume the
+            // model's maximum, which OpenRouter refuses with 402 when the
+            // balance cannot cover that worst case. Tasks are "be brief".
+            'max_tokens': 1024,
             'messages': [
               {
                 'role': 'system',
@@ -180,7 +210,8 @@ class EnvLlmCaller implements LlmCaller {
         )
         .timeout(const Duration(seconds: 60));
     if (response.statusCode != 200) {
-      throw HttpException('LLM ${response.statusCode}: ${response.body}');
+      throw HttpException(
+          'LLM ${response.statusCode}: ${_briefLlmError(response.body)}');
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final choices = data['choices'] as List;

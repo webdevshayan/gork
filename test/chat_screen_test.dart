@@ -127,7 +127,8 @@ void main() {
     expect(find.textContaining('No provider key yet'), findsOneWidget);
   });
 
-  testWidgets('provider errors surface as text, not crashes', (tester) async {
+  testWidgets('provider errors surface as a compact card with expandable '
+      'details, not raw dumps', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final store = InMemorySecureStore();
@@ -151,7 +152,15 @@ void main() {
     await chatKey.currentState!.send('hi');
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('LlmException 401'), findsOneWidget);
+    // The human summary — never the exception class or the raw body.
+    expect(find.textContaining('LlmException'), findsNothing);
+    expect(find.textContaining('invalid api key'), findsOneWidget);
+    expect(find.textContaining('"error"'), findsNothing,
+        reason: 'the raw provider body stays hidden until expanded');
+    await tester.tap(find.byKey(const ValueKey('error-details-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('"error"'), findsOneWidget,
+        reason: 'Details expands to the raw provider body');
     // The user message stays visible for context.
     expect(find.text('hi'), findsOneWidget);
   });

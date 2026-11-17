@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:gork_daemon/scheduler.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -46,5 +49,64 @@ void main() {
       final f = File(path);
       if (f.existsSync()) f.deleteSync();
     }
+  });
+
+  group('EnvLlmCaller — scheduled LLM calls', () {
+    test('the request carries an explicit max_tokens ceiling', () async {
+      Map<String, dynamic>? capturedBody;
+      final caller = EnvLlmCaller(MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {'message': {'content': 'done'}}
+            ],
+          }),
+          200,
+        );
+      }), {
+        'GORK_API_KEY': 'k',
+      });
+
+      final out = await caller.call('summarize');
+      expect(out, 'done');
+      expect(capturedBody!['max_tokens'], 1024);
+    });
+
+    test('a 402 answer surfaces as a human line, not a JSON dump',
+        () async {
+      const message = 'This request requires more credits, or fewer '
+          'max_tokens. You requested up to 65536 tokens, but can only '
+          'afford 64911.';
+      final body = jsonEncode({
+        'error': {
+          'message': message,
+          'code': 402,
+          'metadata': {
+            'remedy_hint':
+                'Add credits at https://openrouter.ai/settings/credits.',
+            'previous_errors': [
+              for (var i = 0; i < 8; i++) {'code': 402, 'message': message},
+            ],
+          },
+        },
+      });
+      final caller = EnvLlmCaller(
+          MockClient((request) async => http.Response(body, 402)),
+          {'GORK_API_KEY': 'k'});
+
+      await expectLater(
+        caller.call('summarize'),
+        throwsA(isA<HttpException>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('more credits'),
+            contains('openrouter.ai/settings/credits'),
+            isNot(contains('previous_errors')),
+          ),
+        )),
+      );
+    });
   });
 }

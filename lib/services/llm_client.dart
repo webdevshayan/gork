@@ -140,9 +140,16 @@ class LlmReply {
 
 class LlmException implements Exception {
   final int? status;
+
+  /// The human one-liner for the chat surface — the provider's own message
+  /// plus its remedy hint, never the raw JSON blob.
   final String message;
 
-  const LlmException(this.message, {this.status});
+  /// The raw provider body (trimmed), for the expandable Details view.
+  /// Null when the provider answered nothing usable.
+  final String? details;
+
+  const LlmException(this.message, {this.status, this.details});
 
   @override
   String toString() =>
@@ -191,7 +198,8 @@ class LlmClient {
     }
     switch (provider.auth) {
       case ProviderAuth.bearer:
-        return _completeOpenAiCompatible(provider, apiKey, messages, m, tools);
+        return _completeOpenAiCompatible(
+            provider, apiKey, messages, m, tools, maxTokens);
       case ProviderAuth.anthropic:
         return _completeAnthropic(provider, apiKey, messages, m, tools, maxTokens);
     }
@@ -205,6 +213,7 @@ class LlmClient {
     List<ChatMessage> messages,
     String model,
     List<ToolDef>? tools,
+    int maxTokens,
   ) async {
     if (provider.baseURL.isEmpty) {
       throw LlmException(
@@ -213,6 +222,11 @@ class LlmClient {
     final body = <String, dynamic>{
       'model': model,
       'messages': [for (final m in messages) m.toOpenAiJson()],
+      // Always cap the output ceiling. Without it providers assume the
+      // model's maximum (65536 on many OpenRouter models) and some —
+      // OpenRouter in particular — refuse the request with 402 when the
+      // account balance cannot cover that worst case.
+      'max_tokens': maxTokens,
     };
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = [for (final t in tools) t.toOpenAiJson()];
@@ -221,8 +235,7 @@ class LlmClient {
     final url = '${provider.baseURL}/chat/completions';
     final response = await _request(url, provider, apiKey, body);
     if (response.statusCode != 200) {
-      throw LlmException(_briefError(response.body),
-          status: response.statusCode);
+      throw _errorFrom(response.statusCode, response.body);
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -287,8 +300,7 @@ class LlmClient {
     final url = '${provider.baseURL}/messages';
     final response = await _request(url, provider, apiKey, body);
     if (response.statusCode != 200) {
-      throw LlmException(_briefError(response.body),
-          status: response.statusCode);
+      throw _errorFrom(response.statusCode, response.body);
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -327,9 +339,51 @@ class LlmClient {
     );
   }
 
-  String _briefError(String body) {
-    final trimmed = body.trim();
-    if (trimmed.length > 300) trimmed.substring(0, 300);
-    return trimmed.isEmpty ? 'Unknown provider error' : trimmed;
+  String _clip(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max)}…';
+
+  /// Turns a provider error body into an [LlmException] whose [LlmException.message]
+  /// is a human one-liner and whose [LlmException.details] carries the raw
+  /// body for the expandable Details view. Providers answer with JSON like
+  /// {"error": {"message": ..., "code": ..., "metadata": {...}}} — a single
+  /// OpenRouter 402 alone carries kilobytes of repeated previous_errors —
+  /// and none of that may ever render raw on the chat surface.
+  LlmException _errorFrom(int status, String body) {
+    final raw = body.trim();
+    var summary = raw.isEmpty ? 'Provider error (HTTP $status)' : _clip(raw, 300);
+    String? details = raw.isEmpty ? null : _clip(raw, 4000);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        final err = decoded['error'];
+        String? message;
+        String? code;
+        Map<String, dynamic>? metadata;
+        if (err is Map<String, dynamic>) {
+          message = err['message']?.toString();
+          code = err['code']?.toString();
+          metadata = err['metadata'] is Map<String, dynamic>
+              ? err['metadata'] as Map<String, dynamic>
+              : null;
+        } else if (err is String) {
+          message = err;
+        }
+        if (message != null && message.isNotEmpty) {
+          final buf = StringBuffer();
+          if (code != null && code != 'null' && num.tryParse(code) == null) {
+            buf.write('$code: ');
+          } else if (code != null && code != 'null') {
+            buf.write('HTTP $code: ');
+          }
+          buf.write(message);
+          final remedy = metadata?['remedy_hint']?.toString();
+          if (remedy != null && remedy.isNotEmpty) buf.write(' — $remedy');
+          summary = _clip(buf.toString(), 300);
+        }
+      }
+    } catch (_) {
+      // Not JSON (or an exotic shape) — the clipped raw text is honest enough.
+    }
+    return LlmException(summary, status: status, details: details);
   }
 }

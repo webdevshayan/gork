@@ -349,4 +349,91 @@ void main() {
       expect(content[1]['text'], 'describe this');
     });
   });
+
+  group('provider errors are human, not JSON dumps', () {
+    test('an OpenRouter 402 answers with a one-liner + remedy; the raw '
+        'previous_errors blob rides only in details', () async {
+      const message = 'This request requires more credits, or fewer '
+          'max_tokens. You requested up to 65536 tokens, but can only '
+          'afford 64911.';
+      const remedy = 'Add credits at https://openrouter.ai/settings/credits, '
+          'or lower max_tokens / prompt size to fit your remaining balance.';
+      // The provider repeats the same error across its internal retries —
+      // kilobytes of identical entries must never reach the chat surface.
+      final body = jsonEncode({
+        'error': {
+          'message': message,
+          'code': 402,
+          'metadata': {
+            'limit_source': 'openrouter_credits',
+            'remedy_hint': remedy,
+            'previous_errors': [
+              for (var i = 0; i < 8; i++) {'code': 402, 'message': message},
+            ],
+          },
+        },
+      });
+
+      LlmException? thrown;
+      try {
+        await LlmClient(
+                client:
+                    MockClient((r) async => http.Response(body, 402)))
+            .complete(
+          provider: _openai,
+          apiKey: 'k',
+          messages: const [ChatMessage('user', 'hi')],
+        );
+      } on LlmException catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isNotNull);
+      expect(thrown!.status, 402);
+      expect(thrown.message, contains('more credits'));
+      expect(thrown.message, contains('openrouter.ai/settings/credits'));
+      expect(thrown.message, isNot(contains('previous_errors')));
+      expect(thrown.details, isNotNull);
+      expect(thrown.details!, contains('previous_errors'));
+    });
+
+    test('a plain-text error body is clipped, not dumped whole', () async {
+      LlmException? thrown;
+      try {
+        await LlmClient(
+                client: MockClient(
+                    (r) async => http.Response('x' * 2000, 500)))
+            .complete(
+          provider: _openai,
+          apiKey: 'k',
+          messages: const [ChatMessage('user', 'hi')],
+        );
+      } on LlmException catch (e) {
+        thrown = e;
+      }
+      expect(thrown!.message.length, lessThan(301));
+    });
+
+    test('the OpenAI-compatible request carries an explicit max_tokens '
+        'ceiling', () async {
+      Map<String, dynamic>? capturedBody;
+      final client = MockClient((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {'message': {'content': 'ok'}}
+            ],
+          }),
+          200,
+        );
+      });
+      await LlmClient(client: client).complete(
+        provider: _openai,
+        apiKey: 'k',
+        messages: const [ChatMessage('user', 'hi')],
+        maxTokens: 4096,
+      );
+      expect(capturedBody!['max_tokens'], 4096);
+    });
+  });
 }
