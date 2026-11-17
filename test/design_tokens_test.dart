@@ -43,8 +43,8 @@ void main() {
 
   group('the palette is black & white (Movement 50)', () {
     test('primary is ink, never blue', () {
-      expect(Palette.light.primary, const Color(0xFF111418));
-      expect(Palette.dark.primary, const Color(0xFFF2F4F7));
+      expect(Palette.light.primary, const Color(0xFF131313));
+      expect(Palette.dark.primary, const Color(0xFFF2F2F2));
       expect(Palette.light.primary, isNot(const Color(0xFF2563EB)));
       expect(Palette.dark.primary, isNot(const Color(0xFF6EA8FE)));
     });

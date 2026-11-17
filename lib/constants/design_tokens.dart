@@ -63,36 +63,38 @@ class Palette {
   });
 
   static const Palette light = Palette(
-    background: Color(0xFFF6F7F9),
+    // Movement 59: grays and white only — no warm or colored tint anywhere.
+    background: Color(0xFFF1F2F3),
     surface: Color(0xFFFFFFFF),
-    surfaceElevated: Color(0xFFFFFFFF),
-    textPrimary: Color(0xFF111418),
-    textSecondary: Color(0xFF4A5158),
-    textTertiary: Color(0xFF6B7280),
+    surfaceElevated: Color(0xFFF5F6F7),
+    textPrimary: Color(0xFF131313),
+    textSecondary: Color(0xFF4A4A4A),
+    textTertiary: Color(0xFF6E6E6E),
     // Movement 50: black & white only — the "primary" accent is ink in light
     // mode (black buttons, white labels), never blue or any other hue.
-    primary: Color(0xFF111418),
+    primary: Color(0xFF131313),
     onPrimary: Color(0xFFFFFFFF),
     success: Color(0xFF15803D),
     warning: Color(0xFFB45309),
     error: Color(0xFFB91C1C),
-    border: Color(0xFFD6DAE0),
+    border: Color(0xFFDCDCDC),
   );
 
   static const Palette dark = Palette(
-    background: Color(0xFF0F1115),
-    surface: Color(0xFF171A21),
-    surfaceElevated: Color(0xFF20242E),
-    textPrimary: Color(0xFFF2F4F7),
-    textSecondary: Color(0xFFA8B0BA),
-    textTertiary: Color(0xFF8A93A0),
+    // Movement 59: deep grays sinking to near-black — pure neutral, no blue.
+    background: Color(0xFF060607),
+    surface: Color(0xFF151516),
+    surfaceElevated: Color(0xFF1F1F20),
+    textPrimary: Color(0xFFF2F2F2),
+    textSecondary: Color(0xFFA9A9A9),
+    textTertiary: Color(0xFF828282),
     // Dark mode mirrors it: white buttons, black labels.
-    primary: Color(0xFFF2F4F7),
-    onPrimary: Color(0xFF0F1115),
+    primary: Color(0xFFF2F2F2),
+    onPrimary: Color(0xFF060607),
     success: Color(0xFF4ADE80),
     warning: Color(0xFFFBBF24),
     error: Color(0xFFF87171),
-    border: Color(0xFF2A2F3A),
+    border: Color(0xFF2B2B2C),
   );
 }
 
@@ -128,20 +130,19 @@ class TypeScale {
 }
 
 /// The ambient palette published by the app shell on every resolution —
-/// the phase + weather neutrals (Movement 57). `paletteOf` and the glass
-/// colors read THIS, so cards, borders and fills follow the time of day
-/// and the weather together with the app background.
+/// Movement 59: the flat neutral palette (gray/black only); the shell
+/// publishes it right after resolving brightness so `paletteOf` and the
+/// glass colors can never disagree with the shell.
 final ValueNotifier<Palette> resolvedPalette =
     ValueNotifier<Palette>(Palette.dark);
 
 /// Resolve the semantic palette for the current brightness.
 ///
 /// Movement 34 locked this to dark glass. Movement 39 unlocks it: the app
-/// shell resolves the theme mode (Light / Dark / System / Auto-by-clock)
-/// and publishes the result to [GlassColors.brightness] — every consumer
-/// of this function follows that resolution, so pages can never disagree
-/// with the shell. Movement 57: the palette itself is now the ambient
-/// phase+weather palette published by the shell, not the flat base.
+/// shell resolves the auto mode (light by day, dark by night — Movement 59
+/// removed the manual modes) and publishes the result to
+/// [GlassColors.brightness] — every consumer of this function follows that
+/// resolution, so pages can never disagree with the shell.
 Palette paletteOf(BuildContext context) => resolvedPalette.value;
 
 /// Palette paletteOf reads — defined before [GlassColors] so its notifier
@@ -149,8 +150,8 @@ Palette paletteOf(BuildContext context) => resolvedPalette.value;
 ///
 /// Coherence: whenever the resolved brightness flips WITHOUT the shell
 /// around (tests, early frames), the palette follows to the flat base —
-/// the app shell immediately refines it with the ambient phase+weather
-/// palette right after publishing the brightness (Movement 57).
+/// the app shell immediately refines it right after publishing the
+/// brightness.
 void _onBrightnessChanged() {
   resolvedPalette.value = GlassColors.brightness.value == Brightness.dark
       ? Palette.dark

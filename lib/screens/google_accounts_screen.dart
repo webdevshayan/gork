@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../services/credential_uploader.dart';
 import '../services/locator.dart';
+import 'security_screen.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/g_button.dart';
 import '../widgets/glass.dart';
@@ -69,7 +70,51 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
   /// application/octet-stream, so the system document picker hid them and
   /// "no file could be uploaded". Pick ANY file, then validate the
   /// extension here in Dart.
+  /// Movement 59 (screenshot bug): with no VPS configured this used to
+  /// open the picker, upload nothing, and surface the raw exception
+  /// ("Upload failed: Bad state: …"). Now the VPS is checked FIRST and the
+  /// user is offered a direct jump to the Security screen; remaining
+  /// failures speak human, not Dart.
   Future<void> _uploadCredentials() async {
+    if (!_uploader.configured) {
+      if (!mounted) return;
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: GlassColors.fill,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(RadiusTokens.lg),
+          ),
+          title: Text('Set up your VPS first',
+              style: TextStyle(color: GlassColors.text)),
+          content: Text(
+            'Credentials are sealed on your VPS, so gork needs the VPS '
+            'address before it can store anything. Set it in Security, '
+            'then come back and upload.',
+            style: TextStyle(color: GlassColors.textDim),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('Not now',
+                  style: TextStyle(color: GlassColors.textDim)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text('Open Security',
+                  style: TextStyle(color: GlassColors.text)),
+            ),
+          ],
+        ),
+      );
+      if (go == true && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SecurityScreen()),
+        );
+      }
+      return;
+    }
     try {
       final picked = await FilePicker.platform.pickFiles(withData: false);
       if (picked == null || picked.files.single.path == null) return;
@@ -91,9 +136,24 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       _reload();
     } catch (e) {
       if (!mounted) return;
+      // Speak human: strip Dart's exception prefixes and translate the
+      // known cases; anything else shows the message without "Bad state:".
+      String message;
+      final text = e.toString();
+      if (text.contains('SocketException') || text.contains('ClientException')) {
+        message = 'Could not reach the VPS — check the address in '
+            'Security and your connection.';
+      } else if (text.contains('the VPS refused the upload')) {
+        message = 'The VPS refused the upload — make sure the daemon is '
+            'up to date and running, then try again.';
+      } else {
+        message = text
+            .replaceFirst(RegExp(r'^Bad state:\s*'), '')
+            .replaceFirst(RegExp(r'^Invalid argument(\([^)]*\))?:\s*'), '');
+      }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

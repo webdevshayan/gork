@@ -67,7 +67,8 @@ class _BottomInputBarState extends State<BottomInputBar> {
           widget.controller.value = TextEditingValue(
             text: result.recognizedWords,
             selection: TextSelection.collapsed(
-                offset: result.recognizedWords.length),
+              offset: result.recognizedWords.length,
+            ),
           );
           if (result.finalResult && mounted) {
             setState(() => _listening = false);
@@ -84,8 +85,13 @@ class _BottomInputBarState extends State<BottomInputBar> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content:
-              Text('Voice input is unavailable — check the microphone permission.')));
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Voice input is unavailable — check the microphone permission.',
+              ),
+            ),
+          );
       }
     }
   }
@@ -99,118 +105,111 @@ class _BottomInputBarState extends State<BottomInputBar> {
         final String hint = _listening ? 'Listening…' : widget.hint;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: GlassContainer(
-            key: const ValueKey('input-bar'),
-            radius: 30,
-            strong: true,
-            padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: widget.focusNode,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: widget.onSend,
-                    // The message area auto-resizes with the text instead of
-                    // clipping long messages.
-                    minLines: 1,
-                    maxLines: 6,
-                    style: TextStyle(
-                      fontSize: 17,
-                      color: GlassColors.text,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: hint,
-                      hintStyle: TextStyle(
-                        fontSize: 17,
-                        color: GlassColors.textDim,
+          child: CompositedTransformTarget(
+            // Movement 59: the attach dropdown anchors to the ROW's top
+            // right, not the + icon. The row's right edge sits INSIDE the
+            // screen by construction, so the menu can never clip off the
+            // right edge (the screenshot bug: chevrons cut in half).
+            link: widget.attachLink ?? LayerLink(),
+            child: GlassContainer(
+              key: const ValueKey('input-bar'),
+              radius: 30,
+              strong: true,
+              padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: widget.controller,
+                      focusNode: widget.focusNode,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: widget.onSend,
+                      // The message area auto-resizes with the text instead of
+                      // clipping long messages.
+                      minLines: 1,
+                      maxLines: 6,
+                      style: TextStyle(fontSize: 17, color: GlassColors.text),
+                      decoration: InputDecoration(
+                        hintText: hint,
+                        hintStyle: TextStyle(
+                          fontSize: 17,
+                          color: GlassColors.textDim,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
                       ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
-                ),
-                if (widget.attachLink != null)
-                  CompositedTransformTarget(
-                    link: widget.attachLink!,
-                    child: GestureDetector(
-                      key: const ValueKey('attach-button'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: widget.onAttach,
-                      child: Padding(
-                        // 14, not 10: this box must match the mic's 52dp box —
-                        // the row is END-aligned (bottom-pinned for
-                        // multi-line), and a shorter box made the + ride ~4dp
-                        // below the mic on a single line.
-                        padding: EdgeInsets.all(14),
-                        child: Icon(Icons.add,
-                            size: 24, color: GlassColors.textDim),
-                      ),
-                    ),
-                  )
-                else
                   GestureDetector(
                     key: const ValueKey('attach-button'),
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onAttach,
                     child: Padding(
+                      // 14, not 10: this box must match the mic's 52dp box —
+                      // the row is END-aligned (bottom-pinned for
+                      // multi-line), and a shorter box made the + ride ~4dp
+                      // below the mic on a single line.
                       padding: EdgeInsets.all(14),
-                      child: Icon(Icons.add,
-                          size: 24, color: GlassColors.textDim),
+                      child: Icon(
+                        Icons.add,
+                        size: 24,
+                        color: GlassColors.textDim,
+                      ),
                     ),
                   ),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 150),
-                  transitionBuilder: (child, anim) =>
-                      FadeTransition(opacity: anim, child: child),
-                  child: hasText
-                      ? GestureDetector(
-                          key: const ValueKey('send-button'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => widget.onSend(widget.controller.text),
-                          child: Container(
-                            key: const ValueKey('send-circle'),
-                            width: 44,
-                            height: 44,
-                            margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
-                            decoration: BoxDecoration(
-                              // Ink circle with the opposite-tone arrow:
-                              // white arrow on black (light), black on
-                              // near-white (dark).
-                              color: GlassColors.text,
-                              shape: BoxShape.circle,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    transitionBuilder: (child, anim) =>
+                        FadeTransition(opacity: anim, child: child),
+                    child: hasText
+                        ? GestureDetector(
+                            key: const ValueKey('send-button'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => widget.onSend(widget.controller.text),
+                            child: Container(
+                              key: const ValueKey('send-circle'),
+                              width: 44,
+                              height: 44,
+                              margin: const EdgeInsets.fromLTRB(0, 0, 4, 4),
+                              decoration: BoxDecoration(
+                                // Ink circle with the opposite-tone arrow:
+                                // white arrow on black (light), black on
+                                // near-white (dark).
+                                color: GlassColors.text,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.arrow_upward,
+                                size: 22,
+                                color:
+                                    GlassColors.brightness.value ==
+                                        Brightness.dark
+                                    ? Colors.black
+                                    : Colors.white,
+                              ),
                             ),
-                            child: Icon(
-                              Icons.arrow_upward,
-                              size: 22,
-                              color: GlassColors.brightness.value ==
-                                      Brightness.dark
-                                  ? Colors.black
-                                  : Colors.white,
+                          )
+                        : GestureDetector(
+                            key: const ValueKey('mic-button'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _toggleMic,
+                            child: Padding(
+                              key: ValueKey('mic-icon'),
+                              padding: EdgeInsets.all(14),
+                              child: Icon(
+                                _listening ? Icons.mic : Icons.mic_none,
+                                size: 24,
+                                color: _listening
+                                    ? GlassColors.text
+                                    : GlassColors.textDim,
+                              ),
                             ),
                           ),
-                        )
-                      : GestureDetector(
-                          key: const ValueKey('mic-button'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _toggleMic,
-                          child: Padding(
-                            key: ValueKey('mic-icon'),
-                            padding: EdgeInsets.all(14),
-                            child: Icon(
-                              _listening ? Icons.mic : Icons.mic_none,
-                              size: 24,
-                              color: _listening
-                                  ? GlassColors.text
-                                  : GlassColors.textDim,
-                            ),
-                          ),
-                        ),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
         );

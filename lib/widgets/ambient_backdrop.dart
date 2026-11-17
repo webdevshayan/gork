@@ -4,26 +4,6 @@ import '../constants/ambient.dart';
 import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 
-/// Theme override chosen on the Theme page (Auto/System/Light/Dark).
-/// The app shell publishes the RESOLVED mode here every cycle.
-final ValueNotifier<String?> themeSetting = ValueNotifier<String?>(null);
-
-/// The raw mode chosen on the Theme page ('Auto' / 'System' / 'Light' /
-/// 'Dark'), persisted at 'ui.theme'. The app shell resolves it (Movement 39)
-/// and publishes the result through [themeSetting] — the backdrop and every
-/// GlassColors consumer follow that single resolution.
-final ValueNotifier<String> themeModeSetting = ValueNotifier<String>('System');
-
-/// Loads the persisted theme mode. Called once from main(), before runApp —
-/// the very first frame already has the right mode.
-void initTheme() {
-  try {
-    themeModeSetting.value = Locator.prefs.getString('ui.theme') ?? 'System';
-  } catch (_) {
-    // Locator unbound (widget tests) — 'System' stays.
-  }
-}
-
 /// Path of the user's chosen profile photo (null = show the person icon).
 /// The photo lives on the device only — nothing networked.
 final ValueNotifier<String?> avatarPath = ValueNotifier<String?>(null);
@@ -33,10 +13,10 @@ Future<void> initProfilePhoto() async {
   avatarPath.value = Locator.prefs.getString('profile.photoPath');
 }
 
-/// Full-screen ambient gradient (Movement 57). The old photo assets are
-/// gone — the backdrop IS the theme now: a phase + weather gradient
-/// (gruvbox-inspired) painted behind every glass surface. No decoding, no
-/// flash, fully offline, and it shifts with the sun and the sky outside.
+/// Full-screen ambient backdrop. Movement 59: the theme is GRAY and BLACK,
+/// nothing else — the backdrop is a barely-there vertical gray fade that
+/// follows the auto resolution (light by day, dark by night). No photos, no
+/// weather washes, no phase tints.
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
 
@@ -47,27 +27,18 @@ class AmbientBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String?>(
-      valueListenable: themeSetting,
-      builder: (context, mode, _) {
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: GlassColors.brightness,
+      builder: (context, _, __) {
+        // Inside the app the shell publishes the resolution; standalone
+        // (tests, early frames) resolve from the clock directly.
         final Brightness platform =
             MediaQuery.platformBrightnessOf(context);
-        // The shell publishes the RESOLVED mode here ('Light'/'Dark');
-        // 'Auto'/'System'/null resolve locally so the backdrop stays
-        // correct even when used standalone (tests, early frames).
-        final Brightness effective = resolveBrightness(mode, platform,
-            clock(),
+        final Brightness effective = resolveBrightness(
+            platform, clock(),
             lat: Locator.bound ? Locator.ambientLat : null,
             lon: Locator.bound ? Locator.ambientLon : null);
         final bool dark = effective == Brightness.dark;
-        // Inside the app the shell publishes the (solar) phase via the
-        // scope; standalone — read the clock directly.
-        final scope = context
-            .dependOnInheritedWidgetOfExactType<AmbientScope>();
-        final AmbientPhase phase =
-            scope?.phase ?? phaseFor(clock());
-        final AmbientWeather weather =
-            scope?.weather ?? ambient.weather;
         return SizedBox.expand(
           key: const ValueKey('ambient-backdrop'),
           child: DecoratedBox(
@@ -76,7 +47,7 @@ class AmbientBackdrop extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: ambientGradient(phase, dark, weather: weather),
+                colors: ambientGradient(dark),
               ),
             ),
           ),

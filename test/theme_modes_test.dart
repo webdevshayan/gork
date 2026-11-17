@@ -1,15 +1,15 @@
-// Movement 39 — the theme modes become real.
+// Movement 59 — the theme system is GONE. One mode remains: auto.
 //
 // What the user asked for, verbatim:
-//   * light mode uses LIGHT backgrounds, borders and the like (the
-//     Movement 34 "everything is dark" lock is overridden on demand);
-//   * dark mode stays as it is;
-//   * System follows the OS theme;
-//   * Auto follows the LOCAL TIME, not the OS.
+//   * the theme is gray / grey with different variants and black — and
+//     NOTHING else;
+//   * remove the theme system (the Light/Dark/System/Auto picker page);
+//   * just use the auto: dark mode after some time, light mode after some
+//     time — the sun decides, nobody taps anything.
 //
-// Before this movement the app hardcoded ThemeMode.dark, the glass colors
-// were compile-time dark constants, and "Auto" and "System" both meant
-// "whatever the OS says" — Auto never looked at the clock.
+// These tests pin the new reality: the palette is achromatic, the picker
+// no longer exists, any 'ui.theme' saved by older installs is ignored,
+// and a clock change alone flips the whole app.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
@@ -17,8 +17,8 @@ import 'package:gork/constants/ambient.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/services/weather_service.dart';
 import 'package:gork/screens/gork_shell.dart';
+import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/widgets/bottom_input_bar.dart';
-import 'package:gork/screens/theme_page.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';
 import 'package:gork/widgets/glass.dart';
@@ -29,57 +29,51 @@ void main() {
     // Every test starts from the app's shipping default: dark glass.
     GlassColors.brightness.value = Brightness.dark;
     AmbientBackdrop.clock = DateTime.now;
-    themeSetting.value = null;
-    themeModeSetting.value = 'System';
   });
 
-  group('resolveBrightness — the mode table', () {
+  group('resolveBrightness — auto only, no modes left', () {
     final noon = DateTime(2026, 11, 14, 12, 0);
     final night = DateTime(2026, 11, 14, 22, 30);
     final deep = DateTime(2026, 11, 14, 3, 0);
     final dawn = DateTime(2026, 11, 14, 6, 30);
 
-    test('Light and Dark are explicit overrides', () {
-      expect(resolveBrightness('Light', Brightness.dark, night),
-          Brightness.light);
-      expect(resolveBrightness('Dark', Brightness.light, noon),
-          Brightness.dark);
+    test('midday is light — even if the OS says dark', () {
+      expect(resolveBrightness(Brightness.dark, noon), Brightness.light);
     });
 
-    test('System follows the OS — even at midnight', () {
-      expect(resolveBrightness('System', Brightness.dark, noon),
-          Brightness.dark);
-      expect(resolveBrightness('System', Brightness.light, noon),
-          Brightness.light);
+    test('evening and deep night are dark — even if the OS says light', () {
+      expect(resolveBrightness(Brightness.light, night), Brightness.dark);
+      expect(resolveBrightness(Brightness.light, deep), Brightness.dark);
     });
 
-    test('Auto follows the local clock, not the OS', () {
-      // Midday: light, even if the OS says dark.
-      expect(resolveBrightness('Auto', Brightness.dark, noon),
-          Brightness.light);
-      // 17:00+ and before 05:00: dark, even if the OS says light.
-      expect(resolveBrightness('Auto', Brightness.light, night),
-          Brightness.dark);
-      expect(resolveBrightness('Auto', Brightness.light, deep),
-          Brightness.dark);
-      // Dawn (05:00–08:00) belongs to the day.
-      expect(resolveBrightness('Auto', Brightness.dark, dawn),
-          Brightness.light);
+    test('dawn belongs to the day', () {
+      expect(resolveBrightness(Brightness.dark, dawn), Brightness.light);
     });
 
-    test('an unknown mode falls back to Auto', () {
-      expect(resolveBrightness(null, Brightness.dark, noon),
+    test('with a location the real sun decides, not the wall clock', () {
+      const double lat = 26.4195, lon = 67.8622;
+      final DateTime sunrise =
+          sunriseFor(lat, lon, DateTime.utc(2026, 11, 14));
+      final DateTime sunset =
+          sunsetFor(lat, lon, DateTime.utc(2026, 11, 14));
+      expect(
+          resolveBrightness(Brightness.dark,
+              sunrise.add(const Duration(hours: 2)),
+              lat: lat, lon: lon),
           Brightness.light);
-      expect(resolveBrightness('nonsense', Brightness.light, night),
+      expect(
+          resolveBrightness(Brightness.light,
+              sunset.add(const Duration(hours: 1)),
+              lat: lat, lon: lon),
           Brightness.dark);
     });
   });
 
   group('GlassColors — the glass switches with the resolved brightness', () {
-    test('dark keeps the glass derived from the resolved palette', () {
+    test('dark keeps the glass derived from the neutral dark palette', () {
       GlassColors.brightness.value = Brightness.dark;
       expect(GlassColors.fill.computeLuminance(), lessThan(0.2));
-      expect(GlassColors.text, const Color(0xFFF2F4F7));
+      expect(GlassColors.text, const Color(0xFFF2F2F2));
       expect(GlassColors.fill,
           resolvedPalette.value.surface.withValues(alpha: 0.70));
       expect(GlassColors.fillStrong,
@@ -88,7 +82,7 @@ void main() {
 
     test('light mode gets light fills, light borders, dark text', () {
       GlassColors.brightness.value = Brightness.light;
-      // Light glass: a bright white fill over the sky backdrop.
+      // Light glass: a bright white fill over the gray backdrop.
       expect(GlassColors.fill.computeLuminance(), greaterThan(0.7));
       // Stronger chrome is more opaque, not more luminous — white
       // luminance is capped at 1.0.
@@ -134,130 +128,122 @@ void main() {
     });
   });
 
-  group('the Theme page persists the chosen mode', () {
-    testWidgets('tapping Auto persists ui.theme and notifies the app',
-        (tester) async {
+  group('the theme system is gone', () {
+    testWidgets('the menu no longer offers a Theme entry', (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      Locator.bind(prefs: prefs);
-      await tester.pumpWidget(const MaterialApp(home: ThemePage()));
-
-      await tester.tap(find.byKey(const ValueKey('theme-auto')));
-      await tester.pump();
-
-      expect(prefs.getString('ui.theme'), 'Auto');
-      expect(themeModeSetting.value, 'Auto');
-
-      await tester.tap(find.byKey(const ValueKey('theme-dark')));
-      await tester.pump();
-      expect(prefs.getString('ui.theme'), 'Dark');
-      expect(themeModeSetting.value, 'Dark');
+      Locator.bind(prefs: await SharedPreferences.getInstance());
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      expect(find.text('Theme'), findsNothing,
+          reason: 'the picker page was removed — auto is the only mode');
     });
   });
 
-  group('initTheme — the persisted mode drives the app on startup', () {
-    test('reads ui.theme into the mode notifier', () async {
-      SharedPreferences.setMockInitialValues({'ui.theme': 'Dark'});
+  group('a saved ui.theme from older installs is ignored', () {
+    testWidgets('ui.theme=Dark does NOT pin dark at noon', (tester) async {
+      SharedPreferences.setMockInitialValues(
+          {'onboarding.done': true, 'ui.theme': 'Dark'});
       Locator.bind(prefs: await SharedPreferences.getInstance());
-      themeModeSetting.value = 'System';
-      initTheme();
-      expect(themeModeSetting.value, 'Dark');
-    });
-
-    test('defaults to System when nothing is persisted', () async {
-      SharedPreferences.setMockInitialValues({});
-      Locator.bind(prefs: await SharedPreferences.getInstance());
-      themeModeSetting.value = 'Dark';
-      initTheme();
-      expect(themeModeSetting.value, 'System');
+      // Mid-morning at the stored location: the auto answer is LIGHT
+      // (sun-relative — wall-clock hours mean different things per zone).
+      final DateTime sunrise = sunriseFor(Locator.ambientLat,
+          Locator.ambientLon, DateTime.utc(2026, 11, 14));
+      AmbientBackdrop.clock =
+          () => sunrise.add(const Duration(hours: 2));
+      await tester.pumpWidget(const GorkApp());
+      await tester.pumpAndSettle();
+      expect(GlassColors.brightness.value, Brightness.light,
+          reason: 'the manual override was removed — auto always wins');
+      expect(resolvedPalette.value.background, Palette.light.background);
     });
   });
 
-  group('backdrop — Auto is the local clock, System is the OS', () {
-    testWidgets('Auto in the local deep night dims dark on a light platform',
+  group('backdrop — the clock alone decides', () {
+    testWidgets('deep local night dims dark on a light platform',
         (tester) async {
       // Sun-relative clock: 3 hours past sunset at the stored location —
       // night, no matter which timezone the test box runs in.
       final DateTime sunset = sunsetFor(
           Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
       AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
-      themeSetting.value = 'Auto';
       await tester.pumpWidget(_wrap(Brightness.light));
       await tester.pump();
       expect(_gradientOf(tester).colors.first.computeLuminance(),
-          lessThan(0.2));
+          lessThan(0.1),
+          reason: 'the dark gradient sinks to near-black');
     });
 
-    testWidgets('Auto in the local morning stays light on a dark platform',
+    testWidgets('local morning stays light on a dark platform',
         (tester) async {
       // 2 hours past sunrise at the stored location — full daylight.
       final DateTime sunrise = sunriseFor(
           Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
       AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
-      themeSetting.value = 'Auto';
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
       expect(_gradientOf(tester).colors.first.computeLuminance(),
-          greaterThan(0.3));
+          greaterThan(0.5));
     });
 
-    testWidgets('System follows the platform brightness', (tester) async {
-      themeSetting.value = 'System';
+    testWidgets('the backdrop gradient is achromatic in both modes',
+        (tester) async {
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
-      expect(_gradientOf(tester).colors.first.computeLuminance(),
-          lessThan(0.2));
+      final darkColors = _gradientOf(tester).colors;
+      for (final c in darkColors) {
+        expect(c.r, closeTo(c.g, 1 / 255), reason: 'dark backdrop is gray');
+      }
       await tester.pumpWidget(_wrap(Brightness.light));
       await tester.pump();
-      expect(_gradientOf(tester).colors.first.computeLuminance(),
-          greaterThan(0.3));
+      final lightColors = _gradientOf(tester).colors;
+      for (final c in lightColors) {
+        expect(c.r, closeTo(c.g, 1 / 255), reason: 'light backdrop is gray');
+      }
     });
   });
-}
 
-DecoratedBox _backdropOf(WidgetTester tester) => tester.widget<DecoratedBox>(
-    find.byKey(const ValueKey('ambient-backdrop-gradient')));
-
-LinearGradient _gradientOf(WidgetTester tester) =>
-    (_backdropOf(tester).decoration as BoxDecoration).gradient
-        as LinearGradient;
-
-Widget _wrap(Brightness platform) {
-  return MediaQuery(
-    data: MediaQueryData(platformBrightness: platform),
-    child: const MaterialApp(home: AmbientBackdrop()),
-  );
-
-  group('Movement 40 — the theme change reaches every glass consumer', () {
-    testWidgets('a theme switch repaints the shell (no const short-circuit)',
-        (tester) async {
+  group('the auto flip repaints every glass consumer', () {
+    testWidgets('the ambient nudge flips the whole shell (no const '
+        'short-circuit)', (tester) async {
       SharedPreferences.setMockInitialValues({'onboarding.done': true});
       Locator.bind(prefs: await SharedPreferences.getInstance());
-      themeModeSetting.value = 'Dark';
+      // Start mid-morning at the stored location — the shell resolves
+      // LIGHT.
+      final DateTime sunrise = sunriseFor(Locator.ambientLat,
+          Locator.ambientLon, DateTime.utc(2026, 11, 14));
+      AmbientBackdrop.clock =
+          () => sunrise.add(const Duration(hours: 2));
       await tester.pumpWidget(const GorkApp());
       await tester.pumpAndSettle();
+      expect(GlassColors.brightness.value, Brightness.light);
 
       // Open the menu so its glass rows are on stage.
       await tester.tap(find.byKey(const ValueKey('avatar')));
       await tester.pumpAndSettle();
 
-      // Switch to Light. The backdrop swaps AND the glass rows must
-      // repaint light — a const OnboardingGate short-circuits the rebuild
-      // and leaves dark glass over the day sky (the v1.7.0 screenshot bug).
-      themeModeSetting.value = 'Light';
+      // Time passes — the sun sets. Only the clock changes; the nudge
+      // (ambient.refresh) re-resolves, and the glass must follow.
+      final DateTime sunset = sunsetFor(
+          Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+      AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
+      ambient.refresh();
       await tester.pumpAndSettle();
 
+      expect(GlassColors.brightness.value, Brightness.dark,
+          reason: 'dark mode arrives after some time, with no user action');
       final container = tester.widget<Container>(find.descendant(
         of: find.byType(GlassContainer),
         matching: find.byType(Container),
       ).first);
       final fill = (container.decoration as BoxDecoration).color!;
-      expect(fill.computeLuminance(), greaterThan(0.7),
-          reason: 'glass must follow the resolved theme immediately');
+      expect(fill.computeLuminance(), lessThan(0.2),
+          reason: 'glass must follow the resolved theme immediately — a '
+              'const OnboardingGate would short-circuit the rebuild '
+              '(the v1.7.0 screenshot bug)');
     });
   });
 
-  group('Movement 40 — single-line input bar alignment', () {
+  group('input bar alignment', () {
     testWidgets('the attach icon centers with the mic icon', (tester) async {
       final controller = TextEditingController();
       await tester.pumpWidget(MaterialApp(
@@ -281,4 +267,18 @@ Widget _wrap(Brightness platform) {
               'ride ~4dp lower than the mic on a single line');
     });
   });
+}
+
+DecoratedBox _backdropOf(WidgetTester tester) => tester.widget<DecoratedBox>(
+    find.byKey(const ValueKey('ambient-backdrop-gradient')));
+
+LinearGradient _gradientOf(WidgetTester tester) =>
+    (_backdropOf(tester).decoration as BoxDecoration).gradient
+        as LinearGradient;
+
+Widget _wrap(Brightness platform) {
+  return MediaQuery(
+    data: MediaQueryData(platformBrightness: platform),
+    child: const MaterialApp(home: AmbientBackdrop()),
+  );
 }

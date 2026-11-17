@@ -78,11 +78,10 @@ void main() {
   testWidgets('Security row opens the Security screen (the vault)',
       (tester) async {
     await _pump(tester);
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('menu-security')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+    // Movement 59 removed the Theme row, so the list is shorter —
+    // ensureVisible no-ops when the row is already on screen.
+    await tester.ensureVisible(find.byKey(const ValueKey('menu-security')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('menu-security')));
     await tester.pumpAndSettle();
     expect(find.byType(SecurityScreen), findsOneWidget);

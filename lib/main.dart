@@ -16,7 +16,6 @@ Future<void> main() async {
   Locator.bind(prefs: prefs);
   await initProfilePhoto();
   initProfile();
-  initTheme();
   runApp(const GorkApp());
 
   // Notifications + periodic scheduler tick (while the app is alive).
@@ -27,26 +26,10 @@ Future<void> main() async {
     } catch (_) {}
   });
 
-  // Ambient (Movement 57): fetch the weather NOW — the first palette is
-  // already weather-correct instead of waiting a full timer cycle — then
-  // keep phase and weather fresh every 5 minutes. The tick only nudges the
-  // controller; the app shell recomputes phase (solar, at the user's
-  // location) and palette on each nudge.
-  Future<void> ambientTick() async {
-    ambient.refresh();
-    try {
-      final weather = await Locator.weather.fetch(
-        lat: Locator.ambientLat,
-        lon: Locator.ambientLon,
-      );
-      ambient.wetWeather = weather.isWet;
-      ambient.weatherCode = weather.code;
-      ambient.tempC = weather.tempC;
-    } catch (_) {
-      // Offline: the palette keeps its last known weather (clear default).
-    }
-  }
-
-  unawaited(ambientTick());
-  Timer.periodic(const Duration(minutes: 5), (_) => unawaited(ambientTick()));
+  // Ambient (Movement 59): the ONLY theme mode is auto — light by day,
+  // dark by night. The nudge every minute re-resolves the sun (or the
+  // clock), so the app flips light ⇄ dark "after some time" with no user
+  // action and no weather fetch. The weather card fetches on its own.
+  Timer.periodic(
+      const Duration(minutes: 1), (_) => ambient.refresh());
 }

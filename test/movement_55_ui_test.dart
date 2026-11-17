@@ -57,7 +57,7 @@ void main() {
       'Inbox',
       'Panels',
       'Cloud Computer',
-      'Theme',
+      // Movement 59: the Theme row is gone — the app is always auto.
       'Security',
       'AI Providers',
       'Updates',

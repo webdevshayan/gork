@@ -3,18 +3,29 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
+import 'package:gork/services/locator.dart';
+import 'package:gork/services/weather_service.dart';
 import 'package:gork/screens/gork_shell.dart';
 import 'package:gork/widgets/bottom_input_bar.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';
 import 'package:gork/widgets/glass.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Movement 34: one dark glass theme everywhere. Blur surfaces and borders go
-/// dark (no more white translucent fills), the backdrop image is absolutely
-/// positioned and swaps to the moon/night-sky asset in dark mode, and the
-/// message-box buttons stay pinned to the bottom-right no matter how tall
-/// the text grows.
+/// Movement 34: one glass theme everywhere. Movement 59: that theme is
+/// GRAY and BLACK only, resolved by the clock alone — the backdrop is the
+/// gradient, the message-box buttons stay pinned to the bottom-right no
+/// matter how tall the text grows.
 void main() {
+  setUp(() async {
+    // The solar helpers read the stored location through Locator.prefs.
+    SharedPreferences.setMockInitialValues({});
+    Locator.bind(prefs: await SharedPreferences.getInstance());
+    AmbientBackdrop.clock = DateTime.now;
+    GlassColors.brightness.value = Brightness.dark;
+  });
+
   testWidgets('paletteOf resolves the dark palette even on a light platform',
       (tester) async {
     late Palette captured;
@@ -28,6 +39,9 @@ void main() {
     expect(captured.background, Palette.dark.background);
     expect(captured.surface, Palette.dark.surface);
     expect(captured.textPrimary, Palette.dark.textPrimary);
+    // Movement 59: the dark palette is achromatic — no blue tint.
+    expect(captured.background.r, closeTo(captured.background.g, 1 / 255));
+    expect(captured.surface.b, closeTo(captured.surface.g, 1 / 255));
   });
 
   testWidgets('GlassContainer fills dark with a subtle border — never white',
@@ -84,9 +98,11 @@ void main() {
     expect(attach2.right, greaterThan(bar2.center.dx));
   });
 
-  testWidgets('backdrop swaps to the dark gruvbox gradient in dark mode',
+  testWidgets('backdrop paints the near-black neutral gradient in dark mode',
       (tester) async {
-    themeSetting.value = 'Dark';
+    final DateTime sunset = sunsetFor(
+        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -95,15 +111,23 @@ void main() {
       ),
     ));
     await tester.pump();
-    // Movement 57: no photo layers at all — the gradient IS the backdrop.
+    // No photo layers at all — the gradient IS the backdrop.
     expect(find.byType(Image), findsNothing);
     final gradient = _gradientOf(tester);
-    expect(gradient.colors.first.computeLuminance(), lessThan(0.2));
+    expect(gradient.colors.first.computeLuminance(), lessThan(0.05));
+    for (final c in gradient.colors) {
+      expect(c.r, closeTo(c.g, 1 / 255),
+          reason: 'gray and black, nothing else');
+    }
   });
 
-  testWidgets('backdrop keeps the light gruvbox gradient in light mode',
+  testWidgets('backdrop keeps the light neutral gradient in light mode',
       (tester) async {
-    themeSetting.value = 'Light';
+    // Mid-morning at the stored location (sun-relative — a wall-clock hour
+    // means different things per longitude).
+    final DateTime sunrise = sunriseFor(
+        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+    AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -114,7 +138,7 @@ void main() {
     await tester.pump();
     expect(find.byType(Image), findsNothing);
     expect(_gradientOf(tester).colors.first.computeLuminance(),
-        greaterThan(0.3));
+        greaterThan(0.5));
   });
 
   test('the ambient photos are gone from pubspec and disk', () {
@@ -125,7 +149,9 @@ void main() {
 
   testWidgets('dark gradient — never a white startup flash in dark mode',
       (tester) async {
-    themeSetting.value = 'Dark';
+    final DateTime sunset = sunsetFor(
+        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
+    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -134,7 +160,24 @@ void main() {
       ),
     ));
     await tester.pump();
-    expect(_gradientOf(tester).colors.first.computeLuminance(), lessThan(0.2));
+    expect(_gradientOf(tester).colors.first.computeLuminance(), lessThan(0.05));
+  });
+
+  testWidgets('Movement 59 — the attach menu can never clip off the right '
+      'screen edge (screenshot bug)', (tester) async {
+    SharedPreferences.setMockInitialValues({'onboarding.done': true});
+    Locator.bind(prefs: await SharedPreferences.getInstance());
+    await tester.pumpWidget(const GorkApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('attach-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attach-menu')), findsOneWidget);
+    final menuRect = tester.getRect(find.byKey(const ValueKey('attach-menu')));
+    final screenWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(menuRect.right, lessThanOrEqualTo(screenWidth),
+        reason: 'the menu right edge must stay on screen');
+    expect(menuRect.left, greaterThanOrEqualTo(0));
   });
 }
 

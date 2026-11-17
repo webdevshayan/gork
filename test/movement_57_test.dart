@@ -140,8 +140,8 @@ void main() {
   });
 
   group('Movement 57 — the dropdown anchors to its trigger', () {
-    testWidgets('attach menu sits on top of the + button, content-sized',
-        (tester) async {
+    testWidgets('attach menu sits on top of the input row, content-sized, '
+        'never off-screen (Movement 59 screenshot fix)', (tester) async {
       await pumpShell(tester);
       await tester.tap(find.byKey(const ValueKey('attach-button')));
       await tester.pumpAndSettle();
@@ -150,19 +150,25 @@ void main() {
           tester.getRect(find.byKey(const ValueKey('attach-menu')));
       final plus =
           tester.getRect(find.byKey(const ValueKey('attach-button')));
+      final bar =
+          tester.getRect(find.byKey(const ValueKey('input-bar')));
       final screen = tester.getSize(find.byType(MaterialApp));
 
       // Content-sized: the fixed 220dp card, never stretched to the screen.
       expect(menu.width, 220);
       expect(menu.width, lessThan(screen.width));
 
-      // Flush to the TOP of the trigger: the menu's bottom edge is 8dp
-      // above the + button's top edge (targetAnchor topRight + offset).
-      expect(menu.bottom, lessThan(plus.top));
-      expect(plus.top - menu.bottom, lessThan(20));
+      // Flush to the TOP of the input bar: the menu's bottom edge is 8dp
+      // above the row's top edge (Movement 59 anchors to the ROW, whose
+      // right edge is structurally inside the screen).
+      expect(menu.bottom, lessThan(bar.top));
+      expect(bar.top - menu.bottom, lessThan(20));
 
-      // Right-aligned with the trigger.
-      expect((menu.right - plus.right).abs(), lessThan(4));
+      // Right-aligned with the row's right edge — near the + and, crucially,
+      // INSIDE the screen on every device (the screenshot bug had the
+      // chevrons clipped off the right edge).
+      expect((menu.right - bar.right).abs(), lessThan(8));
+      expect(menu.right, lessThan(screen.width));
     });
 
     testWidgets('tapping away dismisses the dropdown', (tester) async {

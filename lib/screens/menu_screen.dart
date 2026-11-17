@@ -17,7 +17,6 @@ import 'providers_screen.dart';
 import 'search_screen.dart';
 import 'security_screen.dart';
 import 'tasks_screen.dart';
-import 'theme_page.dart';
 import 'updates_screen.dart';
 
 /// The profile/menu surface (opened from the avatar): big identity header,
@@ -159,13 +158,8 @@ class _MenuScreenState extends State<MenuScreen> {
                 label: 'Cloud Computer',
                 onTap: () => _push(context, const CloudComputerScreen()),
               ),
-              Divider(color: GlassColors.divider, height: 1),
-              GlassMenuRow(
-                key: const ValueKey('menu-theme'),
-                icon: Icons.dark_mode_outlined,
-                label: 'Theme',
-                onTap: () => _push(context, const ThemePage()),
-              ),
+              // Movement 59: the Theme page is gone — the app is always
+              // auto (light by day, dark by night), gray and black only.
             ],
           ),
         ),

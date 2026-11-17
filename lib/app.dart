@@ -38,80 +38,52 @@ class GorkApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Outermost listener: the raw mode chosen on the Theme page. Any tap
-    // there resolves instantly; the ambient version keeps the resolution
-    // fresh for Auto (its timer ticks every 5 minutes) and for the weather.
-    return ValueListenableBuilder<String>(
-      valueListenable: themeModeSetting,
-      builder: (context, mode, __) {
-        return ValueListenableBuilder<int>(
-          valueListenable: ambient.version,
-          builder: (context, _, ___) {
-            // Movement 57: the phase follows the user's SUN when the
-            // locator is bound (real sunrise/sunset at their stored
-            // location) and the wall clock when it is not (tests).
-            final bool located = Locator.bound;
-            final DateTime now = AmbientBackdrop.clock();
-            final AmbientPhase phase = located
-                ? phaseForAt(now,
-                    lat: Locator.ambientLat, lon: Locator.ambientLon)
-                : phaseFor(now);
-            final AmbientWeather weather = ambient.weather;
-            final wet = ambient.wetWeather;
-            final platform = WidgetsBinding
-                .instance.platformDispatcher.platformBrightness;
-            // Movement 39: one resolution for everything — MaterialApp
-            // themeMode, glass colors and the ambient backdrop all follow
-            // this single answer.
-            final Brightness resolved = resolveBrightness(
-                mode, platform, now,
-                lat: located ? Locator.ambientLat : null,
-                lon: located ? Locator.ambientLon : null);
-            GlassColors.brightness.value = resolved;
-            // Movement 55: the ANDROID system chrome follows the theme too —
-            // a dark app must not sit on a white system navigation bar (the
-            // v1.12.0 screenshot complaint). Movement 57: the nav bar takes
-            // the AMBIENT background, so the three-button bar glows warm at
-            // sunset and cream at noon with everything else.
-            final palette = resolved == Brightness.dark
-                ? ambientPalette(Palette.dark, phase,
-                    wet: wet, weather: weather)
-                : ambientPalette(Palette.light, phase,
-                    wet: wet, weather: weather);
-            resolvedPalette.value = palette;
-            SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: resolved == Brightness.dark
-                  ? Brightness.light
-                  : Brightness.dark,
-              systemNavigationBarColor: palette.background,
-              systemNavigationBarIconBrightness: resolved == Brightness.dark
-                  ? Brightness.light
-                  : Brightness.dark,
-              systemNavigationBarDividerColor: Colors.transparent,
-            ));
-            themeSetting.value =
-                resolved == Brightness.dark ? 'Dark' : 'Light';
-            return AmbientScope(
-                phase: phase,
-                wet: wet,
-                weather: weather,
-                child: Builder(builder: (context) {
-              return MaterialApp(
-                title: 'gork',
-                theme: _theme(palette, Brightness.light),
-                darkTheme: _theme(palette, Brightness.dark),
-                themeMode: resolved == Brightness.dark
-                    ? ThemeMode.dark
-                    : ThemeMode.light,
-                // NOT const: a const home is an identical widget instance
-                // across rebuilds, so Flutter skips the whole shell subtree
-                // on a theme change — glass colors stay stale (the v1.7.0
-                // screenshot bug: dark cards over the day sky).
-                home: OnboardingGate(),
-              );
-            }));
-          },
+    // Movement 59 — there is ONE theme mode: auto. The sun (or, without a
+    // location, the clock) decides; the ambient version nudge keeps the
+    // resolution fresh so light flips to dark "after some time" by itself.
+    // No theme picker, no ui.theme override — older installs' saved choice
+    // is deliberately ignored.
+    return ValueListenableBuilder<int>(
+      valueListenable: ambient.version,
+      builder: (context, _, ___) {
+        final DateTime now = AmbientBackdrop.clock();
+        final bool located = Locator.bound;
+        final platform = WidgetsBinding
+            .instance.platformDispatcher.platformBrightness;
+        // One resolution for everything — MaterialApp themeMode, glass
+        // colors and the ambient backdrop all follow this single answer.
+        final Brightness resolved = resolveBrightness(platform, now,
+            lat: located ? Locator.ambientLat : null,
+            lon: located ? Locator.ambientLon : null);
+        GlassColors.brightness.value = resolved;
+        final palette =
+            resolved == Brightness.dark ? Palette.dark : Palette.light;
+        resolvedPalette.value = palette;
+        // Movement 55: the ANDROID system chrome follows the theme too —
+        // a dark app must not sit on a white system navigation bar.
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: resolved == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark,
+          systemNavigationBarColor: palette.background,
+          systemNavigationBarIconBrightness: resolved == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+        ));
+        return MaterialApp(
+          title: 'gork',
+          theme: _theme(palette, Brightness.light),
+          darkTheme: _theme(palette, Brightness.dark),
+          themeMode: resolved == Brightness.dark
+              ? ThemeMode.dark
+              : ThemeMode.light,
+          // NOT const: a const home is an identical widget instance
+          // across rebuilds, so Flutter skips the whole shell subtree
+          // on a theme change — glass colors stay stale (the v1.7.0
+          // screenshot bug: dark cards over the day sky).
+          home: OnboardingGate(),
         );
       },
     );

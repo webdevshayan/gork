@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
-import 'package:gork/screens/theme_page.dart';
 import 'package:gork/screens/search_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/profile_info.dart';
 import 'package:gork/services/secure_store.dart';
 import 'package:gork/widgets/glass.dart';
+import 'package:gork/widgets/bottom_input_bar.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -280,40 +280,42 @@ void main() {
     );
   });
 
-  testWidgets('theme page: glass radio card, persists the choice', (
-    tester,
-  ) async {
+  testWidgets('Movement 59: the Theme page is gone — the menu has no '
+      'theme row (the app is always auto)', (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
-    // Movement 38: Profile opens the identity form; Theme has its own
-    // row — drag the menu list up until the row is on screen.
+    // The Theme row used to live here — drag the menu list up in case the
+    // layout shifts, then assert the row is truly absent.
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('menu-theme')));
+
+    expect(find.byKey(const ValueKey('menu-theme')), findsNothing);
+    expect(find.text('Theme'), findsNothing);
+    expect(find.text('Auto'), findsNothing,
+        reason: 'no mode picker at all — light by day, dark by night');
+  });
+
+  testWidgets('Movement 59: the attach menu NEVER overflows the right '
+      'screen edge (screenshot bug)', (tester) async {
+    await pumpShell(tester);
+    await openTab(tester, 'chat');
+    await tester.tap(find.byKey(const ValueKey('attach-button')));
     await tester.pumpAndSettle();
-
-    expect(find.text('Theme'), findsOneWidget);
-    for (final mode in ['Auto', 'System', 'Light', 'Dark']) {
-      expect(find.text(mode), findsOneWidget);
-    }
-
-    await tester.tap(find.text('Dark'));
-    await tester.pumpAndSettle();
-
-    expect(Locator.prefs.getString('ui.theme'), 'Dark');
-    expect(tester.widget<GlassRadio>(find.byType(GlassRadio).at(3)).selected,
-        isTrue);
-    // Movement 57: the scrim is gone — Dark mode IS the dark gruvbox
-    // gradient now.
-    final backdrop = tester.widget<DecoratedBox>(
-        find.byKey(const ValueKey('ambient-backdrop-gradient')));
-    final colors =
-        (backdrop.decoration as BoxDecoration).gradient as LinearGradient;
-    expect(colors.colors.first.computeLuminance(), lessThan(0.2));
-        expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget,
-        reason: 'back affordances are chevrons everywhere');
+    expect(find.byKey(const ValueKey('attach-menu')), findsOneWidget);
+    final menuRect = tester.getRect(find.byKey(const ValueKey('attach-menu')));
+    final screenWidth = tester.view.physicalSize.width /
+        tester.view.devicePixelRatio;
+    // The screenshot bug: the menu sat past the right edge, chevrons clipped.
+    expect(menuRect.right, lessThanOrEqualTo(screenWidth),
+        reason: 'menu right edge must stay on screen');
+    expect(menuRect.left, greaterThanOrEqualTo(0),
+        reason: 'menu left edge must stay on screen');
+    // And it must sit ABOVE the input bar, not cover the whole screen.
+    final inputRect = tester.getRect(find.byType(BottomInputBar));
+    expect(menuRect.bottom, lessThanOrEqualTo(inputRect.top + 1),
+        reason: 'menu bottom must not cover the input bar');
   });
 
   testWidgets('input bar: + opens the attach menu, mic becomes an arrow, '

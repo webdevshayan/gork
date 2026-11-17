@@ -215,7 +215,7 @@ void main() {
       matching: find.byType(DecoratedBox),
     ).first);
     var bg = (box.decoration as BoxDecoration).color!;
-    expect(bg, const Color(0xFF111418),
+    expect(bg, const Color(0xFF131313),
         reason: 'light mode primary button is black');
 
     // Dark mode: primary = near-white background, black label. The static
@@ -241,7 +241,7 @@ void main() {
       matching: find.byType(DecoratedBox),
     ).first);
     bg = (box.decoration as BoxDecoration).color!;
-    expect(bg, const Color(0xFFF2F4F7),
+    expect(bg, const Color(0xFFF2F2F2),
         reason: 'dark mode primary button is white');
     expect(bg, isNot(const Color(0xFF6EA8FE)), reason: 'no blue buttons');
   });

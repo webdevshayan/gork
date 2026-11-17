@@ -12,7 +12,6 @@ import 'panels_screen.dart';
 import 'projects_screen.dart';
 import 'providers_screen.dart';
 import 'tasks_screen.dart';
-import 'theme_page.dart';
 import '../constants/design_tokens.dart';
 
 /// What the search covers — the entry point preselects the scope (home =
@@ -57,7 +56,6 @@ class _SearchScreenState extends State<SearchScreen> {
     _Jump('Integrations', Icons.extension_outlined, IntegrationsScreen()),
     _Jump('Scheduled Tasks', Icons.schedule_outlined, TasksScreen()),
     _Jump('Providers', Icons.key_outlined, ProvidersScreen()),
-    _Jump('Theme', Icons.palette_outlined, ThemePage()),
   ];
 
   List<_Hit> _chatHits(String query) {

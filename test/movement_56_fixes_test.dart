@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/screens/gork_home.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
+import 'package:gork/screens/security_screen.dart';
 import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
@@ -62,7 +63,8 @@ void main() {
   Future<void> bindMinimal() async {
     // Without a prefs mock the plugin channel never answers in the test VM
     // and getInstance() hangs forever (the pattern every other test uses).
-    SharedPreferences.setMockInitialValues({'onboarding.done': true});
+    SharedPreferences.setMockInitialValues(
+        {'onboarding.done': true, 'vps.url': 'http://vps.test:8787'});
     Locator.reset();
     final prefs = await SharedPreferences.getInstance();
     Locator.bind(prefs: prefs, store: InMemorySecureStore());
@@ -115,6 +117,35 @@ void main() {
       expect(picker.lastType, FileType.any,
           reason: 'the old FileType.custom + [json] MIME filter hid '
               'browser-downloaded credentials.json (octet-stream)');
+    });
+
+    testWidgets('Movement 59: no VPS configured — a dialog guides to '
+        'Security instead of a raw "Bad state" snack', (tester) async {
+      // bindMinimal now configures a VPS; this test needs the OPPOSITE.
+      SharedPreferences.setMockInitialValues({'onboarding.done': true});
+      Locator.reset();
+      Locator.bind(
+          prefs: await SharedPreferences.getInstance(),
+          store: InMemorySecureStore());
+      FilePicker.platform = FakePicker();
+      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final button = find.byKey(const ValueKey('gconsole-upload'));
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set up your VPS first'), findsOneWidget,
+          reason: 'no picker, no exception — an honest next step');
+      expect(find.textContaining('Bad state'), findsNothing);
+
+      await tester.tap(find.text('Open Security'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SecurityScreen), findsOneWidget,
+          reason: 'the dialog deep-links straight to the fix');
     });
 
     testWidgets('non-JSON pick is rejected with a clear message',
