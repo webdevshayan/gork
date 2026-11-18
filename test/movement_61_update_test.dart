@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
@@ -60,6 +63,34 @@ class _RefusingUploader extends GoogleCredentialsUploader {
   }
 }
 
+/// The picker must answer in the test VM or the flow never reaches upload().
+class _FakePicker extends FilePicker {
+  _FakePicker(this.path);
+  final String path;
+
+  @override
+  Future<FilePickerResult?> pickFiles(
+      {String? dialogTitle,
+      String? initialDirectory,
+      FileType type = FileType.any,
+      List<String>? allowedExtensions,
+      Function(FilePickerStatus)? onFileLoading,
+      bool allowCompression = true,
+      int compressionQuality = 30,
+      bool allowMultiple = false,
+      bool withData = false,
+      bool withReadStream = false,
+      bool lockParentWindow = false,
+      bool readSequential = false}) async {
+    return FilePickerResult([
+      PlatformFile(name: 'credentials.json', size: 10, path: path),
+    ]);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
 Future<void> _bind() async {
   SharedPreferences.setMockInitialValues({'onboarding.done': true});
   Locator.reset();
@@ -95,6 +126,12 @@ void main() {
   testWidgets('a refused upload names the one-command fix (gork daemon '
       'update) and says what is kept', (tester) async {
     await _bind();
+    final creds = File('${Directory.systemTemp.path}/m61-creds.json')
+      ..writeAsStringSync('{"installed": {"client_id": "abc"}}');
+    addTearDown(() => creds.deleteSync());
+    // Same precedent as movement_49: ASSIGN the picker, never read the
+    // late `platform` field first (it crashes in the test VM).
+    FilePicker.platform = _FakePicker(creds.path);
     await tester.pumpWidget(MaterialApp(
         home: GoogleAccountsScreen(
             store: _EmptyStore(), uploader: _RefusingUploader())));
