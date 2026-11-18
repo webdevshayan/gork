@@ -17,11 +17,15 @@ import '../widgets/glass.dart';
 /// services to it. New accounts are added by pasting an OAuth token once
 /// — the app verifies it and remembers it.
 class GoogleAccountsScreen extends StatefulWidget {
-  const GoogleAccountsScreen({super.key, this.store, this.report});
+  const GoogleAccountsScreen(
+      {super.key, this.store, this.report, this.uploader});
 
   /// Injectable for tests; defaults to the keystore-backed store.
   final GoogleAccountStore? store;
   final void Function(String summary)? report;
+
+  /// Injectable for tests; defaults to the keystore-backed uploader.
+  final GoogleCredentialsUploader? uploader;
 
   @override
   State<GoogleAccountsScreen> createState() => _GoogleAccountsScreenState();
@@ -31,8 +35,10 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
   late Future<List<GoogleAccount>> _accounts;
   String? _activeEmail;
   bool _connecting = false;
-  final GoogleCredentialsUploader _uploader = GoogleCredentialsUploader();
   bool? _credsOnVps;
+
+  GoogleCredentialsUploader get _uploader =>
+      widget.uploader ?? GoogleCredentialsUploader();
 
   GoogleAccountStore get _store =>
       widget.store ??
@@ -145,8 +151,12 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
         message = 'Could not reach the VPS — check the address in Cloud '
             'Computer and your connection.';
       } else if (text.contains('the VPS refused the upload')) {
-        message = 'The VPS refused the upload — make sure the daemon is '
-            'up to date and running, then try again.';
+        // Movement 61: an old daemon 404s the credentials endpoint — name
+        // the one-command fix instead of a vague "make sure it is up to
+        // date". The update preserves config, keys, tasks and the vault.
+        message = 'The VPS daemon is older than this app or not running. '
+            'On the VPS run: gork daemon update — your API keys, tasks and '
+            'vault are kept — then try again.';
       } else {
         message = text
             .replaceFirst(RegExp(r'^Bad state:\s*'), '')
@@ -314,6 +324,11 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   variant: ButtonVariant.secondary,
                   expands: true,
                 ),
+                // Movement 61 gap fix: this card used to sit DIRECTLY on the
+                // Add account pill (screenshot 2026-11-18) — two surfaces
+                // touching reads as one broken card. Every stacked pair on
+                // this screen gets the 16px gap.
+                const SizedBox(height: 16),
                 // Movement 55: the Cloud Console card used to be the
                 // FIRST Stack child — painted UNDER the AmbientBackdrop and
                 // never seen (the invisible 'Google Cloud Console → Upload').

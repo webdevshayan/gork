@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'autostart.dart';
 import 'daemon_control.dart';
+import 'self_update.dart';
 
 /// gork CLI plumbing — configuration without ever opening a file, plus an
 /// HTTP client for the running daemon. Everything here is pure enough to
@@ -315,6 +316,7 @@ Future<int> runCli(
   DaemonControl? control,
   Autostart? autostart,
   Future<String> Function()? readLine,
+  Future<bool> Function()? selfUpdateRun,
 }) async {
   final defaultClient = client ??
       DaemonClient(
@@ -466,6 +468,18 @@ Future<int> runCli(
         }
       });
 
+    case 'update':
+    case 'upgrade': {
+      // Movement 61 — the whole install comes up to date with ONE command:
+      // source, deps, launcher wrappers and boot hooks, then the daemon
+      // restarts and /health must answer. config.env (LLM keys, secret),
+      // tasks and the vault all live outside the source tree — nothing is
+      // ever lost, no key re-entry.
+      final run = selfUpdateRun ?? SelfUpdate(control: control, out: out).run;
+      final ok = await run();
+      return ok ? 0 : 1;
+    }
+
     case 'daemon':
     case 'start':
     case 'stop':
@@ -503,8 +517,15 @@ Future<int> runCli(
           final n = args.where((a) => int.tryParse(a) != null).toList();
           out(ctl.logs(n.isEmpty ? 40 : int.parse(n.last)));
           return 0;
+        case 'update': {
+          // `gork daemon update` == `gork update` — one path, same code.
+          final run =
+              selfUpdateRun ?? SelfUpdate(control: ctl, out: out).run;
+          final ok = await run();
+          return ok ? 0 : 1;
+        }
         default:
-          out('usage: gork daemon start|stop|restart|status|health|logs [n]');
+          out('usage: gork daemon start|stop|restart|status|health|logs|update [n]');
           return 1;
       }
     }
@@ -616,6 +637,10 @@ Future<int> runCli(
 }
 
 const String _usage = '''usage: gork <command>
+  update                                  bring the whole install up to date
+                                          (also: gork daemon update) — source,
+                                          deps, wrappers, hooks, restart;
+                                          config, tasks and vault are kept
   daemon start|stop|restart|status|logs   the daemon lifecycle (also: gork start)
   autostart                               install boot hooks (Termux:Boot, shell
                                           profiles, profile.d, cron @reboot)

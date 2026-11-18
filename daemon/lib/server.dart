@@ -17,6 +17,11 @@ import 'package:gork_daemon/scheduler.dart';
 /// The phone app connects over REST.
 const int kDefaultPort = 8787;
 
+/// The daemon's own version, reported by /health. The phone app shows it
+/// (Cloud Computer) and uses a refusal from an OLD daemon to point the user
+/// at `gork daemon update`. Bump when the daemon gains endpoints or fixes.
+const String kDaemonVersion = '0.2.0';
+
 /// Where task state lives.
 ///
 /// `GORK_HOME` (if set) points at the daemon's state directory — set by the
@@ -128,6 +133,7 @@ Router buildRouter(Daemon daemon,
     return _json({
       'status': 'ok',
       'service': 'gork-daemon',
+      'version': kDaemonVersion,
       'time': daemon.clock().toIso8601String(),
     });
   });
@@ -261,6 +267,50 @@ Router buildRouter(Daemon daemon,
     return _json({
       'entries': [for (final label in labels) {'label': label}],
       'count': labels.length,
+    });
+  });
+
+  // Movement 61 — the Google Cloud Console credentials.json travels to the
+  // VPS exactly ONCE (the phone's Google screen POSTs it here). Sealed into
+  // the vault like any other entry: 0600 file, values never read back —
+  // the status endpoint answers with a boolean only. The phone validates
+  // the JSON structure before uploading; the daemon re-checks the shape.
+  router.post('/v1/credentials/google', (Request request) async {
+    if (vaultDir == null) {
+      return _json({'error': 'vault not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    final Map<String, dynamic> body;
+    try {
+      body = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final clientJson = body['client_json'];
+    final isOAuthClient =
+        clientJson is Map && (clientJson['installed'] != null || clientJson['web'] != null);
+    final isServiceAccount =
+        clientJson is Map && clientJson['private_key'] != null && clientJson['client_email'] != null;
+    if (!isOAuthClient && !isServiceAccount) {
+      return _json({
+        'error': 'client_json must be an OAuth client ("installed"/"web") '
+            'or a service-account JSON',
+      }, 400);
+    }
+    await writeVaultSecret(
+        vaultDir, 'google_credentials', jsonEncode(clientJson));
+    return _json({'stored': true, 'sealed': true}, 201);
+  });
+
+  router.get('/v1/credentials/google/status', (Request request) async {
+    if (vaultDir == null) {
+      return _json({'error': 'vault not wired in this daemon'}, 500);
+    }
+    return _json({
+      'has_client_json':
+          readVault(vaultDir).containsKey('google_credentials'),
     });
   });
 

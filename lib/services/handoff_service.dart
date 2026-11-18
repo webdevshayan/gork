@@ -71,6 +71,15 @@ class HandoffService {
     return 'daemon alive';
   }
 
+  /// The daemon's own version from /health (daemon >= 0.2.0 reports one).
+  /// Shown on Cloud Computer so "up to date" is a fact, not a guess; null
+  /// when the daemon is older than the field or unreachable.
+  Future<String?> daemonVersion() async {
+    final data = await _call('GET', '/health') as Map<String, dynamic>;
+    final v = data['version'];
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
   /// Push every local task to the daemon (upsert by id).
   Future<String> pushTasks() async {
     final local = tasks.all();

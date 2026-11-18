@@ -31,6 +31,7 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
       backend: CloudBackend.agentvps, endpoint: '', apiKey: '', updatedAt: 0);
   String? _status;
   String? _handoffStatus;
+  String? _daemonVersion;
   late final TextEditingController _endpointController;
   late final TextEditingController _keyController;
   late final TextEditingController _vpsUrlController;
@@ -77,6 +78,10 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
   Future<String?> _pingHandoff() async {
     try {
       await Locator.handoff.ping();
+      // Movement 61: surface the daemon's version so "up to date" is a fact
+      // the user can see, not a guess. Older daemons simply report nothing.
+      final v = await Locator.handoff.daemonVersion().catchError((_) => null);
+      if (v != null && mounted) setState(() => _daemonVersion = v);
       return null;
     } catch (e) {
       return e.toString().replaceFirst(RegExp(r'^(IntegrationException|Exception):\s*'), '');
@@ -252,6 +257,17 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
                             ? palette.success
                             : palette.textSecondary,
                       ),
+                    ),
+                  ],
+                  if (_daemonVersion != null) ...[
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      'gork daemon v$_daemonVersion is what that VPS runs '
+                      '(update it from the VPS: gork daemon update — keys, '
+                      'tasks and vault are kept).',
+                      key: const ValueKey('vps-daemon-version'),
+                      style:
+                          TypeScale.caption(color: palette.textSecondary),
                     ),
                   ],
                 ],

@@ -179,6 +179,11 @@ class DaemonControl {
     return env;
   }
 
+  /// Where the daemon source lives (or null) — the same tree start() runs.
+  /// `gork daemon update` syncs THIS directory; the second element lists
+  /// every candidate probed so failures are diagnosable from the message.
+  (String?, List<String>) findSourceDir() => _findSourceDir();
+
   /// Locates the daemon source: $GORK_SRC_DIR (env, then config.env), the two
   /// standard install roots, then a daemon/ dir around the current one. The
   /// second element lists every candidate probed — the start error includes

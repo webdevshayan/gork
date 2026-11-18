@@ -385,6 +385,30 @@ void main() {
       expect(code2, 0);
       expect(out.join('\n'), contains('Standup'));
     });
+
+    test('gork update + gork daemon update run the self-update path',
+        () async {
+      final out = <String>[];
+      var runs = 0;
+      final code = await runCli(['update'],
+          config: makeConfig(),
+          out: out.add,
+          selfUpdateRun: () async {
+            runs++;
+            return true;
+          });
+      expect(code, 0);
+      expect(runs, 1);
+
+      // The longer form routes to the same path; a failed update exits 1.
+      final code2 = await runCli(['daemon', 'update'],
+          config: makeConfig(),
+          control: DaemonControl(env: {'HOME': home.path}),
+          out: out.add,
+          selfUpdateRun: () async => false);
+      expect(code2, 1);
+      expect(runs, 1, reason: 'the second call used its own injected run');
+    });
   });
 }
 

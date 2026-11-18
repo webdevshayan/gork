@@ -240,7 +240,9 @@ UNIT
     $SUDO tee /usr/local/bin/gork >/dev/null <<GORKCLI
 #!/usr/bin/env bash
 # gork CLI wrapper (systemd install)
-GORK_HOME=/etc/gork-daemon exec $dart_bin run $src/bin/gork_cli.dart "\$@"
+export GORK_HOME=/etc/gork-daemon
+export GORK_SRC_DIR="$src"
+exec $dart_bin run "$src/bin/gork_cli.dart" "\$@"
 GORKCLI
     $SUDO chmod 0755 /usr/local/bin/gork
     echo "-- gork CLI installed: /usr/local/bin/gork"
@@ -272,6 +274,7 @@ RUN
 #!/usr/bin/env bash
 # gork CLI wrapper (termux-services install)
 export GORK_HOME="$home"
+export GORK_SRC_DIR="$src"
 exec dart run "$src/bin/gork_cli.dart" "\$@"
 GORKCLI
   chmod 0755 "$PREFIX/bin/gork"
@@ -351,6 +354,9 @@ print_summary() { # $1 backend $2 src-dir $3 config-file
     echo "   secret : $(grep -E '^GORK_SECRET=' "$cfg" | cut -d= -f2- | tr -d '"')"
     echo "            ^ set the same value in the app (Cloud Computer -> secret)."
   fi
+  echo "   update : re-running this install line keeps everything; next time"
+  echo "            simply run: gork daemon update   (keys, tasks and vault"
+  echo "            are kept — only the source, deps and hooks are refreshed)"
   case "$backend" in
     systemd)
       echo "   logs   : journalctl -u gork-daemon -f"

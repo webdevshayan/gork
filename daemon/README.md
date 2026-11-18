@@ -105,6 +105,8 @@ reports "started" after `/health` answers; otherwise you get the log path.
 The installer ships exactly ONE command: `gork`. No file editing, ever:
 
 ```bash
+gork update                           # upgrade the whole install, in place
+                                      # (also: gork daemon update)
 gork daemon start | stop | restart | status | logs   # the lifecycle
 gork autostart                        # (re)install every boot hook, idempotent
 gork llm providers                    # real OpenAI-compatible presets
@@ -121,6 +123,29 @@ gork vault list | rm <label>          # labels only; values are never shown
 gork status                           # liveness + task count
 gork secret                           # the pairing secret for the phone app
 ```
+
+### Upgrading (`gork daemon update`)
+
+One command brings an existing install fully up to date — re-running the
+install one-liner does the same, but this one needs nothing but the CLI:
+
+```bash
+gork daemon update
+```
+
+It hard-syncs the source to origin's default branch (fetch + reset — the
+install dir is managed, never hand-edited), runs `dart pub get`, rewrites
+the `gork` launcher wrapper(s) in PATH (old wrappers missing GORK_SRC_DIR
+heal here), re-applies the boot hooks, restarts the daemon through
+whichever backend runs it (systemd unit, termux-services, or the CLI's own
+lifecycle), and only reports success when `/health` answers — printing the
+version it found before and after (`/health` reports `version` since
+daemon 0.2.0; the phone shows it on Cloud Computer).
+
+What it NEVER touches: `config.env` (LLM key, secret), `tasks.json`,
+`vault.json` and the browser profile all live in the state dir
+(`$GORK_HOME`), outside the source tree. An update cannot lose your keys,
+tasks or sealed secrets, and never asks you to re-enter anything.
 
 ### The agent browser (private · persistent · lightweight)
 

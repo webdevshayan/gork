@@ -298,7 +298,22 @@ test_ctl_installs_gork_cli_wrapper() {
     || fail "wrapper does not pin GORK_HOME"
   grep -q "gork_cli.dart" "$wrapper" && pass "wrapper points at the CLI entrypoint" \
     || fail "wrapper does not point at gork_cli.dart"
+  grep -q "GORK_SRC_DIR=" "$wrapper" && pass "wrapper pins GORK_SRC_DIR (gork daemon update can find the source)" \
+    || fail "wrapper does not pin GORK_SRC_DIR"
   rm -f /usr/local/bin/gork
+}
+
+test_summary_teaches_gork_daemon_update() {
+  # The upgrade story: the summary must point at `gork daemon update` so an
+  # existing install never needs re-setup just to move forward.
+  local out
+  out="$(run_install_snippet "print_summary ctl '$DAEMON' '$TMP/sumcfg-missing/config.env'" 2>&1)"
+  printf '%s' "$out" | grep -q "gork daemon update" \
+    && pass "summary teaches the one-command upgrade (gork daemon update)" \
+    || fail "summary does not mention gork daemon update"
+  printf '%s' "$out" | grep -q "kept" \
+    && pass "summary says what an update keeps (keys, tasks, vault)" \
+    || fail "summary does not say what is kept"
 }
 
 # ---- end-to-end with the real daemon ----------------------------------------
@@ -334,6 +349,7 @@ for t in test_no_systemd_dir_means_ctl test_real_systemd_detected \
          test_ctl_start_reports_failure_honestly \
          test_ctl_start_reports_dead_port_honestly \
          test_ctl_installs_gork_cli_wrapper \
+         test_summary_teaches_gork_daemon_update \
          test_ctl_start_refuses_stale_port_owner \
          test_real_daemon_boots_and_answers_health; do
   echo "## $t"

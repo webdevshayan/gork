@@ -346,4 +346,112 @@ void main() {
       expect(body['error'], contains('vault not wired'));
     });
   });
+
+  group('Movement 61 — version + credentials endpoints', () {
+    test('/health reports the daemon version (the app shows it and points '
+        'at `gork daemon update` when an old daemon refuses)', () async {
+      final handler = buildHandler(makeDaemon());
+      final res = await handler(_req('GET', '/health'));
+      final body = await _body(res);
+      expect(body['version'], kDaemonVersion);
+    });
+
+    test('POST /v1/credentials/google seals the client JSON into the vault '
+        'and answers 201', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-creds-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(Request(
+        'POST',
+        Uri.parse('http://test.local/v1/credentials/google'),
+        body: jsonEncode({
+          'client_json': {
+            'installed': {
+              'client_id': 'abc.apps.googleusercontent.com',
+              'client_secret': 'GOCSPX-supersecret',
+            },
+          },
+        }),
+        headers: {'content-type': 'application/json'},
+      ));
+      expect(res.statusCode, 201);
+      final stored = await _body(res);
+      expect(stored['stored'], true);
+
+      // Sealed on disk; the secret never leaks through any endpoint.
+      final vault = readVault(dir.path);
+      expect(vault['google_credentials'], contains('GOCSPX-supersecret'));
+      final status =
+          await handler(_req('GET', '/v1/credentials/google/status'));
+      expect(status.statusCode, 200);
+      final statusBody = await _body(status);
+      expect(statusBody['has_client_json'], true);
+      expect(jsonEncode(statusBody), isNot(contains('GOCSPX-supersecret')));
+    });
+
+    test('a service-account JSON is accepted too', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-creds-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(Request(
+        'POST',
+        Uri.parse('http://test.local/v1/credentials/google'),
+        body: jsonEncode({
+          'client_json': {
+            'type': 'service_account',
+            'private_key': '-----BEGIN PRIVATE KEY-----',
+            'client_email': 'bot@project.iam.gserviceaccount.com',
+          },
+        }),
+        headers: {'content-type': 'application/json'},
+      ));
+      expect(res.statusCode, 201);
+    });
+
+    test('a junk client_json is refused with 400', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-creds-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(Request(
+        'POST',
+        Uri.parse('http://test.local/v1/credentials/google'),
+        body: jsonEncode({'client_json': {'hello': 'world'}}),
+        headers: {'content-type': 'application/json'},
+      ));
+      expect(res.statusCode, 400);
+      final body = await _body(res);
+      expect(body['error'], contains('OAuth client'));
+    });
+
+    test('malformed (non-JSON) bodies are refused with 400', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-creds-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler = buildHandler(makeDaemon(), vaultDir: dir.path);
+      final res = await handler(Request(
+        'POST',
+        Uri.parse('http://test.local/v1/credentials/google'),
+        body: 'this is not json',
+        headers: {'content-type': 'application/json'},
+      ));
+      expect(res.statusCode, 400);
+    });
+
+    test('credentials routes are gated by the shared secret', () async {
+      final dir = await Directory.systemTemp.createTemp('gork-creds-test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final handler =
+          buildHandler(makeDaemon(), secret: 's3cret', vaultDir: dir.path);
+      final res =
+          await handler(_req('GET', '/v1/credentials/google/status'));
+      expect(res.statusCode, 401);
+    });
+
+    test('an unwired vault answers 500 honestly for the credentials routes',
+        () async {
+      final handler = buildHandler(makeDaemon());
+      final status =
+          await handler(_req('GET', '/v1/credentials/google/status'));
+      expect(status.statusCode, 500);
+    });
+  });
 }
