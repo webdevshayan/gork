@@ -6,6 +6,7 @@ import '../services/locator.dart';
 import '../services/vault_store.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/glass.dart';
+import 'cloud_computer_screen.dart';
 
 /// Security — the credentials vault surface. Secrets (passwords, auth codes)
 /// live in the vault and are only ever filled into forms at the user's
@@ -128,6 +129,89 @@ class _SecurityScreenState extends State<SecurityScreen> {
                           fontSize: 14,
                           height: 1.4,
                           color: GlassColors.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Movement 60 — the ONE VPS setup lives in Cloud Computer;
+                // Security shows its state and routes there. One URL and
+                // one secret serve chat, tasks, browser work, the vault
+                // and the credentials upload.
+                GlassContainer(
+                  radius: 28,
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.dns_outlined,
+                              size: 22, color: GlassColors.text),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'VPS connection',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                color: GlassColors.text,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Locator.handoff.configured
+                                ? Icons.check_circle_outline
+                                : Icons.radio_button_unchecked,
+                            size: 18,
+                            color: Locator.handoff.configured
+                                ? GlassColors.text
+                                : GlassColors.textFaint,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        Locator.handoff.configured
+                            ? 'Connected to ${Locator.handoff.url} — the '
+                                'same server for chat, tasks, browser work, '
+                                'the vault and the credentials upload.'
+                            : 'Not set up yet. One address and one shared '
+                                'secret unlock chat handoff, scheduled '
+                                'tasks, browser work, the vault and the '
+                                'credentials upload.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: GlassColors.textDim,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const CloudComputerScreen()),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: GlassColors.text.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: GlassColors.border),
+                          ),
+                          child: Text(
+                            Locator.handoff.configured
+                                ? 'Change in Cloud Computer'
+                                : 'Set up in Cloud Computer',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: GlassColors.text,
+                            ),
+                          ),
                         ),
                       ),
                     ],
