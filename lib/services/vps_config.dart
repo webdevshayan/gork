@@ -22,6 +22,11 @@ class VpsConfig {
   static const String kToken = 'vps.token';
   static const String kNtfy = 'vps.ntfy';
 
+  /// Set once this app has MANAGED the token (saved or deliberately
+  /// cleared). While true, the legacy fallbacks stay out of the way — a
+  /// cleared token means NO token, not "resurrect the old daemon secret".
+  static const String kHasToken = 'vps.hasToken';
+
   /// The VPS base URL. Resolution order: `vps.url`, then the legacy task
   /// daemon URL (`handoff.url`), then the AgentVPS endpoint saved in the
   /// cloud-computer picker — all the same server in practice. Trailing
@@ -56,10 +61,12 @@ class VpsConfig {
 
   bool get configured => url != null;
 
-  /// The shared secret. Falls back to the legacy daemon secret.
+  /// The shared secret. Falls back to the legacy daemon secret only while
+  /// this app has never managed the token itself.
   Future<String?> token() async {
     final direct = await store.read(kToken);
     if (direct != null && direct.isNotEmpty) return direct;
+    if (prefs.getBool(kHasToken) == true) return null;
     final legacy = await store.read('handoff.secret');
     if (legacy != null && legacy.isNotEmpty) return legacy;
     final raw = prefs.getString('cloudcomputer.config');
@@ -76,7 +83,7 @@ class VpsConfig {
   }
 
   /// Saves the connection. A null [token] keeps the saved one; an empty
-  /// string clears it.
+  /// string clears it (and stays cleared — no legacy resurrection).
   Future<void> save(String url, {String? token}) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) {
@@ -85,6 +92,7 @@ class VpsConfig {
       await prefs.setString(kUrl, trimmed);
     }
     if (token == null) return;
+    await prefs.setBool(kHasToken, true);
     if (token.trim().isEmpty) {
       await store.delete(kToken);
     } else {
@@ -94,6 +102,7 @@ class VpsConfig {
 
   Future<void> clear() async {
     await prefs.remove(kUrl);
+    await prefs.remove(kHasToken);
     await store.delete(kToken);
   }
 

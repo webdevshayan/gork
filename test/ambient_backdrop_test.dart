@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:matcher/matcher.dart' as m;
 
 import 'package:gork/constants/ambient.dart';
+import 'package:gork/constants/design_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gork/services/locator.dart';
-import 'package:gork/services/weather_service.dart';
 import 'package:gork/widgets/ambient_backdrop.dart';
 
 class _BlockedOverrides extends HttpOverrides {
@@ -51,33 +51,27 @@ void main() {
 
   testWidgets('light backdrop paints a soft neutral gray (never black)',
       (tester) async {
-    // Mid-morning at the stored location (sun-relative — a wall-clock hour
-    // means different things per longitude). Auto resolves LIGHT.
-    final DateTime sunrise = sunriseFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
+    GlassColors.brightness.value = Brightness.light;
     await tester.pumpWidget(_wrap(Brightness.light));
     await tester.pump();
 
     final backdrop = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey('ambient-backdrop-gradient')),
+      find.byKey(const ValueKey('ambient-backdrop-solid')),
     );
-    final gradient = backdrop.decoration as BoxDecoration;
-    expect(gradient.gradient, isA<LinearGradient>());
-    // The first stop is a light gray — the black startup flash stays gone.
-    final first = (gradient.gradient as LinearGradient).colors.first;
-    expect(first.computeLuminance(), greaterThan(0.5));
-    expect(first.r, closeTo(first.g, 1 / 255),
+    final decoration = backdrop.decoration as BoxDecoration;
+    // Movement 60 — SOLID: a flat color, no gradient.
+    expect(decoration.gradient, isNull);
+    final color = decoration.color!;
+    // The solid is a light gray — the black startup flash stays gone.
+    expect(color.computeLuminance(), greaterThan(0.5));
+    expect(color.r, closeTo(color.g, 1 / 255),
         reason: 'the theme is gray and black, nothing else');
     expect(find.byKey(const ValueKey('ambient-backdrop')), findsOneWidget);
   });
 
   testWidgets('dark backdrop sinks to near-black neutral gray',
       (tester) async {
-    // 3 hours past sunset at the stored location — night.
-    final DateTime sunset = sunsetFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
+    GlassColors.brightness.value = Brightness.dark;
     // Clear the tree first: the backdrop rebuilds when the brightness
     // notifier fires (as the app shell does); standalone, the element is
     // reused across pumpWidget and the builder would never re-run.
@@ -86,50 +80,38 @@ void main() {
     await tester.pump();
 
     final backdrop = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey('ambient-backdrop-gradient')),
+      find.byKey(const ValueKey('ambient-backdrop-solid')),
     );
-    final colors =
-        (backdrop.decoration as BoxDecoration).gradient as LinearGradient;
-    expect(colors.colors.first.computeLuminance(), lessThan(0.05));
-    for (final c in colors.colors) {
-      expect(c.r, closeTo(c.g, 1 / 255),
-          reason: 'no colored tint — gray and black only');
-    }
+    final color = (backdrop.decoration as BoxDecoration).color!;
+    expect(color.computeLuminance(), lessThan(0.05));
+    expect(color.r, closeTo(color.g, 1 / 255),
+        reason: 'no colored tint — gray and black only');
   });
 
-  testWidgets('the clock alone flips the backdrop (light platform at '
-      'night still goes dark)', (tester) async {
-    final DateTime sunrise = sunriseFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
+  testWidgets('the published resolution alone flips the backdrop '
+      '(the notifier drives the flat color)', (tester) async {
+    GlassColors.brightness.value = Brightness.light;
     await tester.pumpWidget(_wrap(Brightness.light));
     await tester.pump();
     expect(
         ((tester.widget<DecoratedBox>(
-                    find.byKey(const ValueKey('ambient-backdrop-gradient'))))
+                    find.byKey(const ValueKey('ambient-backdrop-solid'))))
                 .decoration as BoxDecoration)
-            .gradient as LinearGradient,
-        isA<LinearGradient>()
-            .having((g) => g.colors.first, 'first',
-                m.predicate<Color>((c) => c.computeLuminance() > 0.5)));
+            .color!,
+        m.predicate<Color>((c) => c.computeLuminance() > 0.5));
 
-    final DateTime sunset = sunsetFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
-    // Clear the tree first: the backdrop rebuilds when the brightness
-    // notifier fires (as the app shell does); standalone, the element is
-    // reused across pumpWidget and the builder would never re-run.
+    GlassColors.brightness.value = Brightness.dark;
+    // Clear the tree first: the notifier fires but the element is reused
+    // across pumpWidget and the builder would never re-run.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(_wrap(Brightness.light));
     await tester.pump();
     expect(
         ((tester.widget<DecoratedBox>(
-                    find.byKey(const ValueKey('ambient-backdrop-gradient'))))
+                    find.byKey(const ValueKey('ambient-backdrop-solid'))))
                 .decoration as BoxDecoration)
-            .gradient as LinearGradient,
-        isA<LinearGradient>()
-            .having((g) => g.colors.first, 'first',
-                m.predicate<Color>((c) => c.computeLuminance() < 0.05)));
+            .color!,
+        m.predicate<Color>((c) => c.computeLuminance() < 0.05));
   });
 
   testWidgets('backdrop makes zero network calls and loads zero images '

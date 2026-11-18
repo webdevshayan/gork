@@ -4,8 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/screens/gork_home.dart';
+import 'package:gork/screens/cloud_computer_screen.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
-import 'package:gork/screens/security_screen.dart';
 import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
@@ -119,8 +119,8 @@ void main() {
               'browser-downloaded credentials.json (octet-stream)');
     });
 
-    testWidgets('Movement 59: no VPS configured — a dialog guides to '
-        'Security instead of a raw "Bad state" snack', (tester) async {
+    testWidgets('Movement 60: no VPS configured — a dialog guides to '
+        'Cloud Computer instead of a raw "Bad state" snack', (tester) async {
       // bindMinimal now configures a VPS; this test needs the OPPOSITE.
       SharedPreferences.setMockInitialValues({'onboarding.done': true});
       Locator.reset();
@@ -142,10 +142,10 @@ void main() {
           reason: 'no picker, no exception — an honest next step');
       expect(find.textContaining('Bad state'), findsNothing);
 
-      await tester.tap(find.text('Open Security'));
+      await tester.tap(find.text('Set up the VPS'));
       await tester.pumpAndSettle();
-      expect(find.byType(SecurityScreen), findsOneWidget,
-          reason: 'the dialog deep-links straight to the fix');
+      expect(find.byType(CloudComputerScreen), findsOneWidget,
+          reason: 'the dialog deep-links straight to the ONE setup');
     });
 
     testWidgets('non-JSON pick is rejected with a clear message',

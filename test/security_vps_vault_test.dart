@@ -56,6 +56,15 @@ void main() {
         MaterialApp(home: SecurityScreen(browser: browser)));
     await tester.pumpAndSettle();
 
+    // Movement 60 — the VPS connection card sits above the vault sections;
+    // the agent labels live further down the scrolling view.
+    await tester.scrollUntilVisible(
+      find.text('gmail-login'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('gmail-login'), findsOneWidget);
     expect(find.text('github-token'), findsOneWidget);
     expect(find.text('hunter2-leak'), findsNothing,
@@ -73,6 +82,13 @@ void main() {
         MaterialApp(home: SecurityScreen(browser: browser)));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.textContaining("Couldn't reach the VPS agent"),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.textContaining("Couldn't reach the VPS agent"),
         findsOneWidget);
     expect(find.textContaining('gork vault set'), findsNothing,
@@ -86,6 +102,13 @@ void main() {
             http.Response(jsonEncode({'entries': [], 'count': 0}), 200));
     await tester.pumpWidget(
         MaterialApp(home: SecurityScreen(browser: browser)));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.textContaining('gork vault set'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('gork vault set'), findsOneWidget);

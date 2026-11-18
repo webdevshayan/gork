@@ -158,47 +158,36 @@ void main() {
     });
   });
 
-  group('backdrop — the clock alone decides', () {
-    testWidgets('deep local night dims dark on a light platform',
+  group('backdrop — solid, follows the published resolution', () {
+    testWidgets('a published dark resolution paints the near-black solid',
         (tester) async {
-      // Sun-relative clock: 3 hours past sunset at the stored location —
-      // night, no matter which timezone the test box runs in.
-      final DateTime sunset = sunsetFor(
-          Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-      AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
+      GlassColors.brightness.value = Brightness.dark;
       await tester.pumpWidget(_wrap(Brightness.light));
       await tester.pump();
-      expect(_gradientOf(tester).colors.first.computeLuminance(),
-          lessThan(0.1),
-          reason: 'the dark gradient sinks to near-black');
+      expect(_colorOf(tester).computeLuminance(), lessThan(0.1),
+          reason: 'the dark backdrop sinks to near-black');
     });
 
-    testWidgets('local morning stays light on a dark platform',
+    testWidgets('a published light resolution paints the flat light gray',
         (tester) async {
-      // 2 hours past sunrise at the stored location — full daylight.
-      final DateTime sunrise = sunriseFor(
-          Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-      AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
+      GlassColors.brightness.value = Brightness.light;
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
-      expect(_gradientOf(tester).colors.first.computeLuminance(),
-          greaterThan(0.5));
+      expect(_colorOf(tester).computeLuminance(), greaterThan(0.5));
     });
 
-    testWidgets('the backdrop gradient is achromatic in both modes',
+    testWidgets('the backdrop is achromatic in both modes',
         (tester) async {
+      GlassColors.brightness.value = Brightness.dark;
       await tester.pumpWidget(_wrap(Brightness.dark));
       await tester.pump();
-      final darkColors = _gradientOf(tester).colors;
-      for (final c in darkColors) {
-        expect(c.r, closeTo(c.g, 1 / 255), reason: 'dark backdrop is gray');
-      }
-      await tester.pumpWidget(_wrap(Brightness.light));
+      final dark = _colorOf(tester);
+      expect(dark.r, closeTo(dark.g, 1 / 255), reason: 'dark backdrop is gray');
+      GlassColors.brightness.value = Brightness.light;
       await tester.pump();
-      final lightColors = _gradientOf(tester).colors;
-      for (final c in lightColors) {
-        expect(c.r, closeTo(c.g, 1 / 255), reason: 'light backdrop is gray');
-      }
+      final light = _colorOf(tester);
+      expect(light.r, closeTo(light.g, 1 / 255),
+          reason: 'light backdrop is gray');
     });
   });
 
@@ -269,12 +258,10 @@ void main() {
   });
 }
 
-DecoratedBox _backdropOf(WidgetTester tester) => tester.widget<DecoratedBox>(
-    find.byKey(const ValueKey('ambient-backdrop-gradient')));
-
-LinearGradient _gradientOf(WidgetTester tester) =>
-    (_backdropOf(tester).decoration as BoxDecoration).gradient
-        as LinearGradient;
+Color _colorOf(WidgetTester tester) =>
+    (tester.widget<DecoratedBox>(find.byKey(
+            const ValueKey('ambient-backdrop-solid'))).decoration
+        as BoxDecoration).color!;
 
 Widget _wrap(Brightness platform) {
   return MediaQuery(

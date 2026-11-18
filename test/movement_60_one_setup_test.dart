@@ -102,8 +102,23 @@ void main() {
       expect(find.byKey(const Key('vps-secret')), findsOneWidget);
       expect(find.byKey(const Key('handoff-url')), findsNothing,
           reason: 'the daemon rides the same connection — no second form');
+
+      // The handoff status section sits below the fold.
+      await tester.scrollUntilVisible(
+        find.textContaining('Connected to http://6.6.6.6:8787'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.textContaining('Connected to http://6.6.6.6:8787'),
           findsOneWidget);
+      // Back up: the card heading sits above the status section.
+      await tester.scrollUntilVisible(
+        find.textContaining('one setup for everything'),
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.textContaining('one setup for everything'),
           findsOneWidget);
     });

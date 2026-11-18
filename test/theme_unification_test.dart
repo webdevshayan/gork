@@ -98,11 +98,9 @@ void main() {
     expect(attach2.right, greaterThan(bar2.center.dx));
   });
 
-  testWidgets('backdrop paints the near-black neutral gradient in dark mode',
+  testWidgets('backdrop paints the near-black solid in dark mode',
       (tester) async {
-    final DateTime sunset = sunsetFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
+    GlassColors.brightness.value = Brightness.dark;
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -111,23 +109,17 @@ void main() {
       ),
     ));
     await tester.pump();
-    // No photo layers at all — the gradient IS the backdrop.
+    // No photo layers at all — the solid color IS the backdrop.
     expect(find.byType(Image), findsNothing);
-    final gradient = _gradientOf(tester);
-    expect(gradient.colors.first.computeLuminance(), lessThan(0.05));
-    for (final c in gradient.colors) {
-      expect(c.r, closeTo(c.g, 1 / 255),
-          reason: 'gray and black, nothing else');
-    }
+    final color = _colorOf(tester);
+    expect(color.computeLuminance(), lessThan(0.05));
+    expect(color.r, closeTo(color.g, 1 / 255),
+        reason: 'gray and black, nothing else');
   });
 
-  testWidgets('backdrop keeps the light neutral gradient in light mode',
+  testWidgets('backdrop keeps the light neutral solid in light mode',
       (tester) async {
-    // Mid-morning at the stored location (sun-relative — a wall-clock hour
-    // means different things per longitude).
-    final DateTime sunrise = sunriseFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunrise.add(const Duration(hours: 2));
+    GlassColors.brightness.value = Brightness.light;
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -137,8 +129,7 @@ void main() {
     ));
     await tester.pump();
     expect(find.byType(Image), findsNothing);
-    expect(_gradientOf(tester).colors.first.computeLuminance(),
-        greaterThan(0.5));
+    expect(_colorOf(tester).computeLuminance(), greaterThan(0.5));
   });
 
   test('the ambient photos are gone from pubspec and disk', () {
@@ -147,11 +138,9 @@ void main() {
     expect(Directory('assets/ambient').existsSync(), isFalse);
   });
 
-  testWidgets('dark gradient — never a white startup flash in dark mode',
+  testWidgets('dark solid — never a white startup flash in dark mode',
       (tester) async {
-    final DateTime sunset = sunsetFor(
-        Locator.ambientLat, Locator.ambientLon, DateTime.utc(2026, 11, 14));
-    AmbientBackdrop.clock = () => sunset.add(const Duration(hours: 3));
+    GlassColors.brightness.value = Brightness.dark;
     await tester.pumpWidget(const MediaQuery(
       data: MediaQueryData(platformBrightness: Brightness.light),
       child: Directionality(
@@ -160,7 +149,7 @@ void main() {
       ),
     ));
     await tester.pump();
-    expect(_gradientOf(tester).colors.first.computeLuminance(), lessThan(0.05));
+    expect(_colorOf(tester).computeLuminance(), lessThan(0.05));
   });
 
   testWidgets('Movement 59 — the attach menu can never clip off the right '
@@ -181,8 +170,8 @@ void main() {
   });
 }
 
-LinearGradient _gradientOf(WidgetTester tester) =>
+Color _colorOf(WidgetTester tester) =>
     ((tester.widget<DecoratedBox>(
-                find.byKey(const ValueKey('ambient-backdrop-gradient'))))
+                find.byKey(const ValueKey('ambient-backdrop-solid'))))
             .decoration as BoxDecoration)
-        .gradient as LinearGradient;
+        .color!;

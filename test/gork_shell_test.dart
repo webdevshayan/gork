@@ -90,8 +90,9 @@ void main() {
         matching: find.byType(GlassContainer),
       ),
     );
-    expect(weather.sigma, 10);
     expect(weather.radius, 28);
+    // Movement 60 — solid surfaces: no sigma/blur parameter anymore.
+    expect(weather.strong, isFalse);
 
     final pill = tester.widget<GlassContainer>(
       find.ancestor(
