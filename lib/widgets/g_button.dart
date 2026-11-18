@@ -33,12 +33,14 @@ class GButton extends StatelessWidget {
         fg = palette.onPrimary;
         break;
       case ButtonVariant.secondary:
-        bg = Colors.transparent;
+        // Movement 60 — solid fill, no transparency on any button.
+        bg = palette.surfaceElevated;
         fg = palette.textPrimary;
         border = Border.all(color: palette.border, width: 1);
         break;
       case ButtonVariant.ghost:
-        bg = Colors.transparent;
+        // Solid too — quieter than secondary, still opaque.
+        bg = palette.surface;
         fg = palette.primary;
         break;
     }

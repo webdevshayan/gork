@@ -180,14 +180,15 @@ class GlassColors {
   /// The current ambient palette (phase + weather neutrals).
   static Palette get _p => resolvedPalette.value;
 
-  /// Translucent glass fill (sits over the ambient gradient). Derived from
-  /// the phase surface so the glass warms and cools with the day.
-  static Color get fill =>
-      _p.surface.withValues(alpha: _dark ? 0.70 : 0.90);
+  /// Movement 60 — SOLID fill, everywhere. The user asked for solid
+  /// background colors on every surface (buttons, drawers, dropdowns,
+  /// modals, alerts, cards): no translucency, no blur dependence. The
+  /// surface tone still follows the resolved palette.
+  static Color get fill => _p.surface;
 
-  /// Same fill, more opaque for primary chrome (input bar, nav pills).
-  static Color get fillStrong =>
-      _p.surface.withValues(alpha: _dark ? 0.80 : 0.95);
+  /// Solid fill for primary chrome (input bar, nav pills) — one step
+  /// elevated so the chrome still reads as chrome.
+  static Color get fillStrong => _p.surfaceElevated;
 
   /// Hairline border — the ambient border color (themed per phase).
   /// Never the old white 0.5 edge.
@@ -209,8 +210,9 @@ class GlassColors {
 
   /// The active nav-tab chip: ink (black) in light mode with a white label —
   /// Movement 54 — and near-white in dark mode with a black label. The active
-  /// tab always inverts against the glass around it so it reads instantly.
-  static Color get chip => _p.primary.withValues(alpha: 0.93);
+  /// tab always inverts against the surface around it so it reads instantly.
+  /// Movement 60: solid, no alpha.
+  static Color get chip => _p.primary;
 
   /// Label on the active chip — black on the near-white chip in dark mode,
   /// white on the ink chip in light mode.

@@ -5,74 +5,53 @@ import '../providers/providers.dart';
 import 'integrations.dart';
 import 'secure_store.dart';
 import 'tasks_store.dart';
+import 'vps_config.dart';
 
 /// Handoff: the phone app and the user's VPS daemon share the task list.
 ///
 /// The daemon (daemon/ in this repo) exposes /health, /tasks, /run and can
 /// push results to the phone via ntfy. This service syncs with it over REST.
-/// An optional shared secret (X-Gork-Secret) protects the daemon endpoints.
+/// The shared secret (X-Gork-Secret) protects the daemon endpoints.
+///
+/// Movement 60: there is ONE VPS setup — this service reads and writes the
+/// same `vps.*` state as chat handoff, the browser agent and the vault
+/// (see [VpsConfig]). No separate daemon URL or secret anywhere.
 class HandoffService {
   final http.Client client;
   final SharedPreferences prefs;
   final SecureStore store;
   final TasksStore tasks;
+  final VpsConfig vps;
 
   HandoffService({
     required this.client,
     required this.prefs,
     required this.store,
     required this.tasks,
-  });
+  }) : vps = VpsConfig(prefs: prefs, store: store);
 
-  static const String kUrl = 'handoff.url';
-  static const String kNtfy = 'handoff.ntfy';
-  static const String kSecret = 'handoff.secret';
-
-  String? get url {
-    final raw = prefs.getString(kUrl) ?? '';
-    if (raw.isEmpty) return null;
-    return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
-  }
+  String? get url => vps.url;
 
   bool get configured => url != null;
 
-  Future<void> setUrl(String value) async {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      await prefs.remove(kUrl);
-    } else {
-      await prefs.setString(kUrl, trimmed);
-    }
-  }
+  /// Kept for API compatibility — writes the ONE VPS connection.
+  Future<void> setUrl(String value) => vps.save(value);
 
-  Future<void> setNtfyTopic(String value) async {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      await prefs.remove(kNtfy);
-    } else {
-      await prefs.setString(kNtfy, trimmed);
-    }
-  }
+  Future<void> setNtfyTopic(String value) => vps.setNtfyTopic(value);
 
-  String? get ntfyTopic => prefs.getString(kNtfy);
+  String? get ntfyTopic => vps.ntfyTopic;
 
-  Future<String?> secret() => store.read(kSecret);
+  Future<String?> secret() => vps.token();
 
-  Future<void> setSecret(String value) async {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      await store.delete(kSecret);
-    } else {
-      await store.write(kSecret, trimmed);
-    }
-  }
+  /// Kept for API compatibility — writes the ONE VPS connection.
+  Future<void> setSecret(String value) => vps.save(url ?? '', token: value);
 
   Future<dynamic> _call(String method, String path,
       {Map<String, dynamic>? body}) async {
     final base = url;
     if (base == null) {
       throw const IntegrationException(
-          'Daemon not configured — set its URL in Cloud Computer');
+          'VPS not configured — set it up once in Cloud Computer');
     }
     final s = await secret();
     return jsonRequest(client, method, Uri.parse('$base$path'),

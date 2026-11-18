@@ -69,24 +69,24 @@ void main() {
     });
   });
 
-  group('GlassColors — the glass switches with the resolved brightness', () {
-    test('dark keeps the glass derived from the neutral dark palette', () {
+  group('GlassColors — solid surfaces that follow the resolved brightness', () {
+    test('dark: fills are the SOLID dark surfaces (no alpha, Movement 60)',
+        () {
       GlassColors.brightness.value = Brightness.dark;
       expect(GlassColors.fill.computeLuminance(), lessThan(0.2));
       expect(GlassColors.text, const Color(0xFFF2F2F2));
-      expect(GlassColors.fill,
-          resolvedPalette.value.surface.withValues(alpha: 0.70));
-      expect(GlassColors.fillStrong,
-          resolvedPalette.value.surface.withValues(alpha: 0.80));
+      expect(GlassColors.fill, resolvedPalette.value.surface);
+      expect(GlassColors.fill.opacity, 1.0,
+          reason: 'solid background — no translucency anywhere');
+      expect(GlassColors.fillStrong, resolvedPalette.value.surfaceElevated);
     });
 
-    test('light mode gets light fills, light borders, dark text', () {
+    test('light mode gets light solid fills, light borders, dark text', () {
       GlassColors.brightness.value = Brightness.light;
-      // Light glass: a bright white fill over the gray backdrop.
+      // Light solid fill: the white surface.
       expect(GlassColors.fill.computeLuminance(), greaterThan(0.7));
-      // Stronger chrome is more opaque, not more luminous — white
-      // luminance is capped at 1.0.
-      expect(GlassColors.fillStrong.alpha, greaterThan(GlassColors.fill.alpha));
+      expect(GlassColors.fill, Palette.light.surface);
+      expect(GlassColors.fillStrong, Palette.light.surfaceElevated);
       // Text tokens are the light palette's — readable on white glass.
       expect(GlassColors.text, Palette.light.textPrimary);
       expect(GlassColors.textDim, Palette.light.textSecondary);

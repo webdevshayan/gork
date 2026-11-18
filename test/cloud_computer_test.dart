@@ -68,8 +68,8 @@ void main() {
         'No endpoint saved.');
   });
 
-  testWidgets('screen renders all three backends and saves config',
-      (tester) async {
+  testWidgets('screen renders all three backends; the VPS card saves the '
+      'ONE connection (vps.url + vps.token)', (tester) async {
     await tester.pumpWidget(
         const MaterialApp(home: CloudComputerScreen()));
     await tester.pumpAndSettle();
@@ -87,26 +87,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('curl -fsSL'), findsOneWidget);
 
-    // Scroll back up to the endpoint field, type the endpoint.
+    // Scroll back up to the VPS fields, fill them in.
     await tester.scrollUntilVisible(
-      find.byKey(const Key('cloud-endpoint')),
+      find.byKey(const Key('vps-url')),
       -300,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byKey(const Key('cloud-endpoint')), 'http://9.9.9.9:8787');
+        find.byKey(const Key('vps-url')), 'http://9.9.9.9:8787');
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('vps-secret')), 'shhh');
     await tester.pumpAndSettle();
 
-    // Scroll down to Save and tap; the controller keeps the typed text.
+    // There is NO separate handoff URL/secret form anymore.
+    expect(find.byKey(const Key('handoff-url')), findsNothing);
+
+    // Scroll to the save button and tap.
     await tester.scrollUntilVisible(
-      find.text('Save'),
+      find.byKey(const ValueKey('vps-save')),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.byKey(const ValueKey('vps-save')));
     await tester.pumpAndSettle();
 
+    // The ONE connection: vps.* — everything reads these.
+    expect(Locator.prefs.getString('vps.url'), 'http://9.9.9.9:8787');
+    expect(await Locator.store.read('vps.token'), 'shhh');
     final saved = Locator.cloudComputer.load();
     expect(saved.endpoint, 'http://9.9.9.9:8787');
     expect(saved.backend, CloudBackend.agentvps);

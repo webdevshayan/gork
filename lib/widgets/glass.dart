@@ -1,19 +1,17 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
 
-/// Gork-style glass primitives — every floating surface in the shell is built
-/// from these. Spec: ClipRRect + BackdropFilter(blur 10) + dark glass fill
-/// + thin light border. Cards use radius 16, pills and input bars use 30.
+/// Gork primitives — every floating surface in the shell is built from
+/// these. Movement 60: the fill is SOLID (surface tone, full opacity, no
+/// backdrop blur) with a thin border. Cards use radius 16, pills and input
+/// bars use 30.
 class GlassContainer extends StatelessWidget {
   const GlassContainer({
     super.key,
     required this.child,
     this.radius = 16,
-    this.opacity = 0.3,
-    this.sigma = 10,
+    this.opacity = 1.0,
     this.padding = EdgeInsets.zero,
     this.margin,
     this.width,
@@ -23,8 +21,9 @@ class GlassContainer extends StatelessWidget {
 
   final Widget child;
   final double radius;
+
+  /// Kept for call-site compatibility; solid fills ignore it.
   final double opacity;
-  final double sigma;
   final EdgeInsetsGeometry padding;
 
   /// Outer margin — wraps the whole container so callers keep one widget.
@@ -32,7 +31,7 @@ class GlassContainer extends StatelessWidget {
   final double? width;
   final double? height;
 
-  /// More opaque dark chrome (input bar, top bar pills).
+  /// Slightly elevated solid chrome (input bar, top bar pills).
   final bool strong;
 
   @override
@@ -41,25 +40,19 @@ class GlassContainer extends StatelessWidget {
       valueListenable: GlassColors.brightness,
       builder: (context, _, __) => KeyedSubtree(
         key: ValueKey('glass-${GlassColors.brightness.value}'),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-            child: Container(
-              width: width,
-              height: height,
-              padding: padding,
-              decoration: BoxDecoration(
-                color: strong ? GlassColors.fillStrong : GlassColors.fill,
-                borderRadius: BorderRadius.circular(radius),
-                border: Border.all(
-                  color: GlassColors.border,
-                  width: 1,
-                ),
-              ),
-              child: child,
+        child: Container(
+          width: width,
+          height: height,
+          padding: padding,
+          decoration: BoxDecoration(
+            color: strong ? GlassColors.fillStrong : GlassColors.fill,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: GlassColors.border,
+              width: 1,
             ),
           ),
+          child: child,
         ),
       ),
     );

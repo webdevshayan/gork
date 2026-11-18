@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/ambient.dart';
 import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 
@@ -14,9 +13,9 @@ Future<void> initProfilePhoto() async {
 }
 
 /// Full-screen ambient backdrop. Movement 59: the theme is GRAY and BLACK,
-/// nothing else — the backdrop is a barely-there vertical gray fade that
-/// follows the auto resolution (light by day, dark by night). No photos, no
-/// weather washes, no phase tints.
+/// nothing else. Movement 60: SOLID — the flat palette background, no
+/// gradient, no wash. It follows the resolved brightness (the shell's
+/// manual-override-aware resolution).
 class AmbientBackdrop extends StatelessWidget {
   const AmbientBackdrop({super.key});
 
@@ -30,25 +29,15 @@ class AmbientBackdrop extends StatelessWidget {
     return ValueListenableBuilder<Brightness>(
       valueListenable: GlassColors.brightness,
       builder: (context, _, __) {
-        // Inside the app the shell publishes the resolution; standalone
-        // (tests, early frames) resolve from the clock directly.
-        final Brightness platform =
-            MediaQuery.platformBrightnessOf(context);
-        final Brightness effective = resolveBrightness(
-            platform, clock(),
-            lat: Locator.bound ? Locator.ambientLat : null,
-            lon: Locator.bound ? Locator.ambientLon : null);
-        final bool dark = effective == Brightness.dark;
+        final bool dark = GlassColors.brightness.value == Brightness.dark;
         return SizedBox.expand(
           key: const ValueKey('ambient-backdrop'),
           child: DecoratedBox(
-            key: const ValueKey('ambient-backdrop-gradient'),
+            key: const ValueKey('ambient-backdrop-solid'),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: ambientGradient(dark),
-              ),
+              color: dark
+                  ? const Color(0xFF060607)
+                  : const Color(0xFFF1F2F3),
             ),
           ),
         );

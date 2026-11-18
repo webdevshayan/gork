@@ -5,14 +5,22 @@ import '../constants/design_tokens.dart';
 import '../services/cloud_computer_store.dart';
 import '../services/handoff_service.dart';
 import '../services/locator.dart';
+import '../services/secure_store.dart';
 import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
 
-/// Cloud Computer settings: pick a backend, paste credentials, test it.
-/// The actual browser agent runs later; connection + health check work today.
+/// Cloud Computer settings: pick a backend, configure it, test it.
+///
+/// Movement 60 — ONE VPS setup. The self-hosted agent backend configures
+/// THE VPS connection (`vps.url` + shared secret) that everything shares:
+/// chat handoff, scheduled tasks, the browser agent, the sealed vault and
+/// the credentials upload. No separate daemon URL or secret anywhere else.
 class CloudComputerScreen extends StatefulWidget {
-  const CloudComputerScreen({super.key});
+  const CloudComputerScreen({super.key, this.store});
+
+  /// Injectable for tests; defaults to the keystore-backed store.
+  final SecureStore? store;
 
   @override
   State<CloudComputerScreen> createState() => _CloudComputerScreenState();
@@ -22,8 +30,13 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
   CloudComputerConfig _config = CloudComputerConfig(
       backend: CloudBackend.agentvps, endpoint: '', apiKey: '', updatedAt: 0);
   String? _status;
+  String? _handoffStatus;
   late final TextEditingController _endpointController;
   late final TextEditingController _keyController;
+  late final TextEditingController _vpsUrlController;
+  final TextEditingController _vpsSecretController = TextEditingController();
+
+  SecureStore get _store => widget.store ?? Locator.store;
 
   @override
   void initState() {
@@ -31,12 +44,15 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
     _config = Locator.cloudComputer.load();
     _endpointController = TextEditingController(text: _config.endpoint);
     _keyController = TextEditingController(text: _config.apiKey);
+    _vpsUrlController = TextEditingController(text: Locator.handoff.url ?? '');
   }
 
   @override
   void dispose() {
     _endpointController.dispose();
     _keyController.dispose();
+    _vpsUrlController.dispose();
+    _vpsSecretController.dispose();
     super.dispose();
   }
 
@@ -47,11 +63,49 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
 
   Future<void> _test() async {
     setState(() => _status = 'Testing…');
-    final error = await pingCloudComputer(_config, Locator.httpClient);
+    // AgentVPS IS the gork daemon — test it with the real shared secret.
+    final error = _config.backend == CloudBackend.agentvps
+        ? await _pingHandoff()
+        : await pingCloudComputer(_config, Locator.httpClient);
     setState(() {
       _status = error == null
           ? 'Connection OK — backend reachable.'
           : 'Failed: $error';
+    });
+  }
+
+  Future<String?> _pingHandoff() async {
+    try {
+      await Locator.handoff.ping();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst(RegExp(r'^(IntegrationException|Exception):\s*'), '');
+    }
+  }
+
+  /// Saves the ONE VPS connection: address + shared secret. An empty secret
+  /// keeps the saved one.
+  Future<void> _saveVps() async {
+    final url = _vpsUrlController.text.trim();
+    if (url.isEmpty) {
+      setState(() => _status = 'Enter the VPS address first (e.g. '
+          'http://123.45.67.89:8787).');
+      return;
+    }
+    await Locator.handoff.vps.save(url,
+        token: _vpsSecretController.text.trim().isEmpty
+            ? null
+            : _vpsSecretController.text.trim());
+    // Keep the picker config coherent — same server.
+    await _persist(_config.copyWith(
+      endpoint: url,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    ));
+    _vpsSecretController.clear();
+    setState(() {
+      _status = 'Connection OK — saved. Chat, tasks, browser work, vault '
+          'and credentials all use this VPS.';
+      _vpsUrlController.text = url;
     });
   }
 
@@ -62,6 +116,7 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
     final keyController = _keyController;
     const installCommand =
         'curl -fsSL https://raw.githubusercontent.com/webdevshayan/gork/main/daemon/install.sh | bash';
+    final isAgentVps = _config.backend == CloudBackend.agentvps;
 
     return Screen(
       title: 'Cloud Computer',
@@ -125,39 +180,84 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
                 ),
               ),
             ),
-          if (_config.needsEndpoint) ...[
-            Text('Endpoint URL',
-                style: TypeScale.caption(color: palette.textSecondary)),
-            const SizedBox(height: Spacing.xs),
-            TextField(
-              key: const Key('cloud-endpoint'),
-              controller: endpointController,
-              style: TypeScale.code(color: palette.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'http://123.45.67.89:8787',
-                border: OutlineInputBorder(),
+          if (isAgentVps) ...[
+            GCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Your VPS — one setup for everything',
+                      style: TypeScale.heading(color: palette.textPrimary)),
+                  const SizedBox(height: Spacing.xs),
+                  Text(
+                    'This address and secret are shared by chat handoff, '
+                    'scheduled tasks, the browser agent, the sealed vault '
+                    'and the credentials upload. Set it once — done.',
+                    style:
+                        TypeScale.caption(color: palette.textSecondary),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  Text('VPS address',
+                      style: TypeScale.caption(color: palette.textSecondary)),
+                  const SizedBox(height: Spacing.xs),
+                  TextField(
+                    key: const Key('vps-url'),
+                    controller: _vpsUrlController,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: TextInputType.url,
+                    style: TypeScale.code(color: palette.textPrimary),
+                    decoration: const InputDecoration(
+                      hintText: 'http://123.45.67.89:8787',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  Text('Shared secret (X-Gork-Secret, optional)',
+                      style: TypeScale.caption(color: palette.textSecondary)),
+                  const SizedBox(height: Spacing.xs),
+                  TextField(
+                    key: const Key('vps-secret'),
+                    controller: _vpsSecretController,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    style: TypeScale.code(color: palette.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: Locator.handoff.configured
+                          ? '(saved — leave empty to keep)'
+                          : 'the daemon\'s shared secret',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  GButton(
+                    key: const ValueKey('vps-save'),
+                    label: 'Save VPS connection',
+                    onPressed: _saveVps,
+                    expands: true,
+                  ),
+                  const SizedBox(height: Spacing.sm),
+                  GButton(
+                    label: 'Test connection',
+                    variant: ButtonVariant.secondary,
+                    expands: true,
+                    onPressed: Locator.handoff.configured ? _test : null,
+                  ),
+                  if (_status != null) ...[
+                    const SizedBox(height: Spacing.md),
+                    Text(
+                      _status!,
+                      style: TypeScale.bodySmall(
+                        color: _status!.startsWith('Connection OK')
+                            ? palette.success
+                            : palette.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: Spacing.md),
-          ],
-          if (_config.needsApiKey) ...[
-            Text('API key (stored only on this device)',
-                style: TypeScale.caption(color: palette.textSecondary)),
-            const SizedBox(height: Spacing.xs),
-            TextField(
-              controller: keyController,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              style: TypeScale.code(color: palette.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'paste your key',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: Spacing.md),
-          ],
-          if (_config.backend == CloudBackend.agentvps) ...[
             GCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,46 +287,81 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
             ),
             const SizedBox(height: Spacing.md),
           ],
-          GButton(
-            label: 'Save',
-            expands: true,
-            onPressed: () => _persist(_config.copyWith(
-              endpoint: endpointController.text.trim(),
-              apiKey: keyController.text.trim(),
-              updatedAt: DateTime.now().millisecondsSinceEpoch,
-            )),
-          ),
-          const SizedBox(height: Spacing.sm),
-          GButton(
-            label: 'Test connection',
-            variant: ButtonVariant.secondary,
-            expands: true,
-            onPressed: _config.isConfigured ? _test : null,
-          ),
-          if (_status != null) ...[
-            const SizedBox(height: Spacing.md),
-            Text(
-              _status!,
-              style: TypeScale.bodySmall(
-                color: _status!.startsWith('Connection OK')
-                    ? palette.success
-                    : palette.textSecondary,
+          if (!isAgentVps && _config.needsEndpoint) ...[
+            Text('Endpoint URL',
+                style: TypeScale.caption(color: palette.textSecondary)),
+            const SizedBox(height: Spacing.xs),
+            TextField(
+              key: const Key('cloud-endpoint'),
+              controller: endpointController,
+              style: TypeScale.code(color: palette.textPrimary),
+              decoration: const InputDecoration(
+                hintText: 'http://123.45.67.89:8787',
+                border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: Spacing.md),
           ],
-          const SizedBox(height: Spacing.xl),
+          if (!isAgentVps && _config.needsApiKey) ...[
+            Text('API key (stored only on this device)',
+                style: TypeScale.caption(color: palette.textSecondary)),
+            const SizedBox(height: Spacing.xs),
+            TextField(
+              controller: keyController,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: TypeScale.code(color: palette.textPrimary),
+              decoration: const InputDecoration(
+                hintText: 'paste your key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+          ],
+          if (!isAgentVps) ...[
+            GButton(
+              label: 'Save',
+              expands: true,
+              onPressed: () => _persist(_config.copyWith(
+                endpoint: endpointController.text.trim(),
+                apiKey: keyController.text.trim(),
+                updatedAt: DateTime.now().millisecondsSinceEpoch,
+              )),
+            ),
+            const SizedBox(height: Spacing.sm),
+            GButton(
+              label: 'Test connection',
+              variant: ButtonVariant.secondary,
+              expands: true,
+              onPressed: _config.isConfigured ? _test : null,
+            ),
+            if (_status != null) ...[
+              const SizedBox(height: Spacing.md),
+              Text(
+                _status!,
+                style: TypeScale.bodySmall(
+                  color: _status!.startsWith('Connection OK')
+                      ? palette.success
+                      : palette.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: Spacing.xl),
+          ],
           _buildHandoff(context, palette),
         ],
       ),
     );
   }
 
+  /// Scheduled tasks ride the SAME VPS connection — status + sync actions
+  /// only. There are no separate daemon credentials anywhere.
   Widget _buildHandoff(BuildContext context, Palette palette) {
     final handoff = Locator.handoff;
-    final urlController = TextEditingController(text: handoff.url ?? '');
-    final secretController = TextEditingController();
     final ntfyController =
         TextEditingController(text: handoff.ntfyTopic ?? '');
+    final connected = handoff.configured;
 
     return GCard(
       child: Column(
@@ -236,40 +371,13 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
               style: TypeScale.heading(color: palette.textPrimary)),
           const SizedBox(height: Spacing.xs),
           Text(
-            'Point gork at the gork-daemon running on your own VPS to keep '
-            'tasks running while this phone sleeps. Install it from the '
-            'command above, then sync.',
+            connected
+                ? 'Connected to ${handoff.url} — the same server as chat, '
+                    'browser work, the vault and the credentials upload. '
+                    'One setup, nothing to duplicate.'
+                : 'Keep tasks running while this phone sleeps. Set up the '
+                    'VPS above, install the daemon, then sync.',
             style: TypeScale.caption(color: palette.textSecondary),
-          ),
-          const SizedBox(height: Spacing.md),
-          Text('Daemon URL',
-              style: TypeScale.caption(color: palette.textSecondary)),
-          const SizedBox(height: Spacing.xs),
-          TextField(
-            key: const Key('handoff-url'),
-            controller: urlController,
-            style: TypeScale.code(color: palette.textPrimary),
-            decoration: const InputDecoration(
-              hintText: 'http://123.45.67.89:8787',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: Spacing.md),
-          Text('Shared secret (optional, X-Gork-Secret)',
-              style: TypeScale.caption(color: palette.textSecondary)),
-          const SizedBox(height: Spacing.xs),
-          TextField(
-            controller: secretController,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            style: TypeScale.code(color: palette.textPrimary),
-            decoration: InputDecoration(
-              hintText: handoff.configured
-                  ? '(saved — leave empty to keep)'
-                  : 'set a secret',
-              border: const OutlineInputBorder(),
-            ),
           ),
           const SizedBox(height: Spacing.md),
           Text('ntfy topic for push results (optional)',
@@ -283,28 +391,31 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: Spacing.lg),
+          const SizedBox(height: Spacing.md),
           GButton(
-            label: 'Save handoff settings',
+            label: 'Save ntfy topic',
             onPressed: () async {
-              await handoff.setUrl(urlController.text);
-              if (secretController.text.trim().isNotEmpty) {
-                await handoff.setSecret(secretController.text);
-              }
               await handoff.setNtfyTopic(ntfyController.text);
               if (mounted) {
-                setState(() {});
+                setState(() {
+                  _handoffStatus = 'ntfy topic saved.';
+                });
               }
             },
             expands: true,
           ),
-          const SizedBox(height: Spacing.sm),
+          if (_handoffStatus != null) ...[
+            const SizedBox(height: Spacing.sm),
+            Text(_handoffStatus!,
+                style: TypeScale.caption(color: palette.textSecondary)),
+          ],
+          const SizedBox(height: Spacing.lg),
           Row(children: [
             Expanded(
               child: GButton(
                 label: 'Test',
                 variant: ButtonVariant.secondary,
-                onPressed: handoff.configured
+                onPressed: connected
                     ? () async {
                         try {
                           final msg = await handoff.ping();
@@ -321,7 +432,7 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
               child: GButton(
                 label: 'Sync now',
                 variant: ButtonVariant.secondary,
-                onPressed: handoff.configured
+                onPressed: connected
                     ? () async {
                         try {
                           final msg =
@@ -340,7 +451,7 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
           GButton(
             label: 'Run due tasks on daemon',
             variant: ButtonVariant.ghost,
-            onPressed: handoff.configured
+            onPressed: connected
                 ? () async {
                     try {
                       _showHandoff(await handoff.triggerRun(), palette.success);

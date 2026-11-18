@@ -64,7 +64,8 @@ void main() {
     await pumpShell(tester);
 
     expect(find.byKey(const ValueKey('ambient-backdrop')), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsWidgets);
+    // Movement 60 — solid surfaces: no backdrop blur anywhere.
+    expect(find.byType(BackdropFilter), findsNothing);
     // Reference Home has NO identity header — that lives on the menu surface.
     expect(find.text(kDefaultName), findsNothing);
     expect(find.text(kDefaultEmail), findsNothing);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/ambient.dart';
 import '../services/locator.dart';
 import '../services/panels_store.dart';
 import '../services/weather_service.dart';
@@ -7,10 +8,10 @@ import '../widgets/glass.dart';
 import 'panels_screen.dart';
 import '../constants/design_tokens.dart';
 
-/// Home tab, pixel-matched to the reference: live weather card (outer glass
-/// card + two more-opaque inner tiles: conditions / sunset), the
-/// "Create a new panel" pill, then any manual panels. No header — identity
-/// lives on the menu surface.
+/// Home tab: live weather card (outer card + two full-width inner tiles:
+/// conditions / sunset), a theme toggle (Movement 60 — the theme is
+/// TOGGLEABLE again), the "Create a new panel" pill, then any manual
+/// panels. No header — identity lives on the menu surface.
 class GorkHome extends StatefulWidget {
   const GorkHome({super.key});
 
@@ -21,6 +22,12 @@ class GorkHome extends StatefulWidget {
 class _GorkHomeState extends State<GorkHome> {
   WeatherNow? _weather;
   bool _weatherFailed = false;
+
+  /// The persisted sunset override ('HH:mm'), set by tapping the tile.
+  static const String kSunsetKey = 'home.sunset';
+
+  /// The persisted theme choice: '' | 'auto' | 'light' | 'dark'.
+  static const String kThemeKey = 'ui.theme';
 
   @override
   void initState() {
@@ -40,9 +47,12 @@ class _GorkHomeState extends State<GorkHome> {
     }
   }
 
-  /// Sunset tile value: computed locally from the coordinates (no network).
-  /// Falls back to the reference copy when the clock data is unavailable.
+  /// Sunset tile value: the user's override when they edited it, otherwise
+  /// computed locally from the coordinates (no network). Falls back to the
+  /// reference copy when the clock data is unavailable.
   String get _sunsetLabel {
+    final override = Locator.prefs.getString(kSunsetKey);
+    if (override != null && override.isNotEmpty) return _formatTime(override);
     if (_weatherFailed) return '5:40 PM';
     try {
       final dt = sunsetFor(
@@ -58,6 +68,121 @@ class _GorkHomeState extends State<GorkHome> {
       return '5:40 PM';
     }
   }
+
+  bool get _sunsetOverridden =>
+      (Locator.prefs.getString(kSunsetKey) ?? '').isNotEmpty;
+
+  /// Accepts '17:40', '5:40 PM', '5:40pm' … and normalizes to 'HH:mm'.
+  String? _parseTime(String input) {
+    final t = input.trim().toLowerCase();
+    final ampm = RegExp(r'^(\d{1,2}):(\d{2})\s*(am|pm)$').firstMatch(t);
+    if (ampm != null) {
+      var h = int.parse(ampm.group(1)!);
+      final m = int.parse(ampm.group(2)!);
+      if (m > 59 || h < 1 || h > 12) return null;
+      if (ampm.group(3) == 'pm' && h != 12) h += 12;
+      if (ampm.group(3) == 'am' && h == 12) h = 0;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+    final h24 = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(t);
+    if (h24 != null) {
+      final h = int.parse(h24.group(1)!);
+      final m = int.parse(h24.group(2)!);
+      if (h > 23 || m > 59) return null;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+    return null;
+  }
+
+  /// 'HH:mm' → 'h:MM AM/PM' for display.
+  String _formatTime(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return hhmm;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null || h > 23 || m > 59) return hhmm;
+    final hour12 = h % 12 == 0 ? 12 : h % 12;
+    return '$hour12:${m.toString().padLeft(2, '0')} ${h < 12 ? 'AM' : 'PM'}';
+  }
+
+  Future<void> _editSunset(BuildContext context) async {
+    final controller =
+        TextEditingController(text: _sunsetLabel);
+    String? error;
+    final saved = await showDialog<Object>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Edit sunset time'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                key: const ValueKey('sunset-input'),
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.datetime,
+                decoration: InputDecoration(
+                  hintText: '5:40 PM or 17:40',
+                  errorText: error,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your edit is kept on this device and wins over the '
+                'computed time.',
+                style: TextStyle(
+                    fontSize: 12, color: GlassColors.textDim),
+              ),
+            ],
+          ),
+          actions: [
+            if (_sunsetOverridden)
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop('reset'),
+                child: const Text('Use computed'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final parsed = _parseTime(controller.text);
+                if (parsed == null) {
+                  setDialogState(() => error =
+                      'That is not a time — try 5:40 PM or 17:40.');
+                  return;
+                }
+                Navigator.of(dialogContext).pop(parsed);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (saved == null || saved == false) return;
+    if (saved == 'reset') {
+      await Locator.prefs.remove(kSunsetKey);
+    } else if (saved is String) {
+      await Locator.prefs.setString(kSunsetKey, saved);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setTheme(String mode) async {
+    await Locator.prefs.setString(kThemeKey, mode);
+    // The app shell listens to the ambient version — nudge it so the new
+    // choice rebuilds MaterialApp, the glass colors and the backdrop.
+    ambient.refresh();
+    if (mounted) setState(() {});
+  }
+
+  String get _themeChoice =>
+      Locator.prefs.getString(kThemeKey) ?? 'auto';
 
   String get _conditionsLabel => _weather?.label ?? 'Broken Clouds';
 
@@ -80,7 +205,11 @@ class _GorkHomeState extends State<GorkHome> {
           conditions: _conditionsLabel,
           temp: _tempLabel,
           sunset: _sunsetLabel,
+          overridden: _sunsetOverridden,
+          onEditSunset: () => _editSunset(context),
         ),
+        const SizedBox(height: 16),
+        _ThemeToggle(choice: _themeChoice, onPick: _setTheme),
         const SizedBox(height: 16),
         _CreatePanelButton(onTap: () => _push(context, const PanelsScreen())),
         for (final panel in manualPanels) ...[
@@ -96,8 +225,10 @@ class _GorkHomeState extends State<GorkHome> {
   }
 }
 
-/// Reference weather panel: outer glass card (radius 28) with the location
-/// header, and two inner (more opaque, radius 24) tiles stacked vertically.
+/// Reference weather panel: outer solid card (radius 28) with the location
+/// header, and two inner solid tiles stacked vertically — full width
+/// (Movement 60: the inner tiles stretch edge to edge inside the card).
+/// The sunset tile is editable: tap it to set or reset the time.
 class _WeatherCard extends StatelessWidget {
   const _WeatherCard({
     required this.weather,
@@ -106,6 +237,8 @@ class _WeatherCard extends StatelessWidget {
     required this.conditions,
     required this.temp,
     required this.sunset,
+    required this.overridden,
+    required this.onEditSunset,
   });
 
   final WeatherNow? weather;
@@ -114,6 +247,8 @@ class _WeatherCard extends StatelessWidget {
   final String conditions;
   final String temp;
   final String sunset;
+  final bool overridden;
+  final VoidCallback onEditSunset;
 
   @override
   Widget build(BuildContext context) {
@@ -122,10 +257,9 @@ class _WeatherCard extends StatelessWidget {
       onTap: failed ? onRetry : null,
       child: GlassContainer(
         radius: 28,
-        opacity: 0.4,
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
@@ -147,8 +281,9 @@ class _WeatherCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             GlassContainer(
+              key: const ValueKey('weather-conditions-tile'),
               radius: 24,
-              opacity: 0.55,
+              strong: true,
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,27 +308,46 @@ class _WeatherCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            GlassContainer(
-              radius: 24,
-              opacity: 0.55,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sunset',
-                    style: TextStyle(fontSize: 16, color: GlassColors.textDim),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    sunset,
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w500,
-                      color: GlassColors.text,
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onEditSunset,
+              child: GlassContainer(
+                key: const ValueKey('weather-sunset-tile'),
+                radius: 24,
+                strong: true,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Sunset',
+                          style: TextStyle(
+                              fontSize: 16, color: GlassColors.textDim),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          overridden
+                              ? Icons.edit
+                              : Icons.edit_outlined,
+                          size: 16,
+                          color: GlassColors.textFaint,
+                          semanticLabel: 'Edit sunset time',
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      sunset,
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w500,
+                        color: GlassColors.text,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -203,7 +357,78 @@ class _WeatherCard extends StatelessWidget {
   }
 }
 
-/// Full-width frosted pill: "+ Create a new panel".
+/// Movement 60 — the theme is the user's choice again: Auto (the sun
+/// decides), Light or Dark. The choice persists in 'ui.theme' and rebuilds
+/// the whole shell immediately.
+class _ThemeToggle extends StatelessWidget {
+  const _ThemeToggle({required this.choice, required this.onPick});
+
+  final String choice;
+  final void Function(String mode) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      radius: 28,
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          for (final (i, option) in
+              const [('auto', 'Auto'), ('light', 'Light'), ('dark', 'Dark')]
+                  .indexed) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                key: ValueKey('theme-${option.$1}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onPick(option.$1),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: choice == option.$1
+                        ? GlassColors.chip
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        switch (option.$1) {
+                          'light' => Icons.light_mode_outlined,
+                          'dark' => Icons.dark_mode_outlined,
+                          _ => Icons.auto_awesome_outlined,
+                        },
+                        size: 16,
+                        color: choice == option.$1
+                            ? GlassColors.textOnChip
+                            : GlassColors.textDim,
+                        semanticLabel: 'Theme ${option.$2}',
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        option.$2,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: choice == option.$1
+                              ? GlassColors.textOnChip
+                              : GlassColors.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width pill: "+ Create a new panel".
 class _CreatePanelButton extends StatelessWidget {
   const _CreatePanelButton({required this.onTap});
 
@@ -213,7 +438,6 @@ class _CreatePanelButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassContainer(
       radius: 30,
-      opacity: 0.35,
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
