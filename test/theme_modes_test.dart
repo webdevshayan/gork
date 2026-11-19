@@ -128,14 +128,31 @@ void main() {
     });
   });
 
-  group('the theme system is gone', () {
-    testWidgets('the menu no longer offers a Theme entry', (tester) async {
+  group('Movement 65 — theme is a screen of its own', () {
+    testWidgets('the Theme row pushes the theme preferences screen',
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       Locator.bind(prefs: await SharedPreferences.getInstance());
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
-      expect(find.text('Theme'), findsNothing,
-          reason: 'the picker page was removed — auto is the only mode');
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('menu-theme')),
+        100.0,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // scrollUntilVisible stops at the first pixel of visibility — bring
+      // the row well into view or the tap lands on the list edge.
+      await tester.drag(
+          find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('menu-theme')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
+      expect(find.text('Appearance'), findsOneWidget);
+      // Picking persists the SAME 'ui.theme' pref every version wrote.
+      await tester.tap(find.byKey(const ValueKey('theme-light')));
+      await tester.pumpAndSettle();
+      expect(Locator.maybePrefs?.getString('ui.theme'), 'light');
     });
   });
 

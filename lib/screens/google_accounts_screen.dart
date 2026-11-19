@@ -94,33 +94,27 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
 
   /// THE one-tap connect: consent in the browser once, every tool bound,
   /// refresh token sealed on the VPS. No token pasting, no playground.
-  Future<void> _connectWithGoogle() async {
+  ///
+  /// Movement 65 — the loopback flow is tried first (it needs nothing but
+  /// the already-registered redirect URI). If the browser never called back
+  /// — Android killed the process while it was fullscreen, the classic "I
+  /// signed in and NOTHING happened" — the user is offered the deep-link
+  /// flow, which survives process death.
+  Future<void> _connectWithGoogle() => _connectFlow(deepLink: false);
+
+  Future<void> _connectFlow({required bool deepLink}) async {
     setState(() {
       _oauthBusy = true;
-      _oauthStatus = 'Opening the Google sign-in…';
+      _oauthStatus = deepLink
+          ? 'Waiting for Google to send you back into the app…'
+          : 'Opening the Google sign-in…';
     });
     try {
-      final account = await _oauth.connect();
+      final account = deepLink
+          ? await _oauth.connectViaDeepLink()
+          : await _oauth.connect();
       if (!mounted) return;
-      final tools = (account['tools'] as List?)?.join(', ') ?? 'none';
-      final summary =
-          'Connected ${account['name']} (${account['email']}) — $tools';
-      // Movement 64 — the Google identity seeds the profile: the email is
-      // Google's (read-only everywhere), the name pre-fills and stays
-      // editable on the profile pages.
-      await saveProfile(
-        name: (account['name'] as String?) ?? profileName.value,
-        email: (account['email'] as String?) ?? profileEmail.value,
-      );
-      widget.report?.call(summary);
-      setState(() {
-        _oauthBusy = false;
-        _oauthStatus = null;
-      });
-      _reload();
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(summary)));
+      await _handleConnected(account);
     } catch (e) {
       if (!mounted) return;
       final message = e
@@ -131,9 +125,86 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
         _oauthBusy = false;
         _oauthStatus = null;
       });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(message)));
+      // The deep-link rescue applies only when the loopback attempt got as
+      // far as the browser (not a config problem, not a user cancel).
+      final rescueable = !deepLink &&
+          !message.contains('cancelled') &&
+          !message.contains('No VPS') &&
+          !message.contains('no credentials.json');
+      if (rescueable) {
+        await _offerDeepLinkRescue(message);
+      } else {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
+      }
+    }
+  }
+
+  /// Success path shared by both redirect flows: seed the profile from the
+  /// Google identity (Movement 64) and announce the tools that landed.
+  Future<void> _handleConnected(Map<String, dynamic> account) async {
+    final tools = (account['tools'] as List?)?.join(', ') ?? 'none';
+    final summary =
+        'Connected ${account['name']} (${account['email']}) — $tools';
+    // Movement 64 — the Google identity seeds the profile: the email is
+    // Google's (read-only everywhere), the name pre-fills and stays
+    // editable on the profile pages.
+    await saveProfile(
+      name: (account['name'] as String?) ?? profileName.value,
+      email: (account['email'] as String?) ?? profileEmail.value,
+    );
+    widget.report?.call(summary);
+    setState(() {
+      _oauthBusy = false;
+      _oauthStatus = null;
+    });
+    _reload();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(summary)));
+  }
+
+  /// The "signed in, never came back" rescue: explain WHY (Android killed
+  /// the app while the browser was open), name the one Console edit, and
+  /// offer the deep-link flow that survives it.
+  Future<void> _offerDeepLinkRescue(String message) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: GlassColors.fill,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(RadiusTokens.lg),
+        ),
+        title: Text('The sign-in never came back',
+            style: TextStyle(color: GlassColors.text)),
+        content: Text(
+          '$message\n\n'
+          'This happens when Android closes gork while the browser is '
+          'open — the sign-in listener died with it. The deep-link '
+          'redirect survives: Google hands the code straight to the app.\n\n'
+          'One-time, if not done yet — Cloud Console → Credentials → your '
+          'OAuth client → Authorized redirect URIs, add exactly:\n'
+          '${GoogleOAuthService.kDeepLinkUri}',
+          style: TextStyle(height: 1.4, color: GlassColors.textDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text('Close',
+                style: TextStyle(color: GlassColors.textDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('Sign in with deep link',
+                style: TextStyle(color: GlassColors.text)),
+          ),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      await _connectFlow(deepLink: true);
     }
   }
 
@@ -512,8 +583,9 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                 'under Test users.',
             'Credentials → Create credentials → OAuth client ID → '
                 'Web application.',
-            'Authorized redirect URI — exactly: '
-                '${GoogleOAuthService.kRedirectUri}',
+            'Authorized redirect URIs — BOTH, exactly: '
+                '${GoogleOAuthService.kRedirectUri} and '
+                '${GoogleOAuthService.kDeepLinkUri}',
             'Download the JSON and upload it below.',
           ].indexed) ...[
             Padding(

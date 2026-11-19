@@ -12,9 +12,70 @@ import java.io.File
 /// Hands the downloaded update APK to the system package installer.
 /// The only install path is the official system dialog: the app can request
 /// the per-app "Install unknown apps" setting, but never flips it itself.
+///
+/// Movement 65 — also the Google deep-link receiver: the OAuth redirect
+/// `dev.shayan.gork:/oauth2redirect?code=…` arrives here as an intent
+/// (singleTop → onNewIntent when warm, onCreate when the process was
+/// killed in the browser). The link is buffered with a monotonically
+/// increasing id; Dart pulls it through the gork/applink channel.
 class MainActivity : FlutterActivity() {
+    companion object {
+        @Volatile var applinkId: Int = 0
+        @Volatile var applinkUri: String? = null
+        @Volatile var applinkResult: MethodChannel.Result? = null
+    }
+
+    private var applinkChannel: MethodChannel? = null
+
+    /// Buffers a gork deep link and answers a parked [take] at once.
+    fun captureAppLink(uri: String?) {
+        if (uri == null || !uri.startsWith("dev.shayan.gork:")) return
+        applinkId += 1
+        applinkUri = uri
+        val parked = applinkResult
+        applinkResult = null
+        parked?.success(mapOf("id" to applinkId, "uri" to uri))
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Cold start: the deep link that STARTED this process (the app died
+        // in the browser mid-sign-in) is the launch intent's data.
+        captureAppLink(intent?.data?.toString())
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        captureAppLink(intent.data?.toString())
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        applinkChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, "gork/applink"
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "take" -> {
+                        val lastSeen = call.argument<Int>("lastSeenId") ?: 0
+                        if (applinkUri != null && applinkId > lastSeen) {
+                            result.success(
+                                mapOf("id" to applinkId, "uri" to applinkUri)
+                            )
+                        } else {
+                            // Nothing new yet — park the result; the next
+                            // onNewIntent/captureAppLink answers it.
+                            applinkResult = result
+                        }
+                    }
+                    "cancel" -> {
+                        applinkResult = null
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "gork/installer")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

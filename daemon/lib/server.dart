@@ -338,13 +338,59 @@ Router buildRouter(Daemon daemon,
   // message is durable the moment the phone gets its id.
   Future<void> jobChain = Future.value();
 
+  /// Movement 65 — the chat persona. The reply must feel like a person who
+  /// just read the whole thread on their phone: it SEES everything the user
+  /// sent (including the messages typed while the previous reply was still
+  /// being written — they arrive as one batch, each line a separate text)
+  /// and answers once, naturally. History comes from [conversationHistory].
+  const String chatSystemPrompt =
+      "You are gork, the user's personal assistant on their own VPS — and "
+      'you come across like a real person reading messages on your phone: '
+      'warm, direct, brief. Never announce that you are an AI and never '
+      'narrate mechanics. Markdown is fine (short lists, code, tables). '
+      'When one message from the user contains several lines, those are '
+      'separate texts they typed in quick succession — often while your '
+      'previous reply was still being written. Read them all together and '
+      'answer once, the way a person would after reading the whole thread: '
+      'react to what changed between the lines instead of answering each '
+      'line in isolation, and if something they added makes an earlier '
+      'question moot, say so and answer the latest version.';
+
+  /// The conversation so far for [job]: every earlier job in the same
+  /// conversation, oldest first — the user's text, and for completed jobs
+  /// the assistant's reply. Failed jobs contribute only their user text
+  /// (the exception string is never spoken as if it were the assistant's
+  /// words). Capped at the last 40 turns to bound the request size.
+  List<({String role, String content})> conversationHistory(
+      JobStore store, AgentJob job) {
+    final turns = <({String role, String content})>[];
+    final prior = store
+        .all()
+        .where((j) =>
+            j.conversationId == job.conversationId &&
+            j.id != job.id &&
+            j.createdAt <= job.createdAt)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    for (final j in prior) {
+      if (j.text.trim().isNotEmpty) {
+        turns.add((role: 'user', content: j.text));
+      }
+      final reply = j.reply;
+      if (j.status == 'done' && reply != null && reply.trim().isNotEmpty) {
+        turns.add((role: 'assistant', content: reply));
+      }
+    }
+    return turns.length <= 40 ? turns : turns.sublist(turns.length - 40);
+  }
+
   void processJob(AgentJob job) {
     jobChain = jobChain.then((_) async {
       try {
         await jobStore!.save(job.copyWith(status: 'running'));
         final reply = await daemon.llm.call(job.text,
-            system: 'You are gork, the user\'s assistant running on their '
-                'own VPS. Answer directly and briefly.');
+            system: chatSystemPrompt,
+            history: conversationHistory(jobStore!, job));
         await jobStore.save(job.copyWith(
             status: 'done', reply: reply, finishedAt: daemon.clock().millisecondsSinceEpoch));
         // The lock-screen summary: first lines of the reply, clipped.

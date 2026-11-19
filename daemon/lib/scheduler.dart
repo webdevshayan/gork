@@ -126,7 +126,10 @@ class FileTaskStore implements TaskStore {
 abstract class LlmCaller {
   /// [system] overrides the default persona line — chat jobs ask gork as
   /// the user's assistant, scheduled tasks ask the brief task runner.
-  Future<String> call(String prompt, {String? system});
+  /// [history] carries the earlier turns of the conversation (oldest
+  /// first) so a chat job is answered with the thread in mind, not cold.
+  Future<String> call(String prompt,
+      {String? system, List<({String role, String content})>? history});
   String describe();
 }
 
@@ -184,7 +187,8 @@ class EnvLlmCaller implements LlmCaller {
       : '$_baseUrl model=$_model';
 
   @override
-  Future<String> call(String prompt, {String? system}) async {
+  Future<String> call(String prompt,
+      {String? system, List<({String role, String content})>? history}) async {
     if (_apiKey.isEmpty) {
       throw StateError('GORK_API_KEY is not set on the VPS');
     }
@@ -207,6 +211,12 @@ class EnvLlmCaller implements LlmCaller {
                 'content': system ??
                     'You are gork, running a scheduled task. Be brief.'
               },
+              // The thread so far — Movement 65: the daemon used to answer
+              // every job cold, so the conversation had no memory on the
+              // server and the batched follow-ups made no sense to the
+              // model. Prior turns (user + assistant) go in oldest first.
+              for (final turn in history ?? const [])
+                {'role': turn.role, 'content': turn.content},
               {'role': 'user', 'content': prompt},
             ],
           }),

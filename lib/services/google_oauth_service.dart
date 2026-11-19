@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'applink_service.dart';
 import 'installer.dart';
 import 'locator.dart';
 import 'secure_store.dart';
@@ -56,6 +57,8 @@ class GoogleOAuthService {
   /// resolution — and the same header — as chat handoff, tasks and vault.
   late final VpsConfig vps = VpsConfig(prefs: _prefs, store: _store);
 
+  late final ApplinkService applink = ApplinkService();
+
   String? get url => vps.url;
 
   bool get configured => url != null;
@@ -81,6 +84,17 @@ class GoogleOAuthService {
   static const int kRedirectPort = 8636;
   static const String kRedirectUri =
       'http://127.0.0.1:$kRedirectPort/callback';
+
+  /// Movement 65 — the redirect that SURVIVES process death. The loopback
+  /// listener dies with the app's process, and Android kills backgrounded
+  /// processes freely while the browser is fullscreen — the user finishes
+  /// the consent, Google redirects to 127.0.0.1:8636, nothing is listening
+  /// ("site can't be reached"), and the app never hears about it. The
+  /// deep link instead makes GOOGLE hand the code to Android as an intent,
+  /// which starts (or wakes) the app even from a dead process. Register
+  /// this exact value in Cloud Console → Credentials → your OAuth client
+  /// → Authorized redirect URIs (alongside the loopback one).
+  static const String kDeepLinkUri = 'dev.shayan.gork:/oauth2redirect';
 
   /// The FULL one-tap flow. Returns the connected account:
   /// {email, name, tools: [gmail, docs, youtube]}. Throws [StateError]
@@ -120,6 +134,57 @@ class GoogleOAuthService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// Movement 65 — the SAME flow through the deep-link redirect, for when
+  /// the loopback listener never got the browser's request (the classic
+  /// "I finished the sign-in and nothing happened": Android killed the
+  /// process). Google redirects the browser to [kDeepLinkUri], Chrome/Java
+  /// turns that into an intent, Android starts or wakes the app, and the
+  /// code arrives through [ApplinkService.wait] — no listener to outlive.
+  Future<Map<String, dynamic>> connectViaDeepLink() async {
+    final base = url;
+    if (base == null) {
+      throw StateError('No VPS configured yet — set it up in Cloud '
+          'Computer first (the login happens on YOUR server).');
+    }
+    // 2. the consent URL, pointed at the deep-link redirect.
+    final start = await _http.post(
+      Uri.parse('$base/v1/google/consent/start'),
+      headers: await _authedHeaders(),
+      body: jsonEncode({'redirect_uri': kDeepLinkUri}),
+    );
+    if (start.statusCode != 200) {
+      throw StateError(_errorOf(start));
+    }
+    final consentUrl =
+        (jsonDecode(start.body) as Map<String, dynamic>)['url'] as String;
+
+    // 3. the browser; Google's redirect fires the intent.
+    await _installer.openUrl(consentUrl);
+
+    final link = await applink.wait();
+    final error = link.queryParameters['error'];
+    if (error != null) {
+      throw StateError(
+          'Google sign-in was cancelled ($error). Try again.');
+    }
+    final code = link.queryParameters['code'] ?? '';
+    if (code.isEmpty) {
+      throw StateError('Google came back without a sign-in code — '
+          'try again.');
+    }
+
+    // 4. the exchange, with the redirect_uri EXACTLY as consented.
+    final res = await _http.post(
+      Uri.parse('$base/v1/google/exchange'),
+      headers: await _authedHeaders(),
+      body: jsonEncode({'code': code, 'redirect_uri': kDeepLinkUri}),
+    );
+    if (res.statusCode != 201) {
+      throw StateError(_errorOf(res));
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<String> _openConsentAndAwaitCode(
       HttpServer server, String redirectUri) async {
     final base = url!;
@@ -152,7 +217,8 @@ class GoogleOAuthService {
         final error = req.uri.queryParameters['error'];
         if (error != null) {
           await _page(req, 'gork — sign-in cancelled',
-              'Google said: $error. You can close this window.');
+              'Google said: $error. You can close this window.',
+              backToApp: true);
           if (!captured.isCompleted) {
             captured.completeError(StateError(
                 'Google sign-in was cancelled ($error). Try again.'));
@@ -161,7 +227,8 @@ class GoogleOAuthService {
         }
         final code = req.uri.queryParameters['code'] ?? '';
         await _page(req, 'gork — connected',
-            'Connected. You can close this window and return to the app.');
+            'Connected. Taking you back to the app…',
+            backToApp: true);
         if (!captured.isCompleted) captured.complete(code);
       });
       try {
@@ -177,17 +244,37 @@ class GoogleOAuthService {
     }
   }
 
-  Future<void> _page(HttpRequest req, String title, String body) async {
+  /// The page the browser sees after the loopback redirect. Movement 65:
+  /// the title/body were run through Uri.encodeComponent and rendered as
+  /// literal percent-escapes ("gork%20%E2%80%94%20connected") — plain text
+  /// now (our own strings; anything user-derived goes through htmlEscape).
+  /// A visible button bounces the user back to the app via an intent: the
+  /// flow WORKED, the person must not stay stranded in the browser.
+  Future<void> _page(HttpRequest req, String title, String body,
+      {bool backToApp = false}) async {
+    final back = backToApp
+        ? '<a class="btn" href="intent:#Intent;scheme=dev.shayan.gork;'
+            'package=dev.shayan.gork;end">Return to gork</a>'
+        : '';
     req.response.headers.contentType = ContentType.html;
     req.response.write('''
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${Uri.encodeComponent(title)}</title></head>
-<body style="font-family:system-ui,sans-serif;background:#141414;color:#eee;
-display:grid;place-items:center;min-height:80vh;margin:0">
-<div style="max-width:24rem;text-align:center;padding:2rem">
-<h2 style="font-weight:600">${Uri.encodeComponent(title)}</h2>
-<p style="color:#aaa">${Uri.encodeComponent(body)}</p>
+<title>${const HtmlEscape().convert(title)}</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#141414;color:#eee;
+       display:grid;place-items:center;min-height:80vh;margin:0}
+  .card{max-width:24rem;text-align:center;padding:2rem}
+  h2{font-weight:600;margin:0 0 .5rem}
+  p{color:#aaa;margin:0 0 1.5rem}
+  .btn{display:inline-block;padding:.75rem 1.5rem;border-radius:999px;
+       background:#e8e8e8;color:#141414;font-weight:600;
+       text-decoration:none}
+</style></head>
+<body><div class="card">
+<h2>${const HtmlEscape().convert(title)}</h2>
+<p>${const HtmlEscape().convert(body)}</p>
+$back
 </div></body></html>''');
     await req.response.close();
   }

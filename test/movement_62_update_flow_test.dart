@@ -101,20 +101,25 @@ class _NoopInstaller implements Installer {
 }
 
 void main() {
-  group('Movement 62 — Settings › Preferences (the theme moved here)', () {
-    testWidgets('the Preferences tab holds the theme and persists the pick',
+  group('Movement 65 — the theme picker lives on its own screen', () {
+    testWidgets('the Theme row pushes the picker and the pick persists',
         (tester) async {
       await _bind();
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('theme-dark')),
+        find.byKey(const ValueKey('menu-theme')),
         120,
         scrollable: find.byType(Scrollable).first,
       );
+      // scrollUntilVisible stops at first pixel of visibility — bring the
+      // row well into view or the tap lands on the list edge.
+      await tester.drag(
+          find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('menu-theme')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Theme', skipOffstage: false), findsOneWidget);
       expect(find.text('Preferences', skipOffstage: false), findsOneWidget);
       expect(find.text('About', skipOffstage: false), findsOneWidget);
 
@@ -156,22 +161,21 @@ void main() {
       expect(find.byType(UpdatesScreen), findsOneWidget);
     });
 
-    testWidgets('Home no longer carries the theme toggle (it moved to '
-        'Settings)', (tester) async {
-      // The shell test covers the home surface; this pins the reason: the
-      // toggle keys only exist on the Settings screen.
+    testWidgets('the three theme keys exist ONLY on the pushed screen',
+        (tester) async {
+      // Movement 65 — the picker moved off the menu; the menu only carries
+      // the Theme ROW that pushes the screen.
       await _bind();
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('theme-auto')),
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
-      expect(find.byKey(const ValueKey('theme-light')), findsOneWidget);
-      expect(find.byKey(const ValueKey('theme-dark')), findsOneWidget);
+      expect(find.byKey(const ValueKey('theme-auto'), skipOffstage: false),
+          findsNothing);
+      expect(find.byKey(const ValueKey('theme-light'), skipOffstage: false),
+          findsNothing);
+      expect(find.byKey(const ValueKey('theme-dark'), skipOffstage: false),
+          findsNothing);
+      expect(find.byKey(const ValueKey('menu-theme'), skipOffstage: false),
+          findsOneWidget);
     });
   });
 

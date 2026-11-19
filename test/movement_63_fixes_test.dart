@@ -146,32 +146,40 @@ void main() {
   });
 
   group('Movement 63 — Preferences live in the menu, no Settings screen', () {
-    testWidgets('the menu hosts the tabs and the theme, and the old '
-        'Settings row is gone', (tester) async {
+    testWidgets('the menu hosts the tabs; the theme is a row that pushes '
+        'its own screen (Movement 65)', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
 
-      // The Preferences section sits below the fold in the lazy ListView —
-      // bring it in before asserting anything.
+      // The Theme row sits below the fold in the lazy ListView — bring it
+      // in before asserting anything.
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('theme-auto')),
+        find.byKey(const ValueKey('menu-theme')),
         120,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.drag(
+          find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
       await tester.pumpAndSettle();
 
       // The tabs are IN the menu.
       expect(find.text('Preferences', skipOffstage: false), findsOneWidget);
       expect(find.text('About', skipOffstage: false), findsOneWidget);
-      expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
-      expect(find.byKey(const ValueKey('theme-light')), findsOneWidget);
-      expect(find.byKey(const ValueKey('theme-dark')), findsOneWidget);
 
       // No nested "Settings" row anywhere.
       expect(find.text('Settings'), findsNothing);
       expect(find.byKey(const ValueKey('menu-settings')), findsNothing);
 
-      // Picking a theme still persists and works from here.
+      // The theme keys are NOT on the menu anymore — the row pushes the
+      // screen that owns them (Movement 65).
+      expect(find.byKey(const ValueKey('theme-auto')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('menu-theme')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
+      expect(find.byKey(const ValueKey('theme-light')), findsOneWidget);
+      expect(find.byKey(const ValueKey('theme-dark')), findsOneWidget);
+
+      // Picking a theme still persists — now from the dedicated screen.
       await tester.tap(find.byKey(const ValueKey('theme-dark')));
       await tester.pumpAndSettle();
       expect(Locator.prefs.getString('ui.theme'), 'dark');

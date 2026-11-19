@@ -70,8 +70,18 @@ class FakeTaskStore implements TaskStore {
 }
 
 class FakeLlm implements LlmCaller {
+  /// Movement 65 — every call is recorded so tests can assert the chat
+  /// persona and the conversation history actually reach the provider.
+  final List<({String prompt, String? system,
+      List<({String role, String content})>? history})> calls = [];
+
   @override
-  Future<String> call(String prompt, {String? system}) async => 'ok: $prompt';
+  Future<String> call(String prompt,
+      {String? system,
+      List<({String role, String content})>? history}) async {
+    calls.add((prompt: prompt, system: system, history: history));
+    return 'ok: $prompt';
+  }
 
   @override
   String describe() => 'fake';
@@ -521,6 +531,54 @@ void main() {
       expect(notifier.bodies, contains('ok: hello gork'));
     });
 
+    test('Movement 65 — the daemon answers with the thread: the human '
+        'persona and the conversation history reach the provider, so '
+        'batched follow-ups are answered by someone who saw them all',
+        () async {
+      final store = FileJobStore('${tmp.path}/jobs.json');
+      final llm = FakeLlm();
+      final handler = buildHandler(
+          Daemon(FakeTaskStore(), llm, notifier,
+              clock: () => DateTime.fromMillisecondsSinceEpoch(1000)),
+          jobStore: store);
+      Future<Response> post(String text) async =>
+          await handler(Request(
+            'POST',
+            Uri.parse('http://test.local/v1/messages'),
+            body: jsonEncode({'conversation_id': 'c1', 'text': text}),
+            headers: {'content-type': 'application/json'},
+          ));
+
+      final r1 = await post('what is the plan for tonight?');
+      expect(r1.statusCode, 201);
+      final id1 = (await _body(r1))['id'] as String;
+      await finished(store, id1);
+      final first = llm.calls.single;
+      // The persona tells the model the lines are separate texts sent
+      // while it was writing — the "one person read the thread" effect.
+      expect(first.system, contains('separate texts'));
+      expect(first.history ?? const [], isEmpty);
+
+      // Turn two — also what a batched follow-up looks like: two lines
+      // typed while the first reply was being written.
+      final r2 = await post('actually I am late\n\ndo we have milk left?');
+      expect(r2.statusCode, 201);
+      final id2 = (await _body(r2))['id'] as String;
+      await finished(store, id2);
+
+      expect(llm.calls.length, 2);
+      final second = llm.calls.last;
+      expect(second.system, contains('separate texts'));
+      final history = second.history!;
+      expect(history.first.role, 'user');
+      expect(history.first.content, 'what is the plan for tonight?');
+      expect(history.last.role, 'assistant');
+      expect(history.last.content, 'ok: what is the plan for tonight?');
+      // The follow-up itself is the live prompt — never duplicated inside
+      // the history.
+      expect(history.any((t) => t.content.contains('milk')), isFalse);
+    });
+
     test('GET /v1/conversations/<id>/messages returns user/assistant pairs',
         () async {
       final store = FileJobStore('${tmp.path}/jobs.json');
@@ -823,7 +881,9 @@ class _RecordingNotifier implements Notifier {
 
 class _ThrowingLlm implements LlmCaller {
   @override
-  Future<String> call(String prompt, {String? system}) async =>
+  Future<String> call(String prompt,
+      {String? system,
+      List<({String role, String content})>? history}) async =>
       throw StateError('LLM exploded');
 
   @override

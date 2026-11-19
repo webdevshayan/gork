@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/ambient.dart';
 import '../constants/design_tokens.dart';
 import '../constants/version.dart';
 import '../services/handoff_service.dart';
@@ -19,6 +18,7 @@ import 'providers_screen.dart';
 import 'search_screen.dart';
 import 'security_screen.dart';
 import 'tasks_screen.dart';
+import 'theme_preferences_screen.dart';
 import 'updates_screen.dart';
 
 /// The profile/menu surface (opened from the avatar): big identity header,
@@ -48,21 +48,6 @@ class _MenuScreenState extends State<MenuScreen> {
   /// Which embedded tab is open: Preferences (default) or About — the
   /// tabs live in the menu itself now, not on a pushed Settings screen.
   bool _preferences = true;
-
-  static const String kThemeKey = 'ui.theme';
-
-  String get _themeChoice =>
-      Locator.maybePrefs?.getString(kThemeKey) ?? 'auto';
-
-  Future<void> _setTheme(String mode) async {
-    final prefs = Locator.maybePrefs;
-    if (prefs == null) return;
-    await prefs.setString(kThemeKey, mode);
-    // The app shell listens to the ambient version — nudge it so the new
-    // choice rebuilds MaterialApp, the glass colors and the backdrop.
-    ambient.refresh();
-    if (mounted) setState(() {});
-  }
 
   void _push(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -182,10 +167,20 @@ class _MenuScreenState extends State<MenuScreen> {
                 label: 'Cloud Computer',
                 onTap: () => _push(context, const CloudComputerScreen()),
               ),
-              // Movement 59: the Theme page is gone — the app is always
-              // auto (light by day, dark by night), gray and black only.
-              // Movement 63: the Settings screen is gone too — the theme
-              // lives in the embedded Preferences section right below.
+              Divider(color: GlassColors.divider, height: 1),
+              // Movement 65 — Theme is a screen of its own again (it was
+              // embedded in the Preferences section since Movement 63).
+              GlassMenuRow(
+                key: const ValueKey('menu-theme'),
+                icon: Icons.palette_outlined,
+                label: 'Theme',
+                onTap: () => _push(context, const ThemePreferencesScreen()),
+              ),
+              // Movement 59: the Theme PAGE is gone — auto (light by day,
+              // dark by night) is the only mode. Movement 63: the Settings
+              // screen is gone too — the theme lived in the embedded
+              // Preferences section right below, until Movement 65 moved it
+              // to its own screen (the row above).
             ],
           ),
         ),
@@ -200,8 +195,8 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         const SizedBox(height: 16),
         if (_preferences) ...[
-          _ThemeCard(choice: _themeChoice, onPick: _setTheme),
-          const SizedBox(height: 16),
+          // Movement 65 — the theme picker moved to its own screen (the
+          // Theme row above); Preferences keeps the background responses.
           GlassContainer(
             radius: 28,
             padding: const EdgeInsets.all(20),
@@ -399,105 +394,5 @@ class _SettingsTabs extends StatelessWidget {
   }
 }
 
-/// The theme picker, embedded in the menu (Movement 63). Same keys, same
-/// behavior: Auto (the sun decides), Light or Dark — persisted in
-/// 'ui.theme' (the SAME pref every earlier version wrote).
-class _ThemeCard extends StatelessWidget {
-  const _ThemeCard({required this.choice, required this.onPick});
-
-  final String choice;
-  final void Function(String mode) onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      radius: 28,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.palette_outlined,
-                  size: 22, color: GlassColors.text),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text('Theme',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: GlassColors.text)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Auto follows the sun (light by day, dark by night). Your choice '
-            'wins over the sun until you switch back.',
-            style: TextStyle(
-                fontSize: 14, height: 1.4, color: GlassColors.textDim),
-          ),
-          const SizedBox(height: 12),
-          GlassContainer(
-            radius: 20,
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                for (final (i, option) in const [
-                  ('auto', 'Auto'),
-                  ('light', 'Light'),
-                  ('dark', 'Dark'),
-                ].indexed) ...[
-                  if (i > 0) const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      key: ValueKey('theme-${option.$1}'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => onPick(option.$1),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: choice == option.$1
-                              ? GlassColors.chip
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              switch (option.$1) {
-                                'light' => Icons.light_mode_outlined,
-                                'dark' => Icons.dark_mode_outlined,
-                                _ => Icons.auto_awesome_outlined,
-                              },
-                              size: 16,
-                              color: choice == option.$1
-                                  ? GlassColors.textOnChip
-                                  : GlassColors.textDim,
-                              semanticLabel: 'Theme ${option.$2}',
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              option.$2,
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: choice == option.$1
-                                      ? GlassColors.textOnChip
-                                      : GlassColors.textDim),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+/// The theme picker lived here until Movement 65 — it is a screen of its
+/// own now (theme_preferences_screen.dart), pushed by the Theme row.

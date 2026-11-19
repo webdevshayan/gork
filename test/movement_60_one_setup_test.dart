@@ -128,17 +128,23 @@ void main() {
   group('Home — theme toggle, editable sunset, full-width tiles', () {
     testWidgets('theme toggle persists the choice and nudges the shell',
         (tester) async {
-      // Movement 62 — the theme toggle lives on Settings › Preferences now;
-      // the contract (persist + nudge the shell) is unchanged.
+      // Movement 62 — the theme toggle persists 'ui.theme' and nudges the
+      // shell; the contract is unchanged. Movement 65 — the picker lives on
+      // its own screen now: scroll to the Theme row, push it, then pick.
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
-      // Movement 63 — the theme card is embedded in the menu, below the
-      // fold; bring it in before tapping.
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('theme-dark')),
+        find.byKey(const ValueKey('menu-theme')),
         120,
         scrollable: find.byType(Scrollable).first,
       );
+      // Bring the row well into view — scrollUntilVisible stops at the
+      // first pixel of visibility and the tap would land on the edge.
+      await tester.drag(
+          find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('menu-theme')));
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
 
       final before = ambient.version.value;

@@ -317,23 +317,30 @@ void main() {
     );
   });
 
-  testWidgets('Movement 63: the theme lives IN the menu — embedded '
-      'Preferences section, still no separate theme row or page',
-      (tester) async {
+  testWidgets('Movement 65: Theme is a row in the menu that pushes its '
+      'own preferences screen', (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
-    // The old menu-theme ROW is still gone; the picker is the embedded
-    // Preferences section instead. Drag far enough to reach it.
-    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    // The row sits below the fold — lazy ListView: scroll until visible,
+    // then bring it well into view so the tap actually lands on it.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('menu-theme')),
+      120.0,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(
+        find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('menu-theme')), findsNothing);
+    expect(find.byKey(const ValueKey('menu-theme')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('menu-theme')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
-    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Auto'), findsOneWidget,
-        reason: 'the picker is right here in the profile screen');
+        reason: 'the picker is right there on the pushed screen');
   });
 
   testWidgets('Movement 59: the attach menu NEVER overflows the right '

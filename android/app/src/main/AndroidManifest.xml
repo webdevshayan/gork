@@ -45,6 +45,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Movement 65 — Google sign-in deep link: the OAuth redirect
+                 dev.shayan.gork:/oauth2redirect?code=… fires an intent that
+                 starts (or wakes) the app with the code, even when Android
+                 killed the process while the browser was fullscreen. The
+                 loopback listener cannot survive that; this can. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="dev.shayan.gork"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

@@ -22,11 +22,31 @@ class MarkdownView extends StatelessWidget {
   static Color get _ink => GlassColors.text;
   static const Color _accent = Color(0xFF0B57D0);
 
+  /// Movement 65 — THE quote bug. The markdown parser HTML-escapes text
+  /// nodes (`"` arrives as &quot;, `'` as &#39;), which is right for HTML
+  /// output and wrong here: we render WIDGETS, so every entity must come
+  /// back as its character — straight, curly and apostrophe quotes
+  /// included. &amp; decodes LAST so double escapes stay single.
+  static final RegExp _entity =
+      RegExp(r'&(quot|#39|lt|gt|amp);');
+  static String _unescape(String text) => text.replaceAllMapped(
+        _entity,
+        (m) => switch (m.group(1)) {
+          'quot' => '"',
+          '#39' => "'",
+          'lt' => '<',
+          'gt' => '>',
+          _ => '&',
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
-    final doc = md.Document(
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-    );
+    // gitHubFlavored (markdown 7.x) already carries tables, strikethrough,
+    // autolinks AND the task-list checkbox syntaxes; single newlines in a
+    // paragraph survive as literal \n text nodes, which is exactly the
+    // chat semantics an AI reply needs.
+    final doc = md.Document(extensionSet: md.ExtensionSet.gitHubFlavored);
     final nodes = doc.parse(data);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,15 +72,19 @@ class MarkdownView extends StatelessWidget {
       case 'h5':
       case 'h6':
         final level = int.parse(node.tag.substring(1));
+        // Movement 65 — headings keep their inline formatting (a `## Buy
+        // **milk**` used to flatten to plain text).
         return Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 4),
-          child: Text(
-            node.textContent.trim(),
-            style: TextStyle(
-              fontSize: switch (level) { 1 => 24, 2 => 21, 3 => 19, _ => 17 },
-              fontWeight: FontWeight.w700,
-              color: _ink,
-              height: 1.25,
+          child: Text.rich(
+            TextSpan(
+              style: TextStyle(
+                fontSize: switch (level) { 1 => 24, 2 => 21, 3 => 19, _ => 17 },
+                fontWeight: FontWeight.w700,
+                color: _ink,
+                height: 1.25,
+              ),
+              children: _inline(context, node.children ?? []),
             ),
           ),
         );
@@ -85,12 +109,12 @@ class MarkdownView extends StatelessWidget {
           ),
         );
       case 'pre':
-        final code = node.children
+        final code = _unescape(node.children
                 ?.whereType<md.Element>()
                 .where((e) => e.tag == 'code')
                 .map((e) => e.textContent)
                 .join() ??
-            node.textContent;
+            node.textContent);
         return Container(
           key: const ValueKey('md-codeblock'),
           margin: const EdgeInsets.symmetric(vertical: 6),
@@ -111,7 +135,7 @@ class MarkdownView extends StatelessWidget {
           ),
         );
       case 'table':
-        return _table(node);
+        return _table(context, node);
       case 'hr':
         return Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
@@ -123,7 +147,7 @@ class MarkdownView extends StatelessWidget {
         return _imagePlaceholder(node.attributes['alt'] ?? 'image');
       default:
         // Unknown/HTML-ish block: keep its text, inert.
-        final text = node.textContent.trim();
+        final text = _unescape(node.textContent.trim());
         if (text.isEmpty) return const SizedBox.shrink();
         return _paragraph(_inline(context, [md.Text(text)]));
     }
@@ -131,8 +155,10 @@ class MarkdownView extends StatelessWidget {
 
   Widget _paragraph(List<InlineSpan> spans) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: RichText(
-          text: TextSpan(
+        // Text.rich (NOT raw RichText): only Text wires the SelectionArea
+        // registrar, so this is what makes every paragraph selectable.
+        child: Text.rich(
+          TextSpan(
             style: TextStyle(fontSize: 16, color: _ink, height: 1.35),
             children: spans,
           ),
@@ -141,13 +167,26 @@ class MarkdownView extends StatelessWidget {
 
   Widget _list(BuildContext context, md.Element node) {
     final ordered = node.tag == 'ol';
+    // GFM: `start="7"` resumes numbering; task-list items carry a checkbox.
+    var index =
+        int.tryParse(node.attributes['start'] ?? '') ?? 1;
     final items = node.children ?? <md.Node>[];
-    var index = 1;
     final rows = <Widget>[];
     for (final item in items) {
       if (item is! md.Element || item.tag != 'li') continue;
-      final marker = ordered ? '${index++}.' : '•';
-      final inlineChildren = item.children ?? <md.Node>[];
+      final inlineChildren = <md.Node>[...(item.children ?? <md.Node>[])];
+      // Task list: the markdown package renders `- [x] done` as an
+      // `input[type=checkbox]` element first in the item.
+      final taskInput = inlineChildren.isNotEmpty &&
+          inlineChildren.first is md.Element &&
+          (inlineChildren.first as md.Element).tag == 'input'
+          ? inlineChildren.removeAt(0) as md.Element
+          : null;
+      final marker = taskInput != null
+          ? (taskInput.attributes.containsKey('checked') ? '☑' : '☐')
+          : ordered
+              ? '${index++}.'
+              : '•';
       final hasBlocks = inlineChildren
           .whereType<md.Element>()
           .any((e) => e.tag != 'a' && e.tag != 'strong' && e.tag != 'em' &&
@@ -171,8 +210,8 @@ class MarkdownView extends StatelessWidget {
                         for (final child in inlineChildren) _block(context, child),
                       ],
                     )
-                  : RichText(
-                      text: TextSpan(
+                  : Text.rich(
+                      TextSpan(
                         style: TextStyle(
                             fontSize: 16, color: _ink, height: 1.35),
                         children: _inline(context, inlineChildren),
@@ -189,7 +228,7 @@ class MarkdownView extends StatelessWidget {
     );
   }
 
-  Widget _table(md.Element node) {
+  Widget _table(BuildContext context, md.Element node) {
     final rows = <TableRow>[];
     final spans = <InlineSpan>[];
     for (final section in node.children ?? <md.Node>[]) {
@@ -204,12 +243,16 @@ class MarkdownView extends StatelessWidget {
           }
           cells.add(Padding(
             padding: const EdgeInsets.all(8),
-            child: Text(
-              cell.textContent.trim(),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400,
-                color: _ink,
+            // Movement 65 — cells keep inline formatting (bold in a table
+            // used to flatten), and they are selectable like everything.
+            child: Text.rich(
+              TextSpan(
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400,
+                  color: _ink,
+                ),
+                children: _inline(context, cell.children ?? []),
               ),
             ),
           ));
@@ -218,13 +261,18 @@ class MarkdownView extends StatelessWidget {
       }
     }
     if (rows.isEmpty) return const SizedBox.shrink();
+    // Wide tables scroll sideways inside the bubble instead of overflowing
+    // the message column.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Table(
-        border: TableBorder.all(color: GlassColors.textFaint),
-        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        columnWidths: const {0: IntrinsicColumnWidth()},
-        children: rows,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          border: TableBorder.all(color: GlassColors.textFaint),
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          columnWidths: const {0: IntrinsicColumnWidth()},
+          children: rows,
+        ),
       ),
     );
   }
@@ -269,11 +317,11 @@ class MarkdownView extends StatelessWidget {
 
   InlineSpan? _inlineSpan(BuildContext context, md.Node node) {
     if (node is md.Text) {
-      return TextSpan(text: node.text);
+      return TextSpan(text: _unescape(node.text));
     }
     if (node is md.UnparsedContent) {
       // Raw HTML etc. — inert text, never interpreted.
-      return TextSpan(text: node.textContent);
+      return TextSpan(text: _unescape(node.textContent));
     }
     if (node is! md.Element) return null;
 
@@ -304,7 +352,7 @@ class MarkdownView extends StatelessWidget {
             fontSize: 14.5,
             backgroundColor: Color(0x14000000),
           ),
-          text: node.textContent,
+          text: _unescape(node.textContent),
         );
       case 'a':
         final href = node.attributes['href'] ?? '';
@@ -324,7 +372,7 @@ class MarkdownView extends StatelessWidget {
       case 'em':
       default:
         // Unknown/HTML inline: inert text.
-        final text = node.textContent;
+        final text = _unescape(node.textContent);
         return text.isEmpty ? null : TextSpan(text: text);
     }
   }
