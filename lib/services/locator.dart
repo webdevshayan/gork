@@ -75,6 +75,11 @@ class Locator {
 
   static SharedPreferences get prefs => _prefs!;
 
+  /// Null-safe read for surfaces that must render before binding — the
+  /// menu's embedded theme card defaults to 'auto' when nothing is bound
+  /// (widget tests pump the raw screen; the real app always binds).
+  static SharedPreferences? get maybePrefs => _prefs;
+
   static HistoryStore get history => HistoryStore(prefs);
 
   static MemoryStore get memory => MemoryStore(prefs);

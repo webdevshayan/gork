@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/constants/version.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
-import 'package:gork/screens/settings_screen.dart';
+import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/screens/updates_screen.dart';
 import 'package:gork/services/google_accounts.dart';
 import 'package:gork/services/credential_uploader.dart';
@@ -105,12 +105,18 @@ void main() {
     testWidgets('the Preferences tab holds the theme and persists the pick',
         (tester) async {
       await _bind();
-      await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('theme-dark')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
-      expect(find.text('Theme'), findsOneWidget);
-      expect(find.text('Preferences'), findsOneWidget);
-      expect(find.text('About'), findsOneWidget);
+      expect(find.text('Theme', skipOffstage: false), findsOneWidget);
+      expect(find.text('Preferences', skipOffstage: false), findsOneWidget);
+      expect(find.text('About', skipOffstage: false), findsOneWidget);
 
       // Pick Dark — the SAME pref the old Home toggle wrote.
       await tester.tap(find.byKey(const ValueKey('theme-dark')));
@@ -126,7 +132,13 @@ void main() {
     testWidgets('the About tab shows the version and the updates entry',
         (tester) async {
       await _bind();
-      await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('settings-tab-about')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('settings-tab-about')));
       await tester.pumpAndSettle();
@@ -134,6 +146,11 @@ void main() {
       expect(find.byKey(const ValueKey('settings-version')), findsOneWidget);
       expect(
           find.text('gork v$kAppVersion'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('settings-updates')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.byKey(const ValueKey('settings-updates')));
       await tester.pumpAndSettle();
       expect(find.byType(UpdatesScreen), findsOneWidget);
@@ -144,7 +161,13 @@ void main() {
       // The shell test covers the home surface; this pins the reason: the
       // toggle keys only exist on the Settings screen.
       await _bind();
-      await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('theme-auto')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
       expect(find.byKey(const ValueKey('theme-light')), findsOneWidget);

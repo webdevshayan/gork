@@ -155,6 +155,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
 
+    // Movement 63 added the embedded Preferences section — the Security row
+    // sits deeper in the lazy list now; drag before finding it.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const ValueKey('menu-wallet'), skipOffstage: false),
         findsNothing,
         reason: 'the Wallet row is removed for now');

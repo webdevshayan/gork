@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'installer.dart';
 import 'locator.dart';
 import 'secure_store.dart';
+import 'vps_config.dart';
 
 /// Movement 62 — ONE TAP connects the Google account: the user's own VPS is
 /// the login server (its sealed credentials.json IS the OAuth client), and
@@ -47,24 +48,27 @@ class GoogleOAuthService {
   SharedPreferences get _prefs => _prefsOverride ?? Locator.prefs;
   SecureStore get _store => _storeOverride ?? Locator.store;
 
-  String? get url {
-    final v = _prefs.getString('vps.url');
-    return (v == null || v.trim().isEmpty) ? null : v.trim();
-  }
+  /// ONE VPS connection (Movement 63): the Google flow used to read only
+  /// the direct `vps.token` key, so installs whose secret lived under a
+  /// legacy slot (`handoff.secret` / the agent-VPS apiKey) sent NO auth at
+  /// all and the daemon answered "bad or missing X-Gork-Secret". Routing
+  /// through [VpsConfig] gives the Google flow the SAME url + secret
+  /// resolution — and the same header — as chat handoff, tasks and vault.
+  late final VpsConfig vps = VpsConfig(prefs: _prefs, store: _store);
+
+  String? get url => vps.url;
 
   bool get configured => url != null;
 
-  Future<String?> _token() => _store.read('vps.token');
+  Future<String?> _token() => vps.token();
 
-  Map<String, String> _headers() => {
-        'Content-Type': 'application/json',
-      };
+  Future<Map<String, String>> _headers() => _authedHeaders();
 
   Future<Map<String, String>> _authedHeaders() async {
     final t = await _token();
     return {
       'Content-Type': 'application/json',
-      if (t != null && t.isNotEmpty) 'Authorization': 'Bearer $t',
+      if (t != null && t.isNotEmpty) 'X-Gork-Secret': t,
     };
   }
 

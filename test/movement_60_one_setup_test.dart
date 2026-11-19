@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gork/constants/ambient.dart';
 import 'package:gork/screens/cloud_computer_screen.dart';
 import 'package:gork/screens/gork_home.dart';
-import 'package:gork/screens/settings_screen.dart';
+import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/screens/security_screen.dart';
 import 'package:gork/services/cloud_computer_store.dart';
 import 'package:gork/services/locator.dart';
@@ -130,7 +130,15 @@ void main() {
         (tester) async {
       // Movement 62 — the theme toggle lives on Settings › Preferences now;
       // the contract (persist + nudge the shell) is unchanged.
-      await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      // Movement 63 — the theme card is embedded in the menu, below the
+      // fold; bring it in before tapping.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('theme-dark')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       final before = ambient.version.value;

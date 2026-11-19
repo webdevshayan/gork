@@ -317,21 +317,23 @@ void main() {
     );
   });
 
-  testWidgets('Movement 59: the Theme page is gone — the menu has no '
-      'theme row (the app is always auto)', (tester) async {
+  testWidgets('Movement 63: the theme lives IN the menu — embedded '
+      'Preferences section, still no separate theme row or page',
+      (tester) async {
     await pumpShell(tester);
 
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
-    // The Theme row used to live here — drag the menu list up in case the
-    // layout shifts, then assert the row is truly absent.
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+    // The old menu-theme ROW is still gone; the picker is the embedded
+    // Preferences section instead. Drag far enough to reach it.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('menu-theme')), findsNothing);
-    expect(find.text('Theme'), findsNothing);
-    expect(find.text('Auto'), findsNothing,
-        reason: 'no mode picker at all — light by day, dark by night');
+    expect(find.byKey(const ValueKey('theme-auto')), findsOneWidget);
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Auto'), findsOneWidget,
+        reason: 'the picker is right here in the profile screen');
   });
 
   testWidgets('Movement 59: the attach menu NEVER overflows the right '

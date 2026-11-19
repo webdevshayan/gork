@@ -87,6 +87,20 @@ class _GorkHomeState extends State<GorkHome> {
       if (h > 23 || m > 59) return null;
       return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
     }
+    // Digits only — the datetime keyboard on Android is a NUMBER pad, so
+    // '1740' (17:40) and '940' (9:40) must work without a colon.
+    final digits = RegExp(r'^(\d{3,4})$').firstMatch(t);
+    if (digits != null) {
+      final raw = digits.group(1)!;
+      final h = raw.length == 4
+          ? int.parse(raw.substring(0, 2))
+          : int.parse(raw.substring(0, 1));
+      final m = raw.length == 4
+          ? int.parse(raw.substring(2))
+          : int.parse(raw.substring(1));
+      if (h > 23 || m > 59) return null;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
     return null;
   }
 
@@ -120,11 +134,24 @@ class _GorkHomeState extends State<GorkHome> {
                 autofocus: true,
                 keyboardType: TextInputType.datetime,
                 decoration: InputDecoration(
-                  hintText: '5:40 PM or 17:40',
-                  errorText: error,
+                  hintText: '5:40 PM, 17:40 or 1740',
                   border: const OutlineInputBorder(),
                 ),
               ),
+              // The error renders as its OWN wrapped text (never inside the
+              // field's decorator): the decorator ellipsized it to one line
+              // and the user could not read the accepted formats.
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  key: const ValueKey('sunset-error'),
+                  maxLines: 3,
+                  softWrap: true,
+                  style: TextStyle(
+                      fontSize: 12, color: GlassColors.danger),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 'Your edit is kept on this device and wins over the '
@@ -149,7 +176,8 @@ class _GorkHomeState extends State<GorkHome> {
                 final parsed = _parseTime(controller.text);
                 if (parsed == null) {
                   setDialogState(() => error =
-                      'That is not a time — try 5:40 PM or 17:40.');
+                      'That is not a time — try 5:40 PM, 17:40 or 1740 '
+                      '(hours and minutes, no colon needed).');
                   return;
                 }
                 Navigator.of(dialogContext).pop(parsed);

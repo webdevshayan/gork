@@ -217,4 +217,8 @@ class GlassColors {
   /// Label on the active chip — black on the near-white chip in dark mode,
   /// white on the ink chip in light mode.
   static Color get textOnChip => _p.onPrimary;
+
+  /// Error/danger text on glass (sunset dialog, form refusals) — dark red
+  /// in light mode, light red in dark mode.
+  static Color get danger => _p.error;
 }

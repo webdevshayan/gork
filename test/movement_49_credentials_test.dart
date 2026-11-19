@@ -63,7 +63,7 @@ void main() {
     await prefs.setString('vps.url', 'http://vps.test');
   }
 
-  test('a valid OAuth client JSON uploads with the bearer token', () async {
+  test('a valid OAuth client JSON uploads with the shared secret', () async {
     await bindVps();
     final uploader = uploaderFor();
     final file = writeCreds({
@@ -81,7 +81,8 @@ void main() {
     expect((sent['client_json'] as Map)['installed']['client_secret'],
         'GOCSPX-supersecret',
         reason: 'the full object travels (the VPS seals it)');
-    expect(headersSeen['Authorization'], 'Bearer vps-secret');
+    expect(headersSeen['X-Gork-Secret'], 'vps-secret');
+    expect(headersSeen['Authorization'], isNull);
     expect(await uploader.hasCredentials(), isTrue);
   });
 

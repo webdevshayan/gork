@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'locator.dart';
 import 'secure_store.dart';
+import 'vps_config.dart';
 
 /// Uploads the Google Cloud Console credentials JSON to the VPS vault and
 /// reports its status. The JSON is parsed client-side (structure validation),
@@ -20,13 +21,25 @@ class GoogleCredentialsUploader {
 
   http.Client get _http => _client ?? Locator.httpClient;
 
-  String? get url {
-    final v = Locator.prefs.getString('vps.url');
-    return (v == null || v.trim().isEmpty) ? null : v.trim();
-  }
+  /// ONE VPS connection (Movement 63): like the OAuth flow, the uploader
+  /// used to read only the direct `vps.token` key — installs configured
+  /// through a legacy slot uploaded with NO auth and the daemon answered
+  /// "bad or missing X-Gork-Secret". [VpsConfig] resolves url + secret the
+  /// same way as everything else server-side.
+  VpsConfig get _vps => VpsConfig(
+      prefs: Locator.prefs, store: _storeOverride ?? Locator.store);
 
-  Future<String?> _token() async =>
-      await (_storeOverride ?? Locator.store).read('vps.token');
+  String? get url => _vps.url;
+
+  Future<String?> _token() => _vps.token();
+
+  Future<Map<String, String>> _headers() async {
+    final t = await _token();
+    return {
+      'Content-Type': 'application/json',
+      if (t != null && t.isNotEmpty) 'X-Gork-Secret': t,
+    };
+  }
 
   bool get configured => url != null;
 
@@ -54,13 +67,9 @@ class GoogleCredentialsUploader {
           'Not a Cloud Console credentials file — expected an OAuth client '
           '("installed"/"web") or a service-account JSON.');
     }
-    final token = await _token();
     final res = await _http.post(
       Uri.parse('$base/v1/credentials/google'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      },
+      headers: await _headers(),
       body: jsonEncode({'client_json': json}),
     );
     if (res.statusCode != 201) {
@@ -73,12 +82,9 @@ class GoogleCredentialsUploader {
     final base = url;
     if (base == null) return false;
     try {
-      final token = await _token();
       final res = await _http.get(
         Uri.parse('$base/v1/credentials/google/status'),
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: await _headers(),
       );
       if (res.statusCode != 200) return false;
       final body = jsonDecode(res.body) as Map<String, dynamic>;
