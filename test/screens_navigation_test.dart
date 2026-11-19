@@ -69,6 +69,9 @@ void main() {
 
     testWidgets('the scope follows the entry tab', (tester) async {
       await pumpShell(tester);
+      // Movement 62 — the shell lands on CHAT; switch to Home for the
+      // "search everything" leg first.
+      await openTab(tester, 'home');
       final now = DateTime.now().millisecondsSinceEpoch;
       await Locator.history.save(Conversation(
         id: 'active1',

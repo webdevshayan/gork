@@ -8,6 +8,8 @@ import 'package:shelf_router/shelf_router.dart';
 
 import 'package:gork_daemon/browser_agent.dart';
 import 'package:gork_daemon/cli_support.dart';
+import 'package:gork_daemon/google_auth.dart';
+import 'package:gork_daemon/job_store.dart';
 import 'package:gork_daemon/scheduler.dart';
 
 /// gork companion daemon.
@@ -20,7 +22,7 @@ const int kDefaultPort = 8787;
 /// The daemon's own version, reported by /health. The phone app shows it
 /// (Cloud Computer) and uses a refusal from an OLD daemon to point the user
 /// at `gork daemon update`. Bump when the daemon gains endpoints or fixes.
-const String kDaemonVersion = '0.2.0';
+const String kDaemonVersion = '0.3.0';
 
 /// Where task state lives.
 ///
@@ -94,7 +96,8 @@ Middleware requireSecret(String? secret) {
 
 /// The full HTTP handler: router wrapped in the secret gate. [config] and
 /// [configOverlay] wire up POST /config (the app's Sync-to-daemon action).
-/// [vaultDir] wires up GET /v1/vault (the sealed vault's labels).
+/// [vaultDir] wires up GET /v1/vault (the sealed vault's labels). [jobStore]
+/// wires up the never-losable chat jobs (POST /v1/messages & friends).
 Handler buildHandler(
   Daemon daemon, {
   String? secret,
@@ -102,6 +105,8 @@ Handler buildHandler(
   Map<String, String>? configOverlay,
   AgentBrowser? browser,
   String? vaultDir,
+  JobStore? jobStore,
+  GoogleAuth? google,
 }) =>
     const Pipeline()
         .addMiddleware(requireSecret(secret))
@@ -109,7 +114,9 @@ Handler buildHandler(
             config: config,
             configOverlay: configOverlay,
             browser: browser,
-            vaultDir: vaultDir));
+            vaultDir: vaultDir,
+            jobStore: jobStore,
+            google: google));
 
 /// Keys the phone may write through POST /config. GORK_PORT is allowed (it
 /// only takes effect on restart) and GORK_CONNECTOR_* come from the
@@ -126,7 +133,9 @@ Router buildRouter(Daemon daemon,
     {ConfigStore? config,
     Map<String, String>? configOverlay,
     AgentBrowser? browser,
-    String? vaultDir}) {
+    String? vaultDir,
+    JobStore? jobStore,
+    GoogleAuth? google}) {
   final router = Router();
 
   router.get('/health', (Request request) async {
@@ -314,6 +323,210 @@ Router buildRouter(Daemon daemon,
     });
   });
 
+  // Movement 62 — NEVER-LOSABLE CHAT. The phone's outbox hands a message
+  // here; the job is persisted to $GORK_HOME/jobs.json FIRST, then processed
+  // through the LLM. The phone can die mid-flight — the work completes on
+  // the VPS, the reply is stored, and a notification with the first lines
+  // goes out via ntfy. The client pulls everything back when it returns.
+  //   POST /v1/messages                        {conversation_id, text} -> {id}
+  //   GET  /v1/jobs/<id>                       -> {status, result:{reply}}
+  //   GET  /v1/conversations/<id>/messages     -> user/assistant pairs
+  //
+  // Jobs run SEQUENTIALLY through a chain: a personal VPS serves one user,
+  // the LLM prefers not to be hammered, and concurrent read-modify-write
+  // on jobs.json would race. Acceptance (201) is still instant — the
+  // message is durable the moment the phone gets its id.
+  Future<void> jobChain = Future.value();
+
+  void processJob(AgentJob job) {
+    jobChain = jobChain.then((_) async {
+      try {
+        await jobStore!.save(job.copyWith(status: 'running'));
+        final reply = await daemon.llm.call(job.text,
+            system: 'You are gork, the user\'s assistant running on their '
+                'own VPS. Answer directly and briefly.');
+        await jobStore.save(job.copyWith(
+            status: 'done', reply: reply, finishedAt: daemon.clock().millisecondsSinceEpoch));
+        // The lock-screen summary: first lines of the reply, clipped.
+        await daemon.notifier
+            .notify('gork — response ready', jobNotificationPreview(reply));
+      } catch (e) {
+        try {
+          await jobStore!.save(job.copyWith(
+              status: 'error',
+              reply: e.toString(),
+              finishedAt: daemon.clock().millisecondsSinceEpoch));
+          await daemon.notifier.notify(
+              'gork — the request failed',
+              e.toString().length <= 220
+                  ? e.toString()
+                  : e.toString().substring(0, 220));
+        } catch (_) {
+          // state-dir trouble must not crash the request handler
+        }
+      }
+    });
+  }
+
+  router.post('/v1/messages', (Request request) async {
+    if (jobStore == null) {
+      return _json({'error': 'jobs not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    final Map<String, dynamic> body;
+    try {
+      body = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final conversationId = body['conversation_id']?.toString() ?? '';
+    final text = body['text']?.toString() ?? '';
+    if (conversationId.isEmpty || text.trim().isEmpty) {
+      return _json({'error': 'conversation_id and text are required'}, 400);
+    }
+    final job = AgentJob(
+      id: 'job-${DateTime.now().microsecondsSinceEpoch}'
+          '-${(DateTime.now().microsecondsSinceEpoch % 9176).toRadixString(36)}',
+      conversationId: conversationId,
+      text: text,
+      status: 'queued',
+      createdAt: daemon.clock().millisecondsSinceEpoch,
+    );
+    // Persist BEFORE answering 201: accepted means durable.
+    await jobStore.save(job);
+    processJob(job);
+    return _json({'id': job.id, 'status': job.status}, 201);
+  });
+
+  router.get('/v1/jobs/<id>', (Request request, String id) async {
+    if (jobStore == null) {
+      return _json({'error': 'jobs not wired in this daemon'}, 500);
+    }
+    final match = jobStore.all().where((j) => j.id == id).toList();
+    if (match.isEmpty) {
+      return _json({'error': 'no such job'}, 404);
+    }
+    final job = match.first;
+    return _json({
+      'id': job.id,
+      'conversation_id': job.conversationId,
+      'status': job.status,
+      'created_at': job.createdAt,
+      if (job.reply != null) 'result': {'reply': job.reply},
+    });
+  });
+
+  router.get('/v1/conversations/<id>/messages',
+      (Request request, String id) async {
+    if (jobStore == null) {
+      return _json({'error': 'jobs not wired in this daemon'}, 500);
+    }
+    final jobs = jobStore
+        .all()
+        .where((j) => j.conversationId == id)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final messages = <Map<String, dynamic>>[];
+    for (final job in jobs) {
+      messages.add({'role': 'user', 'content': job.text});
+      // A queued/running job contributes the user side only — the reply
+      // lands here the moment it exists (never a placeholder).
+      if (job.reply != null) {
+        messages.add({'role': 'assistant', 'content': job.reply});
+      }
+    }
+    return _json({'messages': messages});
+  });
+
+  // Movement 62 — GOOGLE LOGIN ON THE USER'S SERVER. The credentials.json
+  // the user uploaded is the OAuth client; these routes drive the consent
+  // flow with it. Tokens are sealed in the vault and never leave the box —
+  // the phone sees email, name and which tools connected, nothing else.
+  //   POST /v1/google/consent/start  {redirect_uri} -> {url}
+  //   POST /v1/google/exchange       {code, redirect_uri} -> {email,name,tools}
+  //   GET  /v1/google/accounts       -> {accounts: [...]}  (labels only)
+  //   POST /v1/google/revoke         {email} -> {removed: true|false}
+  router.post('/v1/google/consent/start', (Request request) async {
+    if (google == null) {
+      return _json({'error': 'google auth not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    Map<String, dynamic> body;
+    try {
+      body = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final redirectUri = body['redirect_uri']?.toString() ?? '';
+    if (redirectUri.isEmpty) {
+      return _json({'error': 'redirect_uri is required'}, 400);
+    }
+    try {
+      return _json({'url': google.consentUrl(redirectUri)});
+    } on StateError catch (e) {
+      return _json({'error': e.message}, 400);
+    }
+  });
+
+  router.post('/v1/google/exchange', (Request request) async {
+    if (google == null) {
+      return _json({'error': 'google auth not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    Map<String, dynamic> body;
+    try {
+      body = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final code = body['code']?.toString() ?? '';
+    final redirectUri = body['redirect_uri']?.toString() ?? '';
+    if (code.isEmpty || redirectUri.isEmpty) {
+      return _json({'error': 'code and redirect_uri are required'}, 400);
+    }
+    try {
+      final account = await google.exchange(code, redirectUri);
+      return _json(account, 201);
+    } catch (e) {
+      return _json({
+        'error': e is StateError ? e.message : e.toString()
+      }, 400);
+    }
+  });
+
+  router.get('/v1/google/accounts', (Request request) async {
+    if (google == null) {
+      return _json({'error': 'google auth not wired in this daemon'}, 500);
+    }
+    return _json({'accounts': google.accounts()});
+  });
+
+  router.post('/v1/google/revoke', (Request request) async {
+    if (google == null) {
+      return _json({'error': 'google auth not wired in this daemon'}, 500);
+    }
+    final raw = await request.readAsString();
+    Map<String, dynamic> body;
+    try {
+      body = raw.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final email = body['email']?.toString() ?? '';
+    if (email.isEmpty) {
+      return _json({'error': 'email is required'}, 400);
+    }
+    return _json({'removed': await google.remove(email)});
+  });
+
   // Movement 58 — the agent browser: PRIVATE (dedicated 0700 profile,
   // vault values never echoed), PERSISTENT (cookies survive restarts),
   // LIGHTWEIGHT (one headless Chromium over raw CDP, spawned lazily).
@@ -369,7 +582,9 @@ Future<void> main(List<String> args) async {
       config: config,
       configOverlay: overlay,
       browser: browser,
-      vaultDir: stateDirPath());
+      vaultDir: stateDirPath(),
+      jobStore: FileJobStore('${stateDirPath()}/jobs.json'),
+      google: GoogleAuth(vaultDir: stateDirPath()));
 
   // The agent browser must not outlive the daemon: SIGTERM (gork daemon
   // stop / systemd) closes it, then exits.

@@ -35,6 +35,25 @@ class MainActivity : FlutterActivity() {
                             result.error("NO_SETTINGS", e.message, null)
                         }
                     }
+                    "openUrl" -> {
+                        // Movement 62 — the Google consent page opens in the
+                        // system browser; Google redirects back to the
+                        // phone's loopback listener (http://127.0.0.1:port).
+                        val url = call.argument<String>("url")
+                        if (url.isNullOrEmpty()) {
+                            result.error("BAD_URL", "no url given", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("NO_BROWSER", e.message, null)
+                        }
+                    }
                     "installApk" -> {
                         val path = call.argument<String>("path")
                         if (path.isNullOrEmpty()) {

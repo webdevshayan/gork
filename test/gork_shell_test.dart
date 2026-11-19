@@ -58,10 +58,35 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('Movement 62 — CHAT is the landing surface (the app opens '
+      'into the conversation, Home is one tap away)', (tester) async {
+    await pumpShell(tester);
+
+    // No weather card on the first screen — the chat is facing the user.
+    expect(find.text('Sehwan Taluka, PK'), findsNothing);
+    expect(find.text('Create a new panel'), findsNothing);
+
+    // The nav pill starts on chat…
+    await tester.tap(find.byKey(const ValueKey('left-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchScreen), findsOneWidget,
+        reason: 'the top-left button opens the chat-scoped search');
+    await tester.tap(find.descendant(
+      of: find.byType(SearchScreen),
+      matching: find.byIcon(Icons.arrow_back_ios_new),
+    ));
+    await tester.pumpAndSettle();
+
+    // …and Home is still there, one tap away.
+    await openTab(tester, 'home');
+    expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
+  });
+
   testWidgets('home: weather card with two inner tiles + create-panel pill', (
     tester,
   ) async {
     await pumpShell(tester);
+    await openTab(tester, 'home');
 
     expect(find.byKey(const ValueKey('ambient-backdrop')), findsOneWidget);
     // Movement 60 — solid surfaces: no backdrop blur anywhere.
@@ -77,12 +102,18 @@ void main() {
     expect(find.text('Create a new panel'), findsOneWidget);
     expect(find.text('Message Gork'), findsOneWidget);
     expect(find.byIcon(Icons.mic_none), findsOneWidget);
+    // Movement 62 — the theme toggle MOVED to Settings › Preferences:
+    // Home keeps weather and panels only.
+    expect(find.byKey(const ValueKey('theme-auto')), findsNothing);
+    expect(find.byKey(const ValueKey('theme-light')), findsNothing);
+    expect(find.byKey(const ValueKey('theme-dark')), findsNothing);
   });
 
   testWidgets('glass primitives: weather card radius 28, nav pill radius 30', (
     tester,
   ) async {
     await pumpShell(tester);
+    await openTab(tester, 'home');
 
     final weather = tester.widget<GlassContainer>(
       find.ancestor(
@@ -130,6 +161,7 @@ void main() {
   testWidgets('home search opens the scoped overlay (the + dropdown is gone)',
     (tester) async {
     await pumpShell(tester);
+    await openTab(tester, 'home');
 
     await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pumpAndSettle();
@@ -188,14 +220,17 @@ void main() {
   ) async {
     await pumpShell(tester);
 
-    // The labels inherit the animated default text style.
+    // Movement 62 — the shell LANDS on chat: chat is highlighted first.
+    expect(_navLabelColor(tester, 'Chat'), GlassColors.textOnChip);
+    expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
+
+    await openTab(tester, 'home');
+
     expect(_navLabelColor(tester, 'Home'), GlassColors.textOnChip);
     expect(_navLabelColor(tester, 'Chat'), GlassColors.textDim);
 
+    // Back to chat for the surface-content assertions.
     await openTab(tester, 'chat');
-
-    expect(_navLabelColor(tester, 'Chat'), GlassColors.textOnChip);
-    expect(_navLabelColor(tester, 'Home'), GlassColors.textDim);
     // Empty chat: seeded intro + the fanned GitHub link-preview stack.
     // Movement 53: the intro is dynamic — it plays as animated bubbles, so
     // no static seed text remains on the empty surface.

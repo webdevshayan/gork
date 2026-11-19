@@ -22,6 +22,7 @@ class OutboxEntry {
     required this.createdAt,
     required this.status,
     this.jobId,
+    this.notified = false,
   });
 
   final String id;
@@ -33,6 +34,11 @@ class OutboxEntry {
   /// The VPS job id once the server accepted the message.
   String? jobId;
 
+  /// True once the finished reply has been surfaced (notification). The
+  /// reply itself is NEVER lost: it stays on the VPS until the chat pulls
+  /// it — [notified] only tracks what the user has already been told.
+  bool notified;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'conversationId': conversationId,
@@ -40,6 +46,7 @@ class OutboxEntry {
         'createdAt': createdAt,
         'status': status.name,
         if (jobId != null) 'jobId': jobId,
+        'notified': notified,
       };
 
   static OutboxEntry fromJson(Map<String, dynamic> j) => OutboxEntry(
@@ -49,6 +56,7 @@ class OutboxEntry {
         createdAt: j['createdAt'] as int,
         status: OutboxStatus.values.byName(j['status'] as String),
         jobId: j['jobId'] as String?,
+        notified: j['notified'] as bool? ?? false,
       );
 }
 
@@ -215,10 +223,49 @@ class MessageOutbox {
     }
   }
 
+  /// Finished jobs the user has NOT been told about yet — the reply
+  /// preview lines for a notification ("response ready: …"), one per job,
+  /// marked as notified. Never loses anything: the reply itself stays on
+  /// the VPS regardless; [notified] only tracks what was surfaced.
+  Future<List<FinishedReply>> pollFinished() async {
+    final out = <FinishedReply>[];
+    final entries = _entries();
+    var dirty = false;
+    for (final e in entries) {
+      if (e.status != OutboxStatus.accepted || e.jobId == null || e.notified) {
+        continue;
+      }
+      final reply = await jobResult(e.jobId!);
+      if (reply == null) continue; // still running / unreachable — later
+      e.notified = true;
+      dirty = true;
+      out.add(FinishedReply(
+        conversationId: e.conversationId,
+        preview: _preview(reply),
+        reply: reply,
+      ));
+    }
+    if (dirty) await _save(entries);
+    return out;
+  }
+
+  /// The gist for the notification: first lines, clipped — the user should
+  /// understand the answer from the lock screen.
+  static String _preview(String reply) {
+    final lines = reply
+        .trim()
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .take(3)
+        .join('\n');
+    if (lines.isEmpty) return '(empty reply)';
+    return lines.length <= 200 ? lines : '${lines.substring(0, 200)}…';
+  }
+
   /// All server-side messages for a conversation (processed while the app
   /// was away). Returns pairs: user / assistant.
-  Future<List<Map<String, String>>> pullMessages(String conversationId) async {
-    final base = url;
+  Future<List<Map<String, String>>> pullMessages(String conversationId) async {    final base = url;
     if (base == null) return const [];
     try {
       final res = await _http.get(
@@ -240,6 +287,24 @@ class MessageOutbox {
       return const [];
     }
   }
+}
+
+/// A reply that finished on the VPS while the user was away.
+class FinishedReply {
+  FinishedReply({
+    required this.conversationId,
+    required this.preview,
+    required this.reply,
+  });
+
+  final String conversationId;
+
+  /// First lines for the notification body.
+  final String preview;
+
+  /// The full reply — already merged into the conversation when the chat
+  /// opens (the daemon keeps it until the client pulls it).
+  final String reply;
 }
 
 @visibleForTesting

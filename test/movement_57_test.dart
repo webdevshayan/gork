@@ -81,6 +81,12 @@ void main() {
   group('Movement 57 — system back is reversible', () {
     testWidgets('back on the Chat tab returns to Home', (tester) async {
       await pumpShell(tester);
+      // Movement 62 — the shell LANDS on chat; back from the landing tab
+      // still goes to Home (reversible), and back on Home exits.
+      expect(_navLabelColor(tester, 'Chat'), GlassColors.textOnChip);
+
+      await tester.tap(find.byKey(const ValueKey('tab-home')));
+      await tester.pumpAndSettle();
       expect(_navLabelColor(tester, 'Home'), GlassColors.textOnChip);
 
       await tester.tap(find.byKey(const ValueKey('tab-chat')));
@@ -127,6 +133,8 @@ void main() {
     testWidgets('back with the attach menu open dismisses the menu first',
         (tester) async {
       await pumpShell(tester);
+      await tester.tap(find.byKey(const ValueKey('tab-home')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('attach-button')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('attach-menu')), findsOneWidget);

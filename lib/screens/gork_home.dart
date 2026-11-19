@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/ambient.dart';
 import '../services/locator.dart';
 import '../services/panels_store.dart';
 import '../services/weather_service.dart';
@@ -25,9 +24,6 @@ class _GorkHomeState extends State<GorkHome> {
 
   /// The persisted sunset override ('HH:mm'), set by tapping the tile.
   static const String kSunsetKey = 'home.sunset';
-
-  /// The persisted theme choice: '' | 'auto' | 'light' | 'dark'.
-  static const String kThemeKey = 'ui.theme';
 
   @override
   void initState() {
@@ -173,17 +169,6 @@ class _GorkHomeState extends State<GorkHome> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _setTheme(String mode) async {
-    await Locator.prefs.setString(kThemeKey, mode);
-    // The app shell listens to the ambient version — nudge it so the new
-    // choice rebuilds MaterialApp, the glass colors and the backdrop.
-    ambient.refresh();
-    if (mounted) setState(() {});
-  }
-
-  String get _themeChoice =>
-      Locator.prefs.getString(kThemeKey) ?? 'auto';
-
   String get _conditionsLabel => _weather?.label ?? 'Broken Clouds';
 
   String get _tempLabel => _weather == null
@@ -208,8 +193,6 @@ class _GorkHomeState extends State<GorkHome> {
           overridden: _sunsetOverridden,
           onEditSunset: () => _editSunset(context),
         ),
-        const SizedBox(height: 16),
-        _ThemeToggle(choice: _themeChoice, onPick: _setTheme),
         const SizedBox(height: 16),
         _CreatePanelButton(onTap: () => _push(context, const PanelsScreen())),
         for (final panel in manualPanels) ...[
@@ -357,76 +340,6 @@ class _WeatherCard extends StatelessWidget {
   }
 }
 
-/// Movement 60 — the theme is the user's choice again: Auto (the sun
-/// decides), Light or Dark. The choice persists in 'ui.theme' and rebuilds
-/// the whole shell immediately.
-class _ThemeToggle extends StatelessWidget {
-  const _ThemeToggle({required this.choice, required this.onPick});
-
-  final String choice;
-  final void Function(String mode) onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      radius: 28,
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          for (final (i, option) in
-              const [('auto', 'Auto'), ('light', 'Light'), ('dark', 'Dark')]
-                  .indexed) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(
-              child: GestureDetector(
-                key: ValueKey('theme-${option.$1}'),
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onPick(option.$1),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: choice == option.$1
-                        ? GlassColors.chip
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        switch (option.$1) {
-                          'light' => Icons.light_mode_outlined,
-                          'dark' => Icons.dark_mode_outlined,
-                          _ => Icons.auto_awesome_outlined,
-                        },
-                        size: 16,
-                        color: choice == option.$1
-                            ? GlassColors.textOnChip
-                            : GlassColors.textDim,
-                        semanticLabel: 'Theme ${option.$2}',
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        option.$2,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: choice == option.$1
-                              ? GlassColors.textOnChip
-                              : GlassColors.textDim,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 /// Full-width pill: "+ Create a new panel".
 class _CreatePanelButton extends StatelessWidget {

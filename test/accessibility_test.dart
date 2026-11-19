@@ -120,7 +120,8 @@ void main() {
       for (final label in const ['Home', 'Chat', 'Projects']) {
         if (flag(label, SemanticsFlag.isSelected)) selected.add(label);
       }
-      expect(selected, ['Home'],
+      // Movement 62 — CHAT is the landing surface.
+      expect(selected, ['Chat'],
           reason: 'the active tab is marked selected; inactive tabs are not');
       handle.dispose();
     });

@@ -41,6 +41,9 @@ class RecordingInstaller implements Installer {
 
   @override
   Future<void> openPermissionSettings() async => settingsCalls++;
+
+  @override
+  Future<void> openUrl(String url) async {}
 }
 
 void main() {

@@ -9,6 +9,10 @@ abstract class Installer {
   Future<bool> canInstall();
   Future<void> openPermissionSettings();
   Future<void> installApk(String path);
+
+  /// Opens a URL in the system browser — the Google consent page (the
+  /// loopback OAuth flow). Throws when no browser exists.
+  Future<void> openUrl(String url);
 }
 
 class SystemInstaller implements Installer {
@@ -25,4 +29,8 @@ class SystemInstaller implements Installer {
   @override
   Future<void> installApk(String path) =>
       _channel.invokeMethod<void>('installApk', {'path': path});
+
+  @override
+  Future<void> openUrl(String url) =>
+      _channel.invokeMethod<void>('openUrl', {'url': url});
 }

@@ -12,7 +12,7 @@ import 'package:gork_daemon/browser_agent.dart';
 
 class FakeLlm implements LlmCaller {
   @override
-  Future<String> call(String prompt) async => 'test-llm-ok';
+  Future<String> call(String prompt, {String? system}) async => 'test-llm-ok';
 
   @override
   String describe() => 'fake';

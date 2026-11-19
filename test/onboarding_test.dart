@@ -66,13 +66,15 @@ void main() {
     await tester.tap(find.text('Start using gork'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sehwan Taluka, PK'), findsOneWidget,
-        reason: 'home now leads with the weather card');
+    // Movement 62 — the first-facing surface is the CHAT, not the weather
+    // Home; Home stays one tap away.
+    expect(find.text('Sehwan Taluka, PK'), findsNothing,
+        reason: 'chat is the landing surface now');
     expect(find.text('Message Gork'), findsOneWidget);
     expect(Locator.prefs.getBool('onboarding.done'), isTrue);
   });
 
-  testWidgets('second launch goes straight to home', (tester) async {
+  testWidgets('second launch goes straight to chat', (tester) async {
     SharedPreferences.setMockInitialValues({'onboarding.done': true});
     Locator.reset();
     Locator.bind(prefs: await SharedPreferences.getInstance());
@@ -80,7 +82,8 @@ void main() {
     await tester.pumpWidget(const GorkApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
+    expect(find.text('Sehwan Taluka, PK'), findsNothing,
+        reason: 'the landing surface is chat; Home is one tap away');
     expect(find.text('Start using gork'), findsNothing);
   });
 }

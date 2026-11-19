@@ -13,3 +13,12 @@ key.properties
 **/*.keystore
 **/*.jks
 /build/
+
+# MOVEMENT 62 EXCEPTION: gork-release.keystore + key.properties ARE committed
+# on purpose. Release builds signed with the debug keystore got a NEW key on
+# every sandbox recycle — every APK then collided with the installed one
+# ("package has conflicts"). The pinned keystore in the repo is what makes
+# every future build sign identically. The repo is the user's own; this is
+# the deliberate trade.
+!key.properties
+!app/gork-release.keystore

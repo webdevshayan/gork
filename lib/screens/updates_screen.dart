@@ -34,7 +34,7 @@ class UpdatesScreen extends StatefulWidget {
 
 enum _Phase { idle, checking, upToDate, available, downloading, readyToInstall, error }
 
-class _UpdatesScreenState extends State<UpdatesScreen> {
+class _UpdatesScreenState extends State<UpdatesScreen> with WidgetsBindingObserver {
   late final Installer _installer = widget.installer ?? SystemInstaller();
   UpdateService? _service;
   _Phase _phase = _Phase.idle;
@@ -43,6 +43,30 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   double? _progress;
   String? _apkPath;
   bool _canInstall = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Movement 62 — REALTIME permission state: when the user returns from
+    // the system "Install unknown apps" screen (app resumed), re-probe
+    // immediately. Previously the screen stayed stale ("That permission is
+    // currently off") until the user left and came back.
+    WidgetsBinding.instance.addObserver(this);
+    _refreshCanInstall();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshCanInstall();
+    }
+  }
 
   UpdateService _buildService(String dir) => widget.service ??
       UpdateService(client: http.Client(), currentVersion: widget.currentVersion, downloadDir: dir);
@@ -126,6 +150,9 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     if (path == null) return;
     if (!_canInstall) {
       await _installer.openPermissionSettings();
+      // In case the platform channel returns before the resume event fires,
+      // probe once more when this future completes too.
+      _refreshCanInstall();
       return;
     }
     try {

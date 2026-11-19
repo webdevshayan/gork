@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
 import '../services/google_accounts.dart';
+import '../services/google_oauth_service.dart';
 import '../services/integrations.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -14,11 +15,16 @@ import '../widgets/glass.dart';
 
 /// Account selection: every connected Google account, the active one
 /// marked. One tap on an account = one click that binds ALL Google
-/// services to it. New accounts are added by pasting an OAuth token once
-/// — the app verifies it and remembers it.
+/// services to it.
+///
+/// Movement 62 — accounts connect with ONE TAP: the user's VPS is the
+/// login server (its sealed credentials.json is the OAuth client); the
+/// consent page opens in the browser once and covers every tool — Gmail,
+/// Docs, YouTube — and the refresh token is sealed on the VPS. Pasting a
+/// token by hand stays available as "Add manually".
 class GoogleAccountsScreen extends StatefulWidget {
   const GoogleAccountsScreen(
-      {super.key, this.store, this.report, this.uploader});
+      {super.key, this.store, this.report, this.uploader, this.oauth});
 
   /// Injectable for tests; defaults to the keystore-backed store.
   final GoogleAccountStore? store;
@@ -27,18 +33,28 @@ class GoogleAccountsScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the keystore-backed uploader.
   final GoogleCredentialsUploader? uploader;
 
+  /// Injectable for tests; defaults to the VPS-backed OAuth service.
+  final GoogleOAuthService? oauth;
+
   @override
-  State<GoogleAccountsScreen> createState() => _GoogleAccountsScreenState();
+  State<GoogleAccountsScreen> createState() =>
+      _GoogleAccountsScreenState();
 }
 
 class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
-  late Future<List<GoogleAccount>> _accounts;
+  List<GoogleAccount> _legacyAccounts = const [];
+  List<Map<String, dynamic>> _vpsAccounts = const [];
   String? _activeEmail;
   bool _connecting = false;
+  bool _oauthBusy = false;
+  String? _oauthStatus;
   bool? _credsOnVps;
 
   GoogleCredentialsUploader get _uploader =>
       widget.uploader ?? GoogleCredentialsUploader();
+
+  GoogleOAuthService get _oauth =>
+      widget.oauth ?? GoogleOAuthService();
 
   GoogleAccountStore get _store =>
       widget.store ??
@@ -55,16 +71,61 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
   }
 
   void _reload() {
-    _accounts = _store.accounts().then((a) async {
+    _store.accounts().then((a) async {
+      if (!mounted) return;
+      setState(() => _legacyAccounts = a);
       _activeEmail = (await _store.active())?.email;
-      return a;
+      if (mounted) setState(() {});
     });
+    if (_oauth.configured) {
+      _oauth.accounts().then((a) {
+        if (mounted) setState(() => _vpsAccounts = a);
+      });
+    }
     if (_uploader.configured) {
       _uploader.hasCredentials().then((v) {
         if (mounted) setState(() => _credsOnVps = v);
       });
     } else {
       _credsOnVps = null;
+    }
+  }
+
+  /// THE one-tap connect: consent in the browser once, every tool bound,
+  /// refresh token sealed on the VPS. No token pasting, no playground.
+  Future<void> _connectWithGoogle() async {
+    setState(() {
+      _oauthBusy = true;
+      _oauthStatus = 'Opening the Google sign-in…';
+    });
+    try {
+      final account = await _oauth.connect();
+      if (!mounted) return;
+      final tools = (account['tools'] as List?)?.join(', ') ?? 'none';
+      final summary =
+          'Connected ${account['name']} (${account['email']}) — $tools';
+      widget.report?.call(summary);
+      setState(() {
+        _oauthBusy = false;
+        _oauthStatus = null;
+      });
+      _reload();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(summary)));
+    } catch (e) {
+      if (!mounted) return;
+      final message = e
+          .toString()
+          .replaceFirst(RegExp(r'^(StateError|Bad state):\s*'), '')
+          .replaceFirst(RegExp(r'^(Exception|IntegrationException):\s*'), '');
+      setState(() {
+        _oauthBusy = false;
+        _oauthStatus = null;
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -231,6 +292,101 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
     }
   }
 
+  /// The accounts card: VPS-connected accounts first (name + email + the
+  /// tools their consent covers), then legacy paste-token accounts.
+  Widget _buildAccountsCard() {
+    if (_vpsAccounts.isNotEmpty) {
+      return GlassContainer(
+        radius: 28,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            for (var i = 0; i < _vpsAccounts.length; i++) ...[
+              if (i > 0) Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: ValueKey('vps-account-${_vpsAccounts[i]['email']}'),
+                icon: Icons.verified_user_outlined,
+                label: '${_vpsAccounts[i]['name']} · ${_vpsAccounts[i]['email']}',
+                trailing: _toolChips(_vpsAccounts[i]['tools'] as List? ?? const []),
+                onTap: null,
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+    if (_legacyAccounts.isNotEmpty) {
+      return GlassContainer(
+        radius: 28,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            for (var i = 0; i < _legacyAccounts.length; i++) ...[
+              if (i > 0) Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: ValueKey('account-${_legacyAccounts[i].email}'),
+                icon: _legacyAccounts[i].email == _activeEmail
+                    ? Icons.verified_user_outlined
+                    : Icons.account_circle_outlined,
+                label: _legacyAccounts[i].email,
+                trailing: _connecting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : GlassRadio(
+                        selected: _legacyAccounts[i].email == _activeEmail),
+                onTap: () => _connect(_legacyAccounts[i]),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+    return GlassContainer(
+      radius: 28,
+      padding: const EdgeInsets.all(20),
+      child: Text(
+        'No Google account connected yet. One tap below signs you in — '
+        'it connects Gmail, Docs and YouTube at once, and the login runs '
+        'on YOUR server.',
+        style: TextStyle(fontSize: 14, color: GlassColors.textDim),
+      ),
+    );
+  }
+
+  /// The tool chips: Gmail / Docs / YouTube — read from the consented
+  /// scopes; a tool is only "connected" when Google granted it.
+  Widget _toolChips(List<dynamic> tools) {
+    if (tools.isEmpty) {
+      return const SizedBox(width: 0, height: 0);
+    }
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      alignment: WrapAlignment.end,
+      children: [
+        for (final tool in tools)
+          Container(
+            key: ValueKey('tool-$tool'),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: GlassColors.chip,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              tool.toString().toUpperCase(),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: GlassColors.textOnChip),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -268,58 +424,27 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   style: TextStyle(fontSize: 14, color: GlassColors.textDim),
                 ),
                 const SizedBox(height: 24),
-                FutureBuilder<List<GoogleAccount>>(
-                  future: _accounts,
-                  builder: (context, snap) {
-                    final accounts = snap.data ?? const <GoogleAccount>[];
-                    if (accounts.isEmpty) {
-                      return GlassContainer(
-                        radius: 28,
-                        padding: EdgeInsets.all(20),
-                        child: Text(
-                          'No Google account connected yet. Add one below — '
-                          'it connects every Google service at once.',
-                          style: TextStyle(
-                              fontSize: 14, color: GlassColors.textDim),
-                        ),
-                      );
-                    }
-                    return GlassContainer(
-                      radius: 28,
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < accounts.length; i++) ...[
-                            if (i > 0) Divider(
-                                color: GlassColors.divider, height: 1),
-                            GlassMenuRow(
-                              key: ValueKey(
-                                  'account-${accounts[i].email}'),
-                              icon: accounts[i].email == _activeEmail
-                                  ? Icons.verified_user_outlined
-                                  : Icons.account_circle_outlined,
-                              label: accounts[i].email,
-                              trailing: _connecting
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2))
-                                  : GlassRadio(
-                                      selected: accounts[i].email ==
-                                          _activeEmail),
-                              onTap: () => _connect(accounts[i]),
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
+                _buildAccountsCard(),
+                const SizedBox(height: 16),
+                GButton(
+                  key: const ValueKey('google-connect'),
+                  label: _oauthBusy ? 'Waiting for Google…' : 'Connect with Google',
+                  onPressed: _oauthBusy ? null : _connectWithGoogle,
+                  expands: true,
                 ),
+                if (_oauthStatus != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _oauthStatus!,
+                    key: const ValueKey('google-oauth-status'),
+                    style: TextStyle(
+                        fontSize: 13, color: GlassColors.textDim),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 GButton(
                   key: const ValueKey('google-add'),
-                  label: 'Add account',
+                  label: 'Add manually',
                   onPressed: _addAccount,
                   variant: ButtonVariant.secondary,
                   expands: true,
@@ -391,7 +516,8 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'One-time setup — it stays connected until you remove it. '
-                  'Tokens are stored encrypted on this device only.',
+                  'The sign-in token is sealed on your VPS; connector tokens '
+                  'stay encrypted on this device.',
                   style: TextStyle(fontSize: 12, color: GlassColors.textFaint),
                 ),
               ],

@@ -37,10 +37,13 @@ class GorkShell extends StatefulWidget {
 }
 
 class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
-  GorkTab _tab = GorkTab.home;
+  // Movement 62 — the LANDING surface is CHAT: the app opens straight into
+  // the conversation (the first-facing screen), not the weather Home. Home
+  // stays one tap away; the nav pill just starts on chat now.
+  GorkTab _tab = GorkTab.chat;
   bool _onMenu = false;
   bool _attachOpen = false;
-  GorkTab _lastCoreTab = GorkTab.home;
+  GorkTab _lastCoreTab = GorkTab.chat;
   String? _chatConversationId;
   final GlobalKey<ChatScreenState> _globalChatKey = GlobalKey<ChatScreenState>();
   final TextEditingController _input = TextEditingController();
@@ -240,6 +243,22 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       Locator.outbox.flush();
+      // Movement 62 — replies that finished on the VPS while the app was
+      // away arrive as notifications with their first lines; the full
+      // answer is already on the server and merges when the chat opens.
+      _notifyFinishedJobs();
+    }
+  }
+
+  Future<void> _notifyFinishedJobs() async {
+    try {
+      final finished = await Locator.outbox.pollFinished();
+      for (final f in finished) {
+        await Locator.notifications
+            .show('gork — response ready', f.preview);
+      }
+    } catch (_) {
+      // notifications must never crash the shell
     }
   }
 

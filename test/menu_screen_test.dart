@@ -78,8 +78,11 @@ void main() {
   testWidgets('Security row opens the Security screen (the vault)',
       (tester) async {
     await _pump(tester);
-    // Movement 59 removed the Theme row, so the list is shorter —
-    // ensureVisible no-ops when the row is already on screen.
+    // Movement 62 added the Settings row, so the Security row sits below
+    // the fold and the lazy ListView has not BUILT it yet — scroll first,
+    // then ensureVisible can find it.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('menu-security')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('menu-security')));

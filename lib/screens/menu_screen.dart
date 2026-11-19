@@ -16,6 +16,7 @@ import 'profile_edit_screen.dart';
 import 'providers_screen.dart';
 import 'search_screen.dart';
 import 'security_screen.dart';
+import 'settings_screen.dart';
 import 'tasks_screen.dart';
 import 'updates_screen.dart';
 
@@ -143,6 +144,15 @@ class _MenuScreenState extends State<MenuScreen> {
                 // Movement 55: the agent Inbox was built but never linked
                 // from the menu — every settings surface is listed here.
                 onTap: () => _push(context, const InboxScreen()),
+              ),
+              Divider(color: GlassColors.divider, height: 1),
+              GlassMenuRow(
+                key: const ValueKey('menu-settings'),
+                icon: Icons.tune,
+                label: 'Settings',
+                // Movement 62: the ONE settings page — the theme lives in
+                // its Preferences tab now (moved off Home).
+                onTap: () => _push(context, const SettingsScreen()),
               ),
               Divider(color: GlassColors.divider, height: 1),
               GlassMenuRow(

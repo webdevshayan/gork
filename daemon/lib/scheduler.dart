@@ -124,7 +124,9 @@ class FileTaskStore implements TaskStore {
 
 /// Calls the LLM (OpenAI-compatible endpoint, configured via env).
 abstract class LlmCaller {
-  Future<String> call(String prompt);
+  /// [system] overrides the default persona line — chat jobs ask gork as
+  /// the user's assistant, scheduled tasks ask the brief task runner.
+  Future<String> call(String prompt, {String? system});
   String describe();
 }
 
@@ -182,7 +184,7 @@ class EnvLlmCaller implements LlmCaller {
       : '$_baseUrl model=$_model';
 
   @override
-  Future<String> call(String prompt) async {
+  Future<String> call(String prompt, {String? system}) async {
     if (_apiKey.isEmpty) {
       throw StateError('GORK_API_KEY is not set on the VPS');
     }
@@ -202,7 +204,8 @@ class EnvLlmCaller implements LlmCaller {
             'messages': [
               {
                 'role': 'system',
-                'content': 'You are gork, running a scheduled task. Be brief.'
+                'content': system ??
+                    'You are gork, running a scheduled task. Be brief.'
               },
               {'role': 'user', 'content': prompt},
             ],

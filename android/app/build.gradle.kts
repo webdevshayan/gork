@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Movement 62 — PINNED release signing. key.properties + gork-release.keystore
+// are committed to the repo on purpose (see android/.gitignore): the old
+// debug-keystore signing produced a different key on every build-box recycle,
+// so every update collided with the installed app ("package has conflicts").
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -46,9 +57,15 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Movement 62 — the PINNED keystore (committed to the repo), not
+            // the debug keys: see the note above and android/key.properties.
+            signingConfig = signingConfigs.create("gorkRelease").apply {
+                storeFile = file(
+                    keystoreProperties.getProperty("storeFile", "gork-release.keystore"))
+                storePassword = keystoreProperties.getProperty("storePassword", "")
+                keyAlias = keystoreProperties.getProperty("keyAlias", "gork")
+                keyPassword = keystoreProperties.getProperty("keyPassword", "")
+            }
         }
     }
 
