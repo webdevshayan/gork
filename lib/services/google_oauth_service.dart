@@ -72,6 +72,16 @@ class GoogleOAuthService {
     };
   }
 
+  /// THE single redirect URI. Movement 64: the flow used to bind an
+  /// EPHEMERAL port (http://127.0.0.1:40053/callback), which changes on
+  /// every sign-in — Google Cloud Console needs ONE exact redirect URI and
+  /// answered every attempt with "Error 400: redirect_uri_mismatch". The
+  /// port is now FIXED: register this exact value once in Cloud Console →
+  /// Credentials → your OAuth client → Authorized redirect URIs.
+  static const int kRedirectPort = 8636;
+  static const String kRedirectUri =
+      'http://127.0.0.1:$kRedirectPort/callback';
+
   /// The FULL one-tap flow. Returns the connected account:
   /// {email, name, tools: [gmail, docs, youtube]}. Throws [StateError]
   /// with a human message on any refusal — the screen shows it as-is.
@@ -82,10 +92,20 @@ class GoogleOAuthService {
           'Computer first (the login happens on YOUR server).');
     }
 
-    // 1. the loopback listener that captures Google's redirect.
-    final server =
-        await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final redirectUri = 'http://127.0.0.1:${server.port}/callback';
+    // 1. the loopback listener on the FIXED port — the one URI the user
+    // registered in Cloud Console. Busy port = a previous sign-in window
+    // is still closing (or another app owns it); retry in a moment.
+    HttpServer server;
+    try {
+      server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4, kRedirectPort);
+    } on SocketException {
+      throw StateError(
+          'The sign-in listener could not take port $kRedirectPort — '
+          'a previous sign-in window may still be closing. Try again in '
+          'a few seconds.');
+    }
+    const redirectUri = kRedirectUri;
     final code = await _openConsentAndAwaitCode(server, redirectUri);
 
     // 4. the VPS exchanges the code (client_secret never leaves the box).

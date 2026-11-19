@@ -27,8 +27,17 @@ class _UiMessage {
   /// person behind the app (the first-run intro sequence).
   final bool animate;
 
+  /// Movement 64 — sent while another reply was still being worked on:
+  /// the bubble shows as queued until the batch goes out.
+  final bool queued;
+
   const _UiMessage(this.role, this.content,
-      {this.time, this.attachment, this.animate = false});
+      {this.time, this.attachment, this.animate = false,
+       this.queued = false});
+
+  /// The queued message went out — it reads as a normal sent message now.
+  _UiMessage markSent() => _UiMessage(role, content,
+      time: time, attachment: attachment, animate: animate);
 }
 
 /// The Chat tab, pixel-matched to the reference screenshots:
@@ -70,11 +79,20 @@ class ChatScreenState extends State<ChatScreen> {
   String? _searchQuery;
   bool _showScrollButton = false;
 
+  /// Movement 64 — messages typed while a reply is still on its way.
+  /// They queue as dimmed bubbles and go out TOGETHER as one batched
+  /// request the moment the current reply lands: fewer VPS round-trips,
+  /// one coherent answer, like a person who read your follow-ups.
+  final List<String> _queued = [];
+
   @override
   void initState() {
     super.initState();
     _restore();
     _scroll.addListener(_onScroll);
+    // Movement 64 — the chat is in front: reply notifications hold off
+    // (the answer arrives in the thread instead).
+    Locator.notifications.inChat = true;
   }
 
   @override
@@ -201,23 +219,40 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   /// Public send API — the shell's glass input bar drives this.
-  Future<void> send(String rawText) async {    final text = rawText.trim();
-    if (text.isEmpty || _loading) return;
+  ///
+  /// Movement 64 — a message typed while a reply is on its way is QUEUED,
+  /// never dropped. Queued messages show as dimmed "queued" bubbles and
+  /// go out together as ONE request when the current reply lands.
+  /// [silent] (the queue drain) adds no bubble — the queued bubbles
+  /// themselves are the sent record.
+  Future<void> send(String rawText, {bool silent = false}) async {
+    final text = rawText.trim();
+    if (text.isEmpty) return;
 
     // The user's message always lands in the thread, even before any key is
     // configured — the guidance shows underneath it.
-    setState(() {
-      _messages.add(
-        _UiMessage('user', text, time: DateTime.now().millisecondsSinceEpoch),
-      );
-      _error = null;
-      _errorDetails = null;
-      if (_conversationId.isEmpty) {
-        _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
-        _title = text.length > 40 ? '${text.substring(0, 40)}…' : text;
+    final bool willQueue = _loading && !silent;
+    if (!silent) {
+      setState(() {
+        _messages.add(
+          _UiMessage('user', text,
+              time: DateTime.now().millisecondsSinceEpoch,
+              queued: willQueue),
+        );
+        _error = null;
+        _errorDetails = null;
+        if (_conversationId.isEmpty) {
+          _conversationId = DateTime.now().millisecondsSinceEpoch.toString();
+          _title = text.length > 40 ? '${text.substring(0, 40)}…' : text;
+        }
+      });
+      _scrollToBottom();
+      if (willQueue) {
+        _queued.add(text);
+        await _persist();
+        return;
       }
-    });
-    _scrollToBottom();
+    }
 
     // The VPS owns the request when one is configured: the message is
     // enqueued server-side and survives device death / app inactivity. The
@@ -258,24 +293,31 @@ class ChatScreenState extends State<ChatScreen> {
       );
       setState(() {
         _messages.add(
-          _UiMessage('assistant', result.content,
+          _UiMessage('assistant', _humanize(result.content),
               time: DateTime.now().millisecondsSinceEpoch),
         );
         _toolsUsed = result.toolsUsed;
         _loading = false;
       });
+      await _persist();
+      _scrollToBottom();
+      // The reply landed — whatever the user typed while waiting goes out
+      // now, batched into ONE request.
+      await _flushQueue();
     } on LlmException catch (e) {
       setState(() {
         _error = e.message;
         _errorDetails = e.details;
         _loading = false;
       });
+      await _flushQueue();
     } catch (e) {
       setState(() {
         _error = e.toString();
         _errorDetails = null;
         _loading = false;
       });
+      await _flushQueue();
     } finally {
       await _persist();
       _scrollToBottom();
@@ -293,14 +335,56 @@ class ChatScreenState extends State<ChatScreen> {
       _serverPoll = null;
       setState(() {
         _messages.add(
-          _UiMessage('assistant', reply,
+          _UiMessage('assistant', _humanize(reply),
               time: DateTime.now().millisecondsSinceEpoch),
         );
         _loading = false;
       });
       await _persist();
       _scrollToBottom();
+      // Reply landed — release the queue as one batched send (Movement 64).
+      await _flushQueue();
     });
+  }
+
+  /// Movement 64 — the queue drain: every message typed while a reply was
+  /// on its way goes out here as ONE batched request (joined with
+  /// newlines, exactly as a person would have typed them in sequence).
+  /// The dimmed "queued" bubbles flip to normal sent bubbles — the thread
+  /// reads like it does in real messaging: three quick messages, ONE reply.
+  Future<void> _flushQueue() async {
+    if (_queued.isEmpty || !mounted) return;
+    final batch = _queued.join('\n');
+    _queued.clear();
+    setState(() {
+      _messages = [
+        for (final m in _messages) m.queued ? m.markSent() : m,
+      ];
+    });
+    try {
+      await send(batch, silent: true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not send your queued messages — check the '
+              'connection and send again.';
+        });
+      }
+    }
+  }
+
+  /// A raw Dart exception on the VPS side ("HandshakeException: Connection
+  /// terminated during handshake") must not land in the thread as if the
+  /// agent SAID that. One friendly line instead — the technical text stays
+  /// available underneath (collapsed).
+  String _humanize(String reply) {
+    final m = RegExp(r'^([A-Za-z_]+(?:Exception|Error)):\s*(.+)$',
+            multiLine: false)
+        .firstMatch(reply.trim());
+    if (m == null) return reply;
+    return 'I hit a snag on my side mid-task — the connection dropped '
+        'before I could finish. Send that again and I will pick it up '
+        'from where it broke.';
   }
 
   /// Catch-up on restore: merge any replies the VPS produced while this
@@ -321,7 +405,7 @@ class ChatScreenState extends State<ChatScreen> {
         continue; // already merged by the live poll
       }
       setState(() {
-        _messages.add(_UiMessage('assistant', m['content']!,
+        _messages.add(_UiMessage('assistant', _humanize(m['content']!),
             time: DateTime.now().millisecondsSinceEpoch));
       });
       changed = true;
@@ -550,6 +634,7 @@ class ChatScreenState extends State<ChatScreen> {
       text: m.content,
       isUser: m.role == 'user',
       attachment: m.attachment,
+      dimmed: m.queued,
     );
     final bool left = !(m.role == 'user' || m.attachment != null);
     return _BubbleEntrance(
@@ -559,6 +644,23 @@ class ChatScreenState extends State<ChatScreen> {
             left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
         children: [
           bubble,
+          // Movement 64 — the follow-up the user typed while a reply was on
+          // its way: a small "queued" tag under the dimmed bubble.
+          if (m.queued)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.schedule, size: 12,
+                      color: GlassColors.textFaint),
+                  const SizedBox(width: 4),
+                  Text('queued',
+                      style: TextStyle(
+                          fontSize: 11, color: GlassColors.textFaint)),
+                ],
+              ),
+            ),
           if (m.time != null)
             Padding(
               padding: EdgeInsets.only(
@@ -726,6 +828,8 @@ class ChatScreenState extends State<ChatScreen> {
     _serverPoll?.cancel(); // local polling only — server work is never cancelled
     _introTimer?.cancel(); // a disposed screen never finishes the intro
     _scroll.dispose();
+    // The chat is no longer in front — finished replies may notify again.
+    Locator.notifications.inChat = false;
     super.dispose();
   }
 }
@@ -795,11 +899,15 @@ class _Bubble extends StatelessWidget {  const _Bubble({
     required this.text,
     required this.isUser,
     this.attachment,
+    this.dimmed = false,
   });
 
   final String text;
   final bool isUser;
   final ChatAttachment? attachment;
+
+  /// Movement 64 — a queued follow-up: rendered softer until it goes out.
+  final bool dimmed;
 
   Future<void> _openFilePreview(BuildContext context) async {
     String content = '';
@@ -981,7 +1089,7 @@ class _Bubble extends StatelessWidget {  const _Bubble({
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.80,
         ),
-        child: bubble,
+        child: dimmed ? Opacity(opacity: 0.55, child: bubble) : bubble,
       ),
     );
   }

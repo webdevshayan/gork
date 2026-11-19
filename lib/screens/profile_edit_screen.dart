@@ -6,9 +6,9 @@ import '../widgets/ambient_backdrop.dart';
 import '../widgets/g_button.dart';
 import '../widgets/glass.dart';
 
-/// The Profile form: name and email, editable, persisted on this device
-/// only. The reference header values stay as defaults until the user
-/// saves their own.
+/// The Profile form: the NAME is editable; the EMAIL is read-only —
+/// Movement 64: it belongs to the connected Google account and fills in
+/// automatically on connect. Persisted on this device only.
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
 
@@ -22,9 +22,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late final TextEditingController _email =
       TextEditingController(text: profileEmail.value);
 
-  static final RegExp _emailRe =
-      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-
   Future<void> _save() async {
     final name = _name.text.trim();
     final email = _email.text.trim();
@@ -32,13 +29,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(content: Text('Enter a name')));
-      return;
-    }
-    if (!_emailRe.hasMatch(email)) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-            const SnackBar(content: Text('Enter a valid email')));
       return;
     }
     await saveProfile(name: name, email: email);
@@ -111,19 +101,22 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Email',
+                      Text('Email — from Google, read-only',
                           style: TextStyle(
                               fontSize: 14, color: GlassColors.textDim)),
                       const SizedBox(height: 8),
                       TextField(
                         key: const ValueKey('profile-email-field'),
                         controller: _email,
-                        style: TextStyle(color: GlassColors.text),
+                        readOnly: true,
+                        style: TextStyle(color: GlassColors.textDim),
                         decoration: InputDecoration(
                           border: InputBorder.none,
                           hintText: 'you@example.com',
                           hintStyle:
                               TextStyle(color: GlassColors.textFaint),
+                          suffixIcon: Icon(Icons.lock_outline,
+                              size: 18, color: GlassColors.textFaint),
                         ),
                       ),
                     ],

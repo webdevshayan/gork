@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../services/credential_uploader.dart';
 import '../services/locator.dart';
+import '../services/profile_info.dart';
 import 'cloud_computer_screen.dart';
 import '../widgets/ambient_backdrop.dart';
 import '../widgets/g_button.dart';
@@ -104,6 +105,13 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       final tools = (account['tools'] as List?)?.join(', ') ?? 'none';
       final summary =
           'Connected ${account['name']} (${account['email']}) — $tools';
+      // Movement 64 — the Google identity seeds the profile: the email is
+      // Google's (read-only everywhere), the name pre-fills and stays
+      // editable on the profile pages.
+      await saveProfile(
+        name: (account['name'] as String?) ?? profileName.value,
+        email: (account['email'] as String?) ?? profileEmail.value,
+      );
       widget.report?.call(summary);
       setState(() {
         _oauthBusy = false;
@@ -426,6 +434,15 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                 const SizedBox(height: 24),
                 _buildAccountsCard(),
                 const SizedBox(height: 16),
+
+                // Movement 64 — the setup ORDER matches reality: FIRST the
+                // step-by-step Cloud Console guide, THEN the upload button,
+                // and only then Connect with Google. The consent request
+                // needs those credentials AND the one registered redirect
+                // URI — asking the user to connect before any of that
+                // existed just produced Google's 400 redirect_uri_mismatch.
+                _buildCloudConsoleCard(),
+                const SizedBox(height: 16),
                 GButton(
                   key: const ValueKey('google-connect'),
                   label: _oauthBusy ? 'Waiting for Google…' : 'Connect with Google',
@@ -449,69 +466,6 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   variant: ButtonVariant.secondary,
                   expands: true,
                 ),
-                // Movement 61 gap fix: this card used to sit DIRECTLY on the
-                // Add account pill (screenshot 2026-11-18) — two surfaces
-                // touching reads as one broken card. Every stacked pair on
-                // this screen gets the 16px gap.
-                const SizedBox(height: 16),
-                // Movement 55: the Cloud Console card used to be the
-                // FIRST Stack child — painted UNDER the AmbientBackdrop and
-                // never seen (the invisible 'Google Cloud Console → Upload').
-                // It lives in the list now, so Menu → Google → Google Cloud
-                // Console → Upload is actually reachable.
-                GlassContainer(
-                  radius: 24,
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Google Cloud Console',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: GlassColors.text)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Upload the credentials.json from Cloud Console once — it '
-                      'is sealed on the VPS and never read back.',
-                      style: TextStyle(fontSize: 13, color: GlassColors.textDim),
-                    ),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      key: const ValueKey('gconsole-upload'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _uploadCredentials,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Text('Upload credentials.json',
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                      ),
-                    ),
-                    if (_credsOnVps != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _credsOnVps!
-                            ? 'Credentials sealed on the VPS ✓'
-                            : 'No credentials stored yet.',
-                        key: const ValueKey('gconsole-status'),
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: _credsOnVps!
-                                ? GlassColors.text
-                                : GlassColors.textDim),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
 
                 const SizedBox(height: 8),
                 Text(
@@ -523,6 +477,111 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// The Google Cloud Console card: the exact recipe to CREATE the
+  /// credentials (before there is anything to upload), the upload action,
+  /// and the one redirect URI to register. Movement 64.
+  Widget _buildCloudConsoleCard() {
+    return GlassContainer(
+      radius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Google Cloud Console',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: GlassColors.text)),
+          const SizedBox(height: 4),
+          Text(
+            'First time? Create the credentials Google signs in against — '
+            'once, then upload them here.',
+            style: TextStyle(fontSize: 13, color: GlassColors.textDim),
+          ),
+          const SizedBox(height: 10),
+          for (final (i, step) in const [
+            'console.cloud.google.com → create a project (any name).',
+            'APIs & Services → Library → enable Gmail, Google Drive '
+                'and YouTube Data API.',
+            'OAuth consent screen → External → add your own account '
+                'under Test users.',
+            'Credentials → Create credentials → OAuth client ID → '
+                'Web application.',
+            'Authorized redirect URI — exactly: '
+                '${GoogleOAuthService.kRedirectUri}',
+            'Download the JSON and upload it below.',
+          ].indexed) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    margin: const EdgeInsets.only(top: 2),
+                    decoration: BoxDecoration(
+                      color: GlassColors.chip,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text('${i + 1}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: GlassColors.textOnChip)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(step,
+                        style: TextStyle(
+                            fontSize: 13,
+                            height: 1.35,
+                            color: GlassColors.textDim)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          GestureDetector(
+            key: const ValueKey('gconsole-upload'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _uploadCredentials,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text('Upload credentials.json',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white)),
+            ),
+          ),
+          if (_credsOnVps != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _credsOnVps!
+                  ? 'Credentials sealed on the VPS ✓ — Connect with Google below.'
+                  : 'No credentials stored yet — upload before connecting.',
+              key: const ValueKey('gconsole-status'),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: _credsOnVps!
+                      ? GlassColors.text
+                      : GlassColors.textDim),
+            ),
+          ],
         ],
       ),
     );

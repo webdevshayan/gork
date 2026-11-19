@@ -90,13 +90,22 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
 
   /// Saves the ONE VPS connection: address + shared secret. An empty secret
   /// keeps the saved one.
+  ///
+  /// Movement 64 — localhost works: the daemon can run on THIS phone
+  /// (Termux/adb) and the app talks to it over the loopback interface.
+  /// 'localhost' is rewritten to 127.0.0.1 on save — Android can resolve
+  /// localhost to ::1 (IPv6), which the daemon does not bind; the explicit
+  /// IPv4 loopback always reaches it.
   Future<void> _saveVps() async {
-    final url = _vpsUrlController.text.trim();
-    if (url.isEmpty) {
+    final raw = _vpsUrlController.text.trim();
+    if (raw.isEmpty) {
       setState(() => _status = 'Enter the VPS address first (e.g. '
           'http://123.45.67.89:8787).');
       return;
     }
+    final url = raw.replaceFirstMapped(
+        RegExp(r'^(https?://)localhost(?=[/:]|$)'),
+        (m) => '${m[1]}127.0.0.1');
     await Locator.handoff.vps.save(url,
         token: _vpsSecretController.text.trim().isEmpty
             ? null
@@ -215,6 +224,13 @@ class _CloudComputerScreenState extends State<CloudComputerScreen> {
                       hintText: 'http://123.45.67.89:8787',
                       border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: Spacing.xs),
+                  Text(
+                    'The daemon can live on this phone too — run it in '
+                    'Termux and use http://127.0.0.1:8787 (localhost '
+                    'is rewritten to 127.0.0.1 on save).',
+                    style: TypeScale.caption(color: palette.textTertiary),
                   ),
                   const SizedBox(height: Spacing.md),
                   Text('Shared secret (X-Gork-Secret, optional)',

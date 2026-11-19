@@ -249,11 +249,26 @@ class MessageOutbox {
     return out;
   }
 
-  /// The gist for the notification: first lines, clipped — the user should
-  /// understand the answer from the lock screen.
+  /// The gist for the notification: first lines, clipped, PLAIN TEXT —
+  /// the user should understand the answer from the lock screen without
+  /// raw markdown noise ("Open [chat.z.ai](https://chat.z.ai) and select
+  /// **Si…" — screenshot 2026-11-19). Movement 64 strips the markup.
   static String _preview(String reply) {
-    final lines = reply
-        .trim()
+    String text = reply.trim();
+    // Links: [label](url) → label (url only when the label is generic).
+    text = text.replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+        (m) => m[1]!.trim() == m[2]!.trim() || m[1]!.trim().isEmpty
+            ? m[2]!
+            : '${m[1]} (${m[2]})');
+    // Emphasis, code spans, headers, list stars.
+    text = text
+        .replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1')
+        .replaceAll(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'), r'$1')
+        .replaceAll(RegExp(r'__([^_]+)__'), r'$1')
+        .replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m[1] ?? '')
+        .replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
+    final lines = text
         .split('\n')
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)

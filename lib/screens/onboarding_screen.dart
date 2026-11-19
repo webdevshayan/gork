@@ -1,14 +1,29 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../constants/design_tokens.dart';
 import '../services/locator.dart';
+import '../services/profile_info.dart';
+import '../widgets/ambient_backdrop.dart' show avatarPath;
 import '../widgets/g_button.dart';
 import '../widgets/screen.dart';
 import 'gork_shell.dart';
+import 'google_accounts_screen.dart';
 import 'providers_screen.dart';
 
-/// First-run onboarding: three pages, then the flag is set forever.
+/// First-run onboarding: five pages, then the flag is set forever.
 /// Shown by [OnboardingGate] until 'onboarding.done' is true.
+///
+/// Movement 64 — two new pages:
+///   * Google setup, in the order that actually works: the Cloud Console
+///     recipe first, then upload credentials, then Connect with Google
+///     (the full flow lives on GoogleAccountsScreen — this page just
+///     walks there).
+///   * Profile: pick a photo, edit the name — the EMAIL is Google's and
+///     stays read-only everywhere.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key, required this.onFinished});
 
@@ -20,17 +35,32 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
+  final TextEditingController _name = TextEditingController();
   int _page = 0;
 
-  static const _pages = 3;
+  static const _pages = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    initProfile();
+    _name.text = profileName.value;
+  }
 
   Future<void> _next() async {
     if (_page < _pages - 1) {
+      // Leaving the profile page: persist the name the user edited.
+      if (_page == 3 && _name.text.trim().isNotEmpty) {
+        await saveProfile(name: _name.text.trim(), email: profileEmail.value);
+      }
       await _controller.nextPage(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOut,
       );
     } else {
+      if (_name.text.trim().isNotEmpty) {
+        await saveProfile(name: _name.text.trim(), email: profileEmail.value);
+      }
       await Locator.prefs.setBool('onboarding.done', true);
       widget.onFinished();
     }
@@ -44,9 +74,49 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openGoogle() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GoogleAccountsScreen()),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Same mechanism as the shell's avatar sheet: a fresh, uniquely-named
+  /// file per upload (busts ImageCache), the old one deleted right after.
+  Future<void> _choosePhoto() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+      final dir = await getApplicationSupportDirectory();
+      final file = File(
+          '${dir.path}/gork-avatar-${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await file.writeAsBytes(await picked.readAsBytes());
+      final String? old = Locator.prefs.getString('profile.photoPath');
+      if (old != null && old != file.path) {
+        try {
+          await File(old).delete();
+        } catch (_) {}
+      }
+      await Locator.prefs.setString('profile.photoPath', file.path);
+      avatarPath.value = file.path;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load that image.')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -60,7 +130,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: PageView(
               controller: _controller,
               onPageChanged: (i) => setState(() => _page = i),
-              children: [_welcome(palette), _setup(palette), _done(palette)],
+              children: [
+                _welcome(palette),
+                _setup(palette),
+                _google(palette),
+                _profile(palette),
+                _done(palette),
+              ],
             ),
           ),
           Padding(
@@ -141,6 +217,159 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           variant: ButtonVariant.secondary,
           onPressed: _openProviders,
           expands: true,
+        ),
+      ],
+    ),
+  );
+
+  /// Google setup in the ORDER that works: the Cloud Console recipe →
+  /// upload credentials → Connect with Google. The full flow (with the
+  /// upload button and the exact redirect URI) lives one tap away.
+  Widget _google(Palette palette) => Padding(
+    padding: const EdgeInsets.all(Spacing.xl),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your Google, on your server',
+          style: TypeScale.title(color: palette.textPrimary),
+        ),
+        const SizedBox(height: Spacing.md),
+        Text(
+          'One tap signs you in and connects Gmail, Docs and YouTube at '
+          'once — the login runs on YOUR server. Three steps, in order:',
+          style: TypeScale.body(color: palette.textSecondary),
+        ),
+        const SizedBox(height: Spacing.md),
+        for (final (i, step) in const [
+          'Set your VPS address once in Cloud Computer (it can even run '
+              'on this phone — http://127.0.0.1:8787).',
+          'Create the Cloud Console OAuth client and upload its '
+              'credentials.json — the guide is on the Google screen.',
+          'Connect with Google — consent once in your browser.',
+        ].indexed) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${i + 1}.',
+                    style: TypeScale.bodySmall(
+                        color: palette.textPrimary)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(step,
+                      style: TypeScale.bodySmall(
+                          color: palette.textSecondary)),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: Spacing.lg),
+        GButton(
+          label: 'Open Google setup',
+          variant: ButtonVariant.secondary,
+          onPressed: _openGoogle,
+          expands: true,
+        ),
+      ],
+    ),
+  );
+
+  /// Profile: the photo and the name are YOURS; the email comes from
+  /// Google and is read-only everywhere (sign in once and it fills in).
+  Widget _profile(Palette palette) => Padding(
+    padding: const EdgeInsets.all(Spacing.xl),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'This is you',
+          style: TypeScale.title(color: palette.textPrimary),
+        ),
+        const SizedBox(height: Spacing.lg),
+        Center(
+          child: ValueListenableBuilder<String?>(
+            valueListenable: avatarPath,
+            builder: (context, path, _) {
+              final fallback = CircleAvatar(
+                radius: 44,
+                backgroundColor: palette.textTertiary.withValues(alpha: 0.3),
+                child: Icon(Icons.person_outline,
+                    size: 40, color: palette.textSecondary),
+              );
+              return GestureDetector(
+                key: const ValueKey('onboarding-avatar'),
+                onTap: _choosePhoto,
+                child: Stack(
+                  children: [
+                    (path == null)
+                        ? fallback
+                        : CircleAvatar(
+                            radius: 44,
+                            backgroundImage: FileImage(File(path)),
+                          ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: palette.textPrimary,
+                        child: Icon(Icons.camera_alt_outlined,
+                            size: 16, color: palette.background),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        TextField(
+          key: const ValueKey('onboarding-name'),
+          controller: _name,
+          style: TypeScale.body(color: palette.textPrimary),
+          decoration: InputDecoration(
+            labelText: 'Your name',
+            labelStyle: TypeScale.bodySmall(color: palette.textTertiary),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        ValueListenableBuilder<String>(
+          valueListenable: profileEmail,
+          builder: (context, email, _) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  key: const ValueKey('onboarding-email'),
+                  controller: TextEditingController(text: email),
+                  readOnly: true,
+                  enabled: false,
+                  style: TypeScale.body(color: palette.textSecondary),
+                  decoration: InputDecoration(
+                    labelText: 'Email (from Google)',
+                    labelStyle:
+                        TypeScale.bodySmall(color: palette.textTertiary),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.lock_outline,
+                        size: 18, color: palette.textTertiary),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'The email is read-only — connect Google and it fills in '
+                  'automatically. The name stays yours to edit.',
+                  style: TypeScale.bodySmall(color: palette.textTertiary),
+                ),
+              ],
+            );
+          },
         ),
       ],
     ),

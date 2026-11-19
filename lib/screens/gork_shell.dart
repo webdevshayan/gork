@@ -251,14 +251,25 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
   }
 
   Future<void> _notifyFinishedJobs() async {
+    // Movement 64 — replies that land while the user is looking AT the
+    // chat (this is the exact screenshot complaint: three "response
+    // ready" toasts at 2:40 PM for answers already merged in the thread)
+    // must not become notifications. The chat screen itself drives the
+    // flag; the shell double-checks its own surface state here.
+    final bool chatInFront = _tab == GorkTab.chat && !_onMenu;
+    if (chatInFront) Locator.notifications.inChat = true;
     try {
       final finished = await Locator.outbox.pollFinished();
-      for (final f in finished) {
-        await Locator.notifications
-            .show('gork — response ready', f.preview);
+      for (var i = 0; i < finished.length; i++) {
+        // stagger keeps the shade in conversation order (Movement 64).
+        await Locator.notifications.showReply(
+            'gork — response ready', finished[i].preview,
+            stagger: finished.length - 1 - i);
       }
     } catch (_) {
       // notifications must never crash the shell
+    } finally {
+      if (chatInFront) Locator.notifications.inChat = false;
     }
   }
 

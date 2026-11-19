@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/locator.dart';
 import '../services/panels_store.dart';
@@ -132,7 +133,15 @@ class _GorkHomeState extends State<GorkHome> {
                 key: const ValueKey('sunset-input'),
                 controller: controller,
                 autofocus: true,
-                keyboardType: TextInputType.datetime,
+                // Movement 64 — the datetime keyboard on Android is a
+                // NUMBER pad with no colon; plain text + a formatter
+                // gives the full keyboard so '17:40' can be typed as-is
+                // (and 1740 still works).
+                keyboardType: TextInputType.text,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                      RegExp(r'[0-9:apmAPM\s]')),
+                ],
                 decoration: InputDecoration(
                   hintText: '5:40 PM, 17:40 or 1740',
                   border: const OutlineInputBorder(),
