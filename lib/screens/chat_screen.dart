@@ -333,7 +333,9 @@ class ChatScreenState extends State<ChatScreen> {
   void _startServerPoll(String jobId) {
     _serverPoll?.cancel();
     _serverPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
-      final reply = await Locator.outbox.jobResult(jobId);
+      // markSeen: whatever this poll returns is about to be ON SCREEN —
+      // the daemon must not ntfy-push it (Movement 67 notification fix).
+      final reply = await Locator.outbox.jobResult(jobId, markSeen: true);
       if (reply == null || !mounted) return;
       _serverPoll?.cancel();
       _serverPoll = null;
@@ -345,6 +347,9 @@ class ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
       await _persist();
+      // The user has now READ this reply — pollFinished must never
+      // re-notify it (Movement 67: "I read it, then got notified").
+      await Locator.outbox.markNotified(jobId);
       _scrollToBottom();
       // Reply landed — release the queue as one batched send (Movement 64).
       await _flushQueue();
@@ -396,7 +401,10 @@ class ChatScreenState extends State<ChatScreen> {
   /// keeps the merge idempotent.
   Future<void> _syncFromServer() async {
     if (!Locator.outbox.configured || _conversationId.isEmpty) return;
-    final serverMsgs = await Locator.outbox.pullMessages(_conversationId);
+    // markSeen: this screen is in FRONT — everything already on the
+    // server thread counts as read for ntfy suppression (Movement 67).
+    final serverMsgs =
+        await Locator.outbox.pullMessages(_conversationId, markSeen: true);
     if (serverMsgs.isEmpty || !mounted) return;
     final wmKey = 'outbox.sync.${_conversationId}';
     final prefs = Locator.prefs;
@@ -520,15 +528,26 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    // Movement 67 — one post-frame hop kept missing: the reply bubble's
+    // markdown lays out over SEVERAL frames (Text.rich, tables, images
+    // resolve late), the extent grows after the first jump, and the
+    // viewport then clips the newest bubble at its bottom edge — artifacts
+    // right above the composer (screenshot 2026-11-19 19:05). Pin for a
+    // few frames; each hop re-reads maxScrollExtent, so the last hop is
+    // always exact. jumpTo, not animateTo: the animated target went stale
+    // mid-flight for the same reason.
+    void pin(int remaining) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scroll.hasClients || !mounted) return;
+        final position = _scroll.position;
+        if ((position.pixels - position.maxScrollExtent).abs() > 1.0) {
+          _scroll.jumpTo(position.maxScrollExtent);
+        }
+        if (remaining > 0) pin(remaining - 1);
+      });
+    }
+
+    pin(3);
   }
 
   Future<void> _pickProvider() async {

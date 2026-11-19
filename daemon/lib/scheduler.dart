@@ -130,7 +130,47 @@ abstract class LlmCaller {
   /// first) so a chat job is answered with the thread in mind, not cold.
   Future<String> call(String prompt,
       {String? system, List<({String role, String content})>? history});
+
+  /// Movement 67 — one completion against [messages] with the agent's
+  /// [tools] offered as OpenAI-style function calling. The server's agent
+  /// loop drives this directly: it appends tool results and re-calls until
+  /// the model answers in plain text. [tools] empty = a plain call.
+  Future<LlmTurn> chat(List<Map<String, dynamic>> messages,
+      {List<Map<String, dynamic>>? tools});
+
   String describe();
+}
+
+/// One model turn: either text, or tool-call requests (possibly both).
+class LlmTurn {
+  const LlmTurn({
+    this.content,
+    this.toolCalls = const [],
+    this.raw = const {},
+  });
+
+  final String? content;
+  final List<AgentToolCall> toolCalls;
+
+  /// The assistant message EXACTLY as the provider returned it — fed back
+  /// verbatim before the tool results (tool_call ids must match).
+  final Map<String, dynamic> raw;
+}
+
+/// A parsed function-call request from the model.
+class AgentToolCall {
+  const AgentToolCall({
+    required this.id,
+    required this.name,
+    required this.argsJson,
+  });
+
+  final String id;
+  final String name;
+
+  /// The arguments as a raw JSON string — decoded defensively by the
+  /// caller (models occasionally emit invalid JSON).
+  final String argsJson;
 }
 
 /// The provider's own one-line message out of an error body. Scheduled-task
@@ -189,47 +229,109 @@ class EnvLlmCaller implements LlmCaller {
   @override
   Future<String> call(String prompt,
       {String? system, List<({String role, String content})>? history}) async {
+    final turn = await chat([
+      {
+        'role': 'system',
+        'content': system ??
+            'You are gork, running a scheduled task. Be brief.'
+      },
+      for (final turn in history ?? const [])
+        {'role': turn.role, 'content': turn.content},
+      {'role': 'user', 'content': prompt},
+    ]);
+    return turn.content ?? '';
+  }
+
+  @override
+  Future<LlmTurn> chat(List<Map<String, dynamic>> messages,
+      {List<Map<String, dynamic>>? tools}) async {
     if (_apiKey.isEmpty) {
       throw StateError('GORK_API_KEY is not set on the VPS');
     }
-    final response = await _http
-        .post(
-          Uri.parse('$_baseUrl/chat/completions'),
-          headers: {
-            'content-type': 'application/json',
-            'authorization': 'Bearer $_apiKey',
-          },
-          body: jsonEncode({
-            'model': _model,
-            // Cap the output ceiling: without it providers assume the
-            // model's maximum, which OpenRouter refuses with 402 when the
-            // balance cannot cover that worst case. Tasks are "be brief".
-            'max_tokens': 1024,
-            'messages': [
-              {
-                'role': 'system',
-                'content': system ??
-                    'You are gork, running a scheduled task. Be brief.'
-              },
-              // The thread so far — Movement 65: the daemon used to answer
-              // every job cold, so the conversation had no memory on the
-              // server and the batched follow-ups made no sense to the
-              // model. Prior turns (user + assistant) go in oldest first.
-              for (final turn in history ?? const [])
-                {'role': turn.role, 'content': turn.content},
-              {'role': 'user', 'content': prompt},
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
+    final body = <String, dynamic>{
+      'model': _model,
+      // Cap the output ceiling: without it providers assume the model's
+      // maximum, which OpenRouter refuses with 402 when the balance cannot
+      // cover that worst case. Tasks are "be brief".
+      'max_tokens': 1024,
+      'messages': messages,
+      if (tools != null && tools.isNotEmpty) 'tools': tools,
+    };
+    http.Response response;
+    try {
+      response = await _http
+          .post(
+            Uri.parse('$_baseUrl/chat/completions'),
+            headers: {
+              'content-type': 'application/json',
+              'authorization': 'Bearer $_apiKey',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 60));
+    } on http.ClientException {
+      rethrow;
+    }
     if (response.statusCode != 200) {
+      // Movement 67 — an endpoint that rejects `tools` (text-only
+      // providers answer 400 naming the field) must not break chat:
+      // retry once without tools so the agent degrades to talking.
+      if (tools != null &&
+          tools.isNotEmpty &&
+          response.statusCode >= 400 &&
+          response.statusCode < 500) {
+        final brief = _briefLlmError(response.body).toLowerCase();
+        final looksLikeToolsRefusal = brief.contains('tool') ||
+            brief.contains('function') ||
+            brief.contains('unsupported') ||
+            brief.contains('unknown');
+        if (looksLikeToolsRefusal) {
+          final retry = Map<String, dynamic>.from(body)..remove('tools');
+          final second = await _http
+              .post(
+                Uri.parse('$_baseUrl/chat/completions'),
+                headers: {
+                  'content-type': 'application/json',
+                  'authorization': 'Bearer $_apiKey',
+                },
+                body: jsonEncode(retry),
+              )
+              .timeout(const Duration(seconds: 60));
+          if (second.statusCode == 200) {
+            return _turnFrom(second.body);
+          }
+        }
+      }
       throw HttpException(
           'LLM ${response.statusCode}: ${_briefLlmError(response.body)}');
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return _turnFrom(response.body);
+  }
+
+  /// Parses a chat-completions response body into an [LlmTurn].
+  LlmTurn _turnFrom(String body) {
+    final data = jsonDecode(body) as Map<String, dynamic>;
     final choices = data['choices'] as List;
-    final message = choices.first['message'] as Map<String, dynamic>;
-    return (message['content'] as String?) ?? '';
+    final message =
+        (choices.first['message'] as Map<String, dynamic>? ?? {});
+    final toolCalls = <AgentToolCall>[];
+    final rawCalls = message['tool_calls'];
+    if (rawCalls is List) {
+      for (final c in rawCalls) {
+        if (c is! Map<String, dynamic>) continue;
+        final fn = c['function'] as Map<String, dynamic>? ?? {};
+        toolCalls.add(AgentToolCall(
+          id: c['id']?.toString() ?? 'call-${toolCalls.length}',
+          name: fn['name']?.toString() ?? '',
+          argsJson: fn['arguments']?.toString() ?? '{}',
+        ));
+      }
+    }
+    return LlmTurn(
+      content: message['content'] as String?,
+      toolCalls: toolCalls,
+      raw: message,
+    );
   }
 }
 

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
+import 'package:http/http.dart' as http;
 
 import 'package:gork_daemon/browser_agent.dart';
 import 'package:gork_daemon/cli_support.dart';
@@ -22,7 +23,7 @@ const int kDefaultPort = 8787;
 /// The daemon's own version, reported by /health. The phone app shows it
 /// (Cloud Computer) and uses a refusal from an OLD daemon to point the user
 /// at `gork daemon update`. Bump when the daemon gains endpoints or fixes.
-const String kDaemonVersion = '0.3.0';
+const String kDaemonVersion = '0.4.0';
 
 /// Where task state lives.
 ///
@@ -106,6 +107,7 @@ Handler buildHandler(
   AgentBrowser? browser,
   String? vaultDir,
   JobStore? jobStore,
+  SeenStore? seenStore,
   GoogleAuth? google,
 }) =>
     const Pipeline()
@@ -116,6 +118,7 @@ Handler buildHandler(
             browser: browser,
             vaultDir: vaultDir,
             jobStore: jobStore,
+            seenStore: seenStore,
             google: google));
 
 /// Keys the phone may write through POST /config. GORK_PORT is allowed (it
@@ -135,6 +138,7 @@ Router buildRouter(Daemon daemon,
     AgentBrowser? browser,
     String? vaultDir,
     JobStore? jobStore,
+    SeenStore? seenStore,
     GoogleAuth? google}) {
   final router = Router();
 
@@ -384,29 +388,351 @@ Router buildRouter(Daemon daemon,
     return turns.length <= 40 ? turns : turns.sublist(turns.length - 40);
   }
 
+  /// Movement 67 — push the completion notification ONLY if the user has
+  /// not already read the reply. The phone's poll (?seen=1, every 2 s
+  /// while the chat is open) lands within a second or two of the reply
+  /// being stored — but the ntfy push would race it out the door, so the
+  /// decision is deferred: re-check the read marker for a few seconds,
+  /// and push at the deadline only if no acknowledgment arrived.
+  Future<void> _notifyUnlessRead(AgentJob job, String body,
+      {required String title, required int finishedAtMs}) async {
+    // No read-marker store wired (bare daemon, old deployments): push
+    // immediately — the suppressor simply does not exist there.
+    if (seenStore == null) {
+      await daemon.notifier.notify(title, body);
+      return;
+    }
+    // Bounded by iterations, not by the clock: tests pin daemon.clock(),
+    // and a frozen clock would spin an isAfter() loop forever. ~6 s of
+    // 700 ms waits; the marker is re-checked between every wait.
+    const checks = 9;
+    for (var i = 0; i < checks; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (seenStore!.hasSeen(job.conversationId, job.id, finishedAtMs)) {
+        return; // read while we waited — no push
+      }
+    }
+    await daemon.notifier.notify(title, body);
+  }
+
+  // Movement 67 — THE AGENT'S HANDS. Until now a chat job was ONE
+  // completion call: the model could only talk about the box, never touch
+  // it ("I have no tools, no filesystem, no shell" — screenshots
+  // 2026-11-19). runAgentTurn wraps the LLM in a function-calling loop:
+  // the model may call tools (shell, files, fetch, the agent browser,
+  // scheduling) up to [kMaxToolRounds] times before the final answer.
+  // A provider that refuses `tools` (plain text-only endpoints) falls
+  // back to the old single-call behavior — chat keeps working everywhere.
+
+  /// Tool rounds per turn — a safety cap, not a target.
+  const int kMaxToolRounds = 8;
+
+  const String chatToolsNote =
+      '\n\nYou have TOOLS on your own VPS and you should USE them when a '
+      'request needs hands: shell (run any command), read_file / '
+      'write_file / list_dir (the filesystem), fetch_url (get a web page '
+      'or API), browser (drive a real headless Chromium: navigate, click, '
+      'type, read the page, screenshot), create_task (schedule a recurring '
+      'job). Call a tool, read the result, then continue; when the work is '
+      'done, answer briefly in your own voice. Do not claim you lack '
+      'tools — try them.';
+
+  /// The OpenAI function-calling schema for the agent's tools.
+  final List<Map<String, dynamic>> agentToolSchemas = <Map<String, dynamic>>[
+        {
+          'type': 'function',
+          'function': {
+            'name': 'shell',
+            'description':
+                'Run a bash command on the VPS and get stdout/stderr. '
+                '30 s timeout, output capped.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'command': {'type': 'string'},
+              },
+              'required': ['command'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'read_file',
+            'description': 'Read a text file. Optional offset/limit lines.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+                'offset': {'type': 'integer'},
+                'limit': {'type': 'integer'},
+              },
+              'required': ['path'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'write_file',
+            'description':
+                'Write (or overwrite) a text file; parent directories are '
+                'created. Use for scripts, notes, drafts.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+                'content': {'type': 'string'},
+              },
+              'required': ['path', 'content'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'list_dir',
+            'description': 'List a directory with sizes.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+              },
+              'required': ['path'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'fetch_url',
+            'description':
+                'GET a URL from the VPS and return status + body text '
+                '(capped). For APIs and static pages; JS sites need browser.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'url': {'type': 'string'},
+              },
+              'required': ['url'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'browser',
+            'description':
+                'Drive the persistent headless browser: action = navigate '
+                '(url) | click (selector) | type (selector, text) | read '
+                '(selector?) | scroll (delta) | screenshot | back. Session '
+                '"agent" is yours; cookies persist.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'action': {'type': 'string'},
+                'url': {'type': 'string'},
+                'selector': {'type': 'string'},
+                'text': {'type': 'string'},
+                'delta': {'type': 'number'},
+              },
+              'required': ['action'],
+            },
+          },
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'create_task',
+            'description':
+                'Schedule a recurring task (runs every repeatMinutes, '
+                'prompt goes to the LLM).',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'title': {'type': 'string'},
+                'prompt': {'type': 'string'},
+                'repeatMinutes': {'type': 'integer'},
+              },
+              'required': ['title', 'prompt'],
+            },
+          },
+        },
+      ];
+
+  /// Execute one tool call. Every failure becomes a STRING result — the
+  /// loop must always be able to continue.
+  Future<String> runAgentTool(String name, Map<String, dynamic> args) async {
+    String _clip(String s, [int n = 8000]) =>
+        s.length <= n ? s : '${s.substring(0, n)}\n…(truncated)';
+    try {
+      switch (name) {
+        case 'shell':
+          final cmd = args['command']?.toString() ?? '';
+          if (cmd.trim().isEmpty) return 'error: command is required';
+          // Process.run has no timeout parameter — wrap the future. A
+          // timed-out process may linger; acceptable on the user's own
+          // box, and 124 mirrors the shell's timeout convention.
+          final r = await Process.run('bash', ['-c', cmd]).timeout(
+              const Duration(seconds: 30),
+              onTimeout: () => ProcessResult(
+                  -1, 124, '', 'timed out after 30 s'));
+          return _clip(
+              'exit=${r.exitCode}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}');
+        case 'read_file':
+          final f = File(args['path']!.toString());
+          if (!f.existsSync()) return 'error: no such file';
+          final lines = f.readAsLinesSync();
+          final offset =
+              args.containsKey('offset') ? (args['offset'] as num).toInt() : 0;
+          final limit =
+              args.containsKey('limit') ? (args['limit'] as num).toInt() : 400;
+          return _clip(lines
+              .skip(offset)
+              .take(limit)
+              .map((l) => l)
+              .join('\n'));
+        case 'write_file':
+          final f = File(args['path']!.toString());
+          await f.parent.create(recursive: true);
+          await f.writeAsString(args['content']?.toString() ?? '');
+          return 'written ${f.path} (${args['content']?.toString().length ?? 0} bytes)';
+        case 'list_dir':
+          final dir = Directory(args['path']?.toString() ?? '.');
+          if (!dir.existsSync()) return 'error: no such directory';
+          final entries = dir.listSync()
+            ..sort((a, b) => a.path.compareTo(b.path));
+          return _clip([
+            for (final e in entries.take(200))
+              '${FileSystemEntity.isDirectorySync(e.path) ? "d" : "-"} '
+                  '${e.runtimeType.toString().substring(0, 1)} '
+                  '${e.path.split("/").last}',
+          ].join('\n'));
+        case 'fetch_url':
+          final url_ = args['url']?.toString() ?? '';
+          if (Uri.tryParse(url_)?.scheme.startsWith('http') != true) {
+            return 'error: a valid http(s) url is required';
+          }
+          final client = http.Client();
+          try {
+            final res = await client
+                .get(Uri.parse(url_))
+                .timeout(const Duration(seconds: 20));
+            return _clip('status=${res.statusCode}\n'
+                'content-type: ${res.headers['content-type']}\n\n'
+                '${res.body}');
+          } finally {
+            client.close();
+          }
+        case 'browser':
+          if (browser == null) {
+            return 'error: the agent browser is not wired in this daemon';
+          }
+          final action = args['action']?.toString() ?? '';
+          final opArgs = <String, dynamic>{};
+          for (final k in ['url', 'selector', 'text', 'delta']) {
+            if (args[k] != null) opArgs[k] = args[k];
+          }
+          final r = await browser.op('agent', action, opArgs);
+          return _clip(jsonEncode(r));
+        case 'create_task':
+          final title = args['title']?.toString() ?? 'Untitled';
+          final prompt = args['prompt']?.toString() ?? '';
+          if (prompt.trim().isEmpty) return 'error: prompt is required';
+          final repeat =
+              args.containsKey('repeatMinutes') &&
+                  (args['repeatMinutes'] as num).toInt() > 0
+              ? (args['repeatMinutes'] as num).toInt()
+              : 60;
+          await daemon.tasks.save(Task(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: title,
+            prompt: prompt,
+            repeatMinutes: repeat,
+            enabled: true,
+          ));
+          return 'task "$title" scheduled every $repeat minutes';
+        default:
+          return 'error: unknown tool $name';
+      }
+    } catch (e) {
+      return 'error: $e';
+    }
+  }
+
+  /// One full agent turn: loop [chatSystemPrompt + tools note, history,
+  /// user text] through the model, executing tool calls until the model
+  /// answers in plain text or the round cap is hit. Returns the final text.
+  Future<String> runAgentTurn(AgentJob job) async {
+    final messages = <Map<String, dynamic>>[
+      {
+        'role': 'system',
+        'content': '$chatSystemPrompt$chatToolsNote',
+      },
+      for (final turn in conversationHistory(jobStore!, job))
+        {'role': turn.role, 'content': turn.content},
+      {'role': 'user', 'content': job.text},
+    ];
+    Map<String, dynamic>? lastToolRound;
+    for (var round = 0; round < kMaxToolRounds; round++) {
+      final turn = await daemon.llm.chat(messages, tools: agentToolSchemas);
+      if (turn.toolCalls.isEmpty) {
+        return turn.content ?? '';
+      }
+      lastToolRound = turn.raw;
+      // Feed the assistant's tool_calls back, then every result.
+      messages.add(lastToolRound);
+      for (final call in turn.toolCalls) {
+        Map<String, dynamic> args = {};
+        try {
+          final decoded = jsonDecode(call.argsJson);
+          if (decoded is Map<String, dynamic>) args = decoded;
+        } catch (_) {
+          // malformed args — the tool will answer with a usable error
+        }
+        final result = await runAgentTool(call.name, args);
+        stdout.writeln('agent tool ${call.name} -> '
+            '${result.length} chars');
+        messages.add({
+          'role': 'tool',
+          'tool_call_id': call.id,
+          'content': result,
+        });
+      }
+    }
+    // Round cap: one last plain call so the user still gets words.
+    final finalTurn =
+        await daemon.llm.chat(messages..add({
+          'role': 'user',
+          'content': '(Stop using tools now — summarize what you found and '
+              'answer.)',
+        }));
+    return finalTurn.content ?? '';
+  }
+
   void processJob(AgentJob job) {
     jobChain = jobChain.then((_) async {
       try {
         await jobStore!.save(job.copyWith(status: 'running'));
-        final reply = await daemon.llm.call(job.text,
-            system: chatSystemPrompt,
-            history: conversationHistory(jobStore!, job));
+        final reply = await runAgentTurn(job);
         await jobStore.save(job.copyWith(
             status: 'done', reply: reply, finishedAt: daemon.clock().millisecondsSinceEpoch));
-        // The lock-screen summary: first lines of the reply, clipped.
-        await daemon.notifier
-            .notify('gork — response ready', jobNotificationPreview(reply));
+        await _notifyUnlessRead(job, jobNotificationPreview(reply),
+            title: 'gork — response ready',
+            finishedAtMs: daemon.clock().millisecondsSinceEpoch);
       } catch (e) {
         try {
           await jobStore!.save(job.copyWith(
               status: 'error',
               reply: e.toString(),
               finishedAt: daemon.clock().millisecondsSinceEpoch));
-          await daemon.notifier.notify(
-              'gork — the request failed',
+          await _notifyUnlessRead(
+              job,
               e.toString().length <= 220
                   ? e.toString()
-                  : e.toString().substring(0, 220));
+                  : e.toString().substring(0, 220),
+              title: 'gork — the request failed',
+              finishedAtMs: daemon.clock().millisecondsSinceEpoch);
         } catch (_) {
           // state-dir trouble must not crash the request handler
         }
@@ -455,6 +781,14 @@ Router buildRouter(Daemon daemon,
       return _json({'error': 'no such job'}, 404);
     }
     final job = match.first;
+    // Movement 67 — the phone acknowledging a job poll (?seen=1) means
+    // whatever comes back is being displayed right now; record the read
+    // marker so the completion push can skip already-read replies.
+    if (request.url.queryParameters['seen'] == '1' && seenStore != null) {
+      seenStore!.markSeen(job.conversationId,
+          daemon.clock().millisecondsSinceEpoch,
+          jobId: job.id);
+    }
     return _json({
       'id': job.id,
       'conversation_id': job.conversationId,
@@ -468,6 +802,12 @@ Router buildRouter(Daemon daemon,
       (Request request, String id) async {
     if (jobStore == null) {
       return _json({'error': 'jobs not wired in this daemon'}, 500);
+    }
+    // Movement 67 — the chat screen's catch-up pull with ?seen=1: the
+    // user is LOOKING at this thread right now; everything already in it
+    // counts as read for the notification suppressor.
+    if (request.url.queryParameters['seen'] == '1' && seenStore != null) {
+      seenStore!.markSeen(id, daemon.clock().millisecondsSinceEpoch);
     }
     final jobs = jobStore
         .all()
@@ -630,6 +970,7 @@ Future<void> main(List<String> args) async {
       browser: browser,
       vaultDir: stateDirPath(),
       jobStore: FileJobStore('${stateDirPath()}/jobs.json'),
+      seenStore: SeenStore('${stateDirPath()}/seen.json'),
       google: GoogleAuth(vaultDir: stateDirPath()));
 
   // The agent browser must not outlive the daemon: SIGTERM (gork daemon

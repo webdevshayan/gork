@@ -248,14 +248,39 @@ class GoogleOAuthService {
   /// the title/body were run through Uri.encodeComponent and rendered as
   /// literal percent-escapes ("gork%20%E2%80%94%20connected") — plain text
   /// now (our own strings; anything user-derived goes through htmlEscape).
-  /// A visible button bounces the user back to the app via an intent: the
-  /// flow WORKED, the person must not stay stranded in the browser.
+  /// Movement 67 — the tab must not strand the user: a countdown fires the
+  /// deep link AUTOMATICALLY (the intent re-opens gork even when the app
+  /// process died while the consent was in flight), with a manual "Open
+  /// gork" button and a close-tab hint as fallbacks. The navigation sits
+  /// in a try/catch — browsers that block programmatic custom-scheme
+  /// navigation just leave the button for the user to tap.
   Future<void> _page(HttpRequest req, String title, String body,
       {bool backToApp = false}) async {
     final back = backToApp
         ? '<a class="btn" href="intent:#Intent;scheme=dev.shayan.gork;'
-            'package=dev.shayan.gork;end">Return to gork</a>'
-        : '';
+            'package=dev.shayan.gork;end">Open gork</a>\n'
+            '<p class="hint">You can close this tab afterwards.</p>\n'
+            '<script>\n'
+            '  (function () {\n'
+            '    var left = 3;\n'
+            "    var el = document.getElementById('count');\n"
+            '    function tick() {\n'
+            '      if (left <= 0) {\n'
+            '        try { window.location.replace(\n'
+            "          'intent:#Intent;scheme=dev.shayan.gork;"
+            'package=dev.shayan.gork;end\'); }\n'
+            '        catch (e) {}\n'
+            "        if (el) el.textContent = 'Opening gork…';\n"
+            '        return;\n'
+            '      }\n'
+            "      if (el) el.textContent = 'Opening gork in ' + left + '…';\n"
+            '      left--;\n'
+            '      setTimeout(tick, 1000);\n'
+            '    }\n'
+            '    setTimeout(tick, 400);\n'
+            '  })();\n'
+            '</script>'
+        : '<p class="hint">You can close this window.</p>';
     req.response.headers.contentType = ContentType.html;
     req.response.write('''
 <!doctype html><html><head><meta charset="utf-8">
@@ -267,6 +292,7 @@ class GoogleOAuthService {
   .card{max-width:24rem;text-align:center;padding:2rem}
   h2{font-weight:600;margin:0 0 .5rem}
   p{color:#aaa;margin:0 0 1.5rem}
+  p.hint{font-size:.85rem;margin:-.75rem 0 1.25rem}
   .btn{display:inline-block;padding:.75rem 1.5rem;border-radius:999px;
        background:#e8e8e8;color:#141414;font-weight:600;
        text-decoration:none}
@@ -274,6 +300,7 @@ class GoogleOAuthService {
 <body><div class="card">
 <h2>${const HtmlEscape().convert(title)}</h2>
 <p>${const HtmlEscape().convert(body)}</p>
+<p id="count" class="hint"></p>
 $back
 </div></body></html>''');
     await req.response.close();

@@ -47,6 +47,10 @@ class GButton extends StatelessWidget {
 
     final Widget content = Container(
       height: 44,
+      // Movement 67 — the label used to touch the pill's edge (screenshots
+      // 2026-11-19: "New chat"/"Add file"/"Add image" looked clipped on the
+      // project screen). Real horizontal padding, like every other chip.
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
@@ -55,6 +59,8 @@ class GButton extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TypeScale.bodySmall(color: fg).copyWith(fontWeight: FontWeight.w600),
       ),
     );

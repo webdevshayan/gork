@@ -75,12 +75,62 @@ class FakeLlm implements LlmCaller {
   final List<({String prompt, String? system,
       List<({String role, String content})>? history})> calls = [];
 
+  /// Movement 67 — the server's agent loop now goes through chat();
+  /// recording derives the old (prompt, system, history) triple from the
+  /// messages array so the persona/history assertions keep working.
+  final List<String> toolCallsRequested = [];
+
   @override
   Future<String> call(String prompt,
       {String? system,
       List<({String role, String content})>? history}) async {
     calls.add((prompt: prompt, system: system, history: history));
     return 'ok: $prompt';
+  }
+
+  @override
+  Future<LlmTurn> chat(List<Map<String, dynamic>> messages,
+      {List<Map<String, dynamic>>? tools}) async {
+    final system = messages.first['content']?.toString() ?? '';
+    final lastUser = messages.lastWhere((m) => m['role'] == 'user',
+        orElse: () => {'role': 'user', 'content': ''});
+    final prompt = lastUser['content']?.toString() ?? '';
+    // History = everything except the system line and, when the thread
+    // ends with the live user text, that text. Tool rounds end with the
+    // TOOL RESULT instead — those stay in, so loop assertions can see
+    // the model actually received the tool output (Movement 67).
+    final body = messages.length > 1 && messages.last['role'] == 'user'
+        ? messages.sublist(1, messages.length - 1)
+        : messages.sublist(1);
+    final history = <({String role, String content})>[
+      for (final m in body)
+        (
+          role: m['role']?.toString() ?? 'user',
+          content: m['content']?.toString() ?? '',
+        ),
+    ];
+    calls.add((prompt: prompt, system: system, history: history));
+    if (toolCallsRequested.isNotEmpty) {
+      // One tool round, then the answer — lets the loop tests run.
+      final next = toolCallsRequested.removeAt(0);
+      return LlmTurn(
+        toolCalls: [
+          AgentToolCall(id: 'call-1', name: next, argsJson: '{}'),
+        ],
+        raw: {
+          'role': 'assistant',
+          'content': null,
+          'tool_calls': [
+            {
+              'id': 'call-1',
+              'type': 'function',
+              'function': {'name': next, 'arguments': '{}'},
+            },
+          ],
+        },
+      );
+    }
+    return LlmTurn(content: 'ok: $prompt');
   }
 
   @override
@@ -865,6 +915,136 @@ void main() {
       expect(res.statusCode, 500);
     });
   });
+
+  // ------------------------------------------------------------------
+  // Movement 67 — read-suppressed notifications + the agent's hands.
+  // ------------------------------------------------------------------
+  group('Movement 67 — ntfy suppression by read markers', () {
+    late Directory tmp;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('gork-m67-notif');
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Future<Response> post(Handler handler, String text) async =>
+        await handler(Request(
+          'POST',
+          Uri.parse('http://test.local/v1/messages'),
+          body: jsonEncode({'conversation_id': 'c67', 'text': text}),
+          headers: {'content-type': 'application/json'},
+        ));
+
+    Future<AgentJob> finished(JobStore store, String id) async {
+      for (var i = 0; i < 100; i++) {
+        final m = store.all().where((j) => j.id == id).toList();
+        if (m.isNotEmpty &&
+            (m.first.status == 'done' || m.first.status == 'error')) {
+          return m.first;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      fail('job $id never reached a terminal state');
+    }
+
+    test('a reply the phone acknowledged (?seen=1) is never pushed', () async {
+      final pushes = _RecordingNotifier();
+      final store = FileJobStore('${tmp.path}/jobs67a.json');
+      final seen = SeenStore('${tmp.path}/seen67a.json');
+      final handler = buildHandler(
+          Daemon(FakeTaskStore(), FakeLlm(), pushes,
+              clock: () => DateTime.fromMillisecondsSinceEpoch(1000)),
+          jobStore: store,
+          seenStore: seen);
+      final r = await post(handler, 'will read this instantly');
+      expect(r.statusCode, 201);
+      final id = (await _body(r))['id'] as String;
+      // The phone's poll lands BEFORE the reply: seen=1 for this job.
+      seen.markSeen('c67', 2000, jobId: id);
+      await finished(store, id);
+      // The grace loop re-checks the marker for up to ~6 s; the marker is
+      // already there, so the push must never happen.
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(pushes.titles, isEmpty);
+    });
+
+    test('an unread reply still pushes — after the grace window',
+        () async {
+      final pushes = _RecordingNotifier();
+      final store = FileJobStore('${tmp.path}/jobs67b.json');
+      final seen = SeenStore('${tmp.path}/seen67b.json');
+      final handler = buildHandler(
+          Daemon(FakeTaskStore(), FakeLlm(), pushes,
+              clock: () => DateTime.fromMillisecondsSinceEpoch(1000)),
+          jobStore: store,
+          seenStore: seen);
+      final r = await post(handler, 'nobody is watching');
+      expect(r.statusCode, 201);
+      final id = (await _body(r))['id'] as String;
+      await finished(store, id);
+      // No marker: the loop runs its full ~6.3 s and then pushes.
+      await Future<void>.delayed(const Duration(seconds: 7));
+      expect(pushes.titles, ['gork — response ready']);
+      expect(store.all().first.id == id || store.all().length == 1, isTrue);
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  });
+
+  group('Movement 67 — the agent loop (function calling)', () {
+    late Directory tmp;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('gork-m67-tools');
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Future<AgentJob> finished(JobStore store, String id) async {
+      for (var i = 0; i < 100; i++) {
+        final m = store.all().where((j) => j.id == id).toList();
+        if (m.isNotEmpty &&
+            (m.first.status == 'done' || m.first.status == 'error')) {
+          return m.first;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      fail('job $id never reached a terminal state');
+    }
+
+    test('a tool call round feeds the tool result back to the model',
+        () async {
+      final llm = FakeLlm();
+      // The model asks for the shell once, then answers in text.
+      llm.toolCallsRequested.add('shell');
+      final pushes = _RecordingNotifier();
+      final store = FileJobStore('${tmp.path}/jobs67c.json');
+      final handler = buildHandler(
+          Daemon(FakeTaskStore(), llm, pushes,
+              clock: () => DateTime.fromMillisecondsSinceEpoch(1000)),
+          jobStore: store);
+      final r = await handler(Request(
+        'POST',
+        Uri.parse('http://test.local/v1/messages'),
+        body: jsonEncode({
+          'conversation_id': 'c67t',
+          'text': 'what is in /tmp right now?',
+        }),
+        headers: {'content-type': 'application/json'},
+      ));
+      expect(r.statusCode, 201);
+      final id = (await _body(r))['id'] as String;
+      final job = await finished(store, id);
+      // The final answer still comes through the normal pipeline.
+      expect(job.reply, 'ok: what is in /tmp right now?');
+      // Round 2's messages carried the assistant's tool_calls AND the
+      // tool result — the model SAW the shell output.
+      final second = llm.calls[1];
+      expect(
+          second.history!.any((t) =>
+              t.role == 'tool' && t.content.contains('command is required')),
+          isTrue,
+          reason: 'the empty-args shell call answers with a usable error');
+      // The tool schema reached the provider request (tools were offered).
+      expect(
+          second.system, contains('You have TOOLS on your own VPS'));
+    });
+  });
 }
 
 /// Records notifications — the job pipeline must push "response ready".
@@ -884,6 +1064,11 @@ class _ThrowingLlm implements LlmCaller {
   Future<String> call(String prompt,
       {String? system,
       List<({String role, String content})>? history}) async =>
+      throw StateError('LLM exploded');
+
+  @override
+  Future<LlmTurn> chat(List<Map<String, dynamic>> messages,
+      {List<Map<String, dynamic>>? tools}) async =>
       throw StateError('LLM exploded');
 
   @override

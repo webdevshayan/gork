@@ -123,3 +123,58 @@ String jobNotificationPreview(String reply) {
   if (lines.isEmpty) return '(empty reply)';
   return lines.length <= 220 ? lines : '${lines.substring(0, 220)}…';
 }
+
+/// Movement 67 — READ MARKERS. The phone acknowledges replies it has
+/// shown the user (?seen=1 on the job poll and the thread pull); the
+/// daemon records the newest acknowledgment per conversation and skips
+/// the ntfy push for replies the user demonstrably already read
+/// ("I read it in the chat, navigated away, THEN the notification
+/// arrived" — screenshots 2026-11-19). File-backed like jobs.json.
+class SeenStore {
+  SeenStore(this.path);
+
+  final String path;
+
+  Map<String, dynamic> _read() {
+    final file = File(path);
+    if (!file.existsSync()) return <String, dynamic>{};
+    try {
+      return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    } catch (_) {
+      return <String, dynamic>{}; // corrupt file must never take us down
+    }
+  }
+
+  void _write(Map<String, dynamic> map) {
+    final file = File(path);
+    try {
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(jsonEncode(map));
+    } catch (_) {
+      // a failed marker write must never crash a request handler
+    }
+  }
+
+  /// The phone has shown everything in [conversationId] as of [atMs];
+  /// [jobId] names the newest job whose reply was displayed.
+  void markSeen(String conversationId, int atMs, {String? jobId}) {
+    final map = _read();
+    final current = map[conversationId] as Map<String, dynamic>? ?? {};
+    final prevAt = (current['lastSeenAtMs'] as num?)?.toInt() ?? 0;
+    if (atMs < prevAt) return; // out-of-order poll — keep the newer marker
+    map[conversationId] = {
+      'lastSeenAtMs': atMs,
+      if (jobId != null) 'lastSeenJobId': jobId,
+    };
+    _write(map);
+  }
+
+  /// Has the user already seen [jobId], which finished at [finishedAtMs]?
+  bool hasSeen(String conversationId, String jobId, int finishedAtMs) {
+    final current =
+        _read()[conversationId] as Map<String, dynamic>? ?? {};
+    final at = (current['lastSeenAtMs'] as num?)?.toInt() ?? 0;
+    if (at >= finishedAtMs) return true;
+    return current['lastSeenJobId']?.toString() == jobId;
+  }
+}

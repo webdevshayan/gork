@@ -203,12 +203,18 @@ class MessageOutbox {
 
   // ------------------------------------------------------------------- jobs --
   /// Poll one accepted job. Returns ('done', reply) / (status, null).
-  Future<String?> jobResult(String jobId) async {
+  ///
+  /// [markSeen] — Movement 67: the CHAT SCREEN's poll passes true (the
+  /// reply is about to be displayed to the user, so the daemon must not
+  /// push an ntfy "response ready" for content already on screen).
+  /// [pollFinished] leaves it false: it fetches replies nobody has shown
+  /// yet, and those MUST still notify.
+  Future<String?> jobResult(String jobId, {bool markSeen = false}) async {
     final base = url;
     if (base == null) return null;
     try {
       final res = await _http.get(
-        Uri.parse('$base/v1/jobs/$jobId'),
+        Uri.parse('$base/v1/jobs/$jobId${markSeen ? '?seen=1' : ''}'),
         headers: {
           if (await token() != null) 'Authorization': 'Bearer ${await token()}',
         },
@@ -221,6 +227,23 @@ class MessageOutbox {
     } catch (_) {
       return null; // server unreachable — it keeps working regardless
     }
+  }
+
+  /// Movement 67 — the chat screen just DISPLAYED this job's reply (live
+  /// poll or user-visible merge). Mark the outbox entry notified so
+  /// [pollFinished] never re-surfaces content the user already read —
+  /// the exact "I read it, navigated away, THEN the notification came"
+  /// complaint (screenshots 2026-11-19).
+  Future<void> markNotified(String jobId) async {
+    final entries = _entries();
+    var dirty = false;
+    for (final e in entries) {
+      if (e.jobId == jobId && !e.notified) {
+        e.notified = true;
+        dirty = true;
+      }
+    }
+    if (dirty) await _save(entries);
   }
 
   /// Finished jobs the user has NOT been told about yet — the reply
@@ -239,6 +262,15 @@ class MessageOutbox {
       if (reply == null) continue; // still running / unreachable — later
       e.notified = true;
       dirty = true;
+      // Movement 67 — a reply already merged into the persisted thread
+      // (catch-up sync while the chat was open) was READ; it must not
+      // surface as a notification on the next resume. Live displays mark
+      // themselves via [markNotified]; this catches the merge path too.
+      final history = Locator.history.byId(e.conversationId);
+      final alreadyRead = history?.messages
+              .any((m) => m.role == 'assistant' && m.content == reply) ==
+          true;
+      if (alreadyRead) continue;
       out.add(FinishedReply(
         conversationId: e.conversationId,
         preview: _preview(reply),
@@ -280,12 +312,17 @@ class MessageOutbox {
   }
 
   /// All server-side messages for a conversation (processed while the app
-  /// was away). Returns pairs: user / assistant.
-  Future<List<Map<String, String>>> pullMessages(String conversationId) async {    final base = url;
+  /// was away). Returns pairs: user / assistant. [markSeen] — Movement 67:
+  /// the chat screen's catch-up passes true; the daemon records that the
+  /// user is LOOKING at the thread, so replies already in it are never
+  /// pushed as ntfy notifications.
+  Future<List<Map<String, String>>> pullMessages(String conversationId,
+      {bool markSeen = false}) async {    final base = url;
     if (base == null) return const [];
     try {
       final res = await _http.get(
-        Uri.parse('$base/v1/conversations/$conversationId/messages'),
+        Uri.parse('$base/v1/conversations/$conversationId/messages'
+            '${markSeen ? '?seen=1' : ''}'),
         headers: {
           if (await token() != null) 'Authorization': 'Bearer ${await token()}',
         },

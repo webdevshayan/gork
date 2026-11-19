@@ -18,6 +18,11 @@ class FakeLlm implements LlmCaller {
       'test-llm-ok';
 
   @override
+  Future<LlmTurn> chat(List<Map<String, dynamic>> messages,
+      {List<Map<String, dynamic>>? tools}) async =>
+      const LlmTurn(content: 'test-llm-ok');
+
+  @override
   String describe() => 'fake';
 }
 
