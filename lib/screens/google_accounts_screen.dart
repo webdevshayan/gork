@@ -581,12 +581,18 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                 'and YouTube Data API.',
             'OAuth consent screen → External → add your own account '
                 'under Test users.',
+            // Movement 66 — Desktop app, NOT Web application: web clients
+            // reject custom-scheme redirect URIs ("must use http or https"),
+            // desktop (installed-app) clients accept BOTH kinds.
             'Credentials → Create credentials → OAuth client ID → '
-                'Web application.',
+                'Desktop app.',
             'Authorized redirect URIs — BOTH, exactly: '
                 '${GoogleOAuthService.kRedirectUri} and '
                 '${GoogleOAuthService.kDeepLinkUri}',
-            'Download the JSON and upload it below.',
+            'Download the JSON and upload it below. A Web-application '
+                'client from an earlier setup keeps working for sign-in, '
+                'but only a Desktop client can carry the deep-link '
+                'redirect.',
           ].indexed) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
