@@ -114,31 +114,35 @@ void main() {
 
       await tester.enterText(
           find.byKey(const ValueKey('profile-name-field')), 'Shyan A. Jalb');
-      await tester.enterText(
-          find.byKey(const ValueKey('profile-email-field')),
-          'shyan@work.example');
+      // Movement 64 — the email is Google's: read-only, a save never
+      // rewrites it (it changes only when a Google account connects).
       await tester.tap(find.byKey(const ValueKey('profile-save')));
       await tester.pumpAndSettle();
 
       expect(prefs.getString('profile.name'), 'Shyan A. Jalb');
-      expect(prefs.getString('profile.email'), 'shyan@work.example');
+      // Compare against the constant — the identity save must not rewrite
+      // the email at all (Movement 64: read-only, Google-owned).
+      expect(prefs.getString('profile.email'), kDefaultEmail);
     });
 
-    testWidgets('a broken email is rejected and never saved', (tester) async {
+    testWidgets('the email is read-only; the name persists', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       Locator.bind(prefs: prefs);
       await tester.pumpWidget(const MaterialApp(home: ProfileEditScreen()));
 
+      // Movement 64 — the email belongs to the connected Google account:
+      // the field renders read-only with a lock, and only the name saves.
+      final email =
+          tester.widget<TextField>(find.byKey(const ValueKey('profile-email-field')));
+      expect(email.readOnly, isTrue);
+
       await tester.enterText(
           find.byKey(const ValueKey('profile-name-field')), 'Shyan');
-      await tester.enterText(
-          find.byKey(const ValueKey('profile-email-field')), 'not-an-email');
       await tester.tap(find.byKey(const ValueKey('profile-save')));
       await tester.pump();
 
-      expect(find.text('Enter a valid email'), findsOneWidget);
-      expect(prefs.getString('profile.email'), isNull);
+      expect(prefs.getString('profile.name'), 'Shyan');
     });
   });
 

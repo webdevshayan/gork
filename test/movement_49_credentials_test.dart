@@ -117,16 +117,28 @@ void main() {
     FilePicker.platform = _FakeFilePicker(writeCreds({
       'installed': {'client_id': 'abc', 'client_secret': 'GOCSPX-x'}
     }).path);
-    // Build the screen with a store-less default (Locator is bound).
-    await tester.pumpWidget(MaterialApp(home: GoogleAccountsScreen()));
+    // Build the screen with the recorded fake uploader — the default one
+    // would dial the fake vps.test address with a real socket.
+    await tester.pumpWidget(
+        MaterialApp(home: GoogleAccountsScreen(uploader: uploader)));
     await tester.pumpAndSettle();
 
+    // Movement 64 — the guide card grew; scroll the upload button into
+    // the lazy viewport first.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('gconsole-upload')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('gconsole-upload')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('gconsole-upload')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('sealed on the VPS'), findsOneWidget,
+    final status = tester.widget<Text>(
+        find.byKey(const ValueKey('gconsole-status')));
+    expect(status.data, contains('sealed on the VPS'),
         reason: 'the outcome is honest and mentions the vault');
   });
 }

@@ -115,12 +115,18 @@ void main() {
     final buttonIdx = children
         .indexWhere((w) => w.key == const ValueKey('google-add'));
     expect(buttonIdx, greaterThan(0), reason: 'the Add account pill renders');
-    final gap = children[buttonIdx + 1];
-    expect(gap, isA<SizedBox>(),
-        reason: 'something must separate the pill from the next card');
-    expect((gap as SizedBox).height, 16);
-    expect(children[buttonIdx + 2], isA<GlassContainer>(),
-        reason: 'the Cloud Console card is what follows');
+    // Movement 64 — the Cloud Console guide sits ABOVE Connect now, and
+    // every stacked pair keeps the 16px gap: card → Connect → Add → footer.
+    final gapAbove = children[buttonIdx - 1];
+    expect(gapAbove, isA<SizedBox>(),
+        reason: 'something must separate the pill from Connect');
+    expect((gapAbove as SizedBox).height, 16);
+    expect(children[buttonIdx - 2], isA<GButton>(),
+        reason: 'Connect with Google sits right above the pill');
+    expect(children[buttonIdx - 3], isA<SizedBox>());
+    expect((children[buttonIdx - 3] as SizedBox).height, 16);
+    expect(children[buttonIdx - 4], isA<GlassContainer>(),
+        reason: 'the Cloud Console card is what precedes Connect');
   });
 
   testWidgets('a refused upload names the one-command fix (gork daemon '
@@ -139,6 +145,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final upload = find.byKey(const ValueKey('gconsole-upload'));
+    await tester.scrollUntilVisible(
+      upload,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(upload, findsOneWidget);
     await tester.ensureVisible(upload);
     await tester.tap(upload);

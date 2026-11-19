@@ -243,10 +243,22 @@ void main() {
         }),
       )));
       await tester.pumpAndSettle();
+      // Movement 64 — the Cloud Console guide sits above Connect now;
+      // bring the button into the lazy viewport before tapping.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('google-connect')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('google-connect')));
       await tester.pumpAndSettle();
 
+      // The tap scrolled down to Connect — drag back to the accounts card
+      // at the top (far children leave the lazy viewport entirely).
+      await tester.drag(find.byType(ListView), const Offset(0, 2000));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('vps-account-me@gmail.com')),
           findsOneWidget);
       expect(find.text('Me · me@gmail.com'), findsOneWidget);
@@ -267,6 +279,14 @@ void main() {
         oauth: _FakeOauth('no credentials.json on the VPS yet — upload it '
             'first (Google screen → Upload credentials.json)'),
       )));
+      await tester.pumpAndSettle();
+      // Movement 64 — the Cloud Console guide sits above Connect now;
+      // bring the button into the lazy viewport before tapping.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('google-connect')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('google-connect')));

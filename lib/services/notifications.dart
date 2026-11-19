@@ -84,7 +84,6 @@ class NotificationService {
             priority: Priority.high,
             groupKey: 'gork_replies',
             when: when,
-            whenShown: false,
           ),
         ),
       );

@@ -59,6 +59,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Connect a provider'), findsOneWidget);
 
+    // Movement 64 — five pages now: provider → google → profile → done.
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open Google setup'), findsOneWidget);
+
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(find.text('This is you'), findsOneWidget);
+
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     expect(find.text('You are set'), findsOneWidget);

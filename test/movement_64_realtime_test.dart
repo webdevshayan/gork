@@ -50,6 +50,13 @@ void main() {
     testWidgets('localhost rewrites to 127.0.0.1 on save', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: CloudComputerScreen()));
       await tester.pumpAndSettle();
+      // The VPS card sits below the backend picker — bring it in first.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('vps-url')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
 
       await tester.enterText(
           find.byKey(const Key('vps-url')), 'http://localhost:8787');
@@ -63,6 +70,12 @@ void main() {
 
     testWidgets('an explicit IP address is kept untouched', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: CloudComputerScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('vps-url')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -192,8 +205,10 @@ void main() {
       // 3. the reply lands — the queue drains as ONE batched request.
       job1Done = true;
       await tester.pump(const Duration(seconds: 2)); // reply 1 arrives
+      await tester.pump(const Duration(seconds: 2)); // poll cadence margin
       await tester.pumpAndSettle();
-      expect(find.text('First answer.'), findsOneWidget);
+      expect(find.textContaining('First answer.', findRichText: true),
+          findsOneWidget);
       expect(jobCount, 2, reason: 'the queue went out as ONE request');
       expect(jsonDecode(posts[1])['text'], 'second',
           reason: 'the batch carries the queued follow-up');
@@ -204,7 +219,8 @@ void main() {
       job2Done = true;
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
-      expect(find.text('Batched answer to your follow-ups.'), findsOneWidget);
+      expect(find.textContaining('Batched answer to your follow-ups.',
+          findRichText: true), findsOneWidget);
       Locator.outbox.dispose();
     });
 
@@ -223,9 +239,10 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('snag'), findsOneWidget,
+      expect(find.textContaining('snag', findRichText: true), findsOneWidget,
           reason: 'HandshakeException must never appear as a chat bubble');
-      expect(find.textContaining('HandshakeException'), findsNothing);
+      expect(find.textContaining('HandshakeException', findRichText: true),
+          findsNothing);
       Locator.outbox.dispose();
     });
   });
@@ -260,7 +277,7 @@ void main() {
           return http.Response('offline', 500);
         }),
       );
-      await Locator.outbox.enqueue('c1', 'hi');
+      await Locator.outbox.enqueue('c1', 'hi', awaitAcceptance: true);
       final finished = await Locator.outbox.pollFinished();
       expect(finished, hasLength(1));
       final p = finished.first.preview;
@@ -269,6 +286,7 @@ void main() {
       expect(p, isNot(contains('`')));
       expect(p, contains('chat.z.ai'));
       expect(p, contains('Sign in'));
+      Locator.outbox.dispose();
     });
 
     test('replies that finished while the chat was in front are marked '

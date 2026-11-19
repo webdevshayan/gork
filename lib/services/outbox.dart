@@ -263,9 +263,10 @@ class MessageOutbox {
             : '${m[1]} (${m[2]})');
     // Emphasis, code spans, headers, list stars.
     text = text
-        .replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1')
-        .replaceAll(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'), r'$1')
-        .replaceAll(RegExp(r'__([^_]+)__'), r'$1')
+        .replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (m) => m[1] ?? '')
+        .replaceAllMapped(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'),
+            (m) => m[1] ?? '')
+        .replaceAllMapped(RegExp(r'__([^_]+)__'), (m) => m[1] ?? '')
         .replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m[1] ?? '')
         .replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
     final lines = text

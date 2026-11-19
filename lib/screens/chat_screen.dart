@@ -85,6 +85,10 @@ class ChatScreenState extends State<ChatScreen> {
   /// one coherent answer, like a person who read your follow-ups.
   final List<String> _queued = [];
 
+  /// Test hook: the current thread as the UI sees it.
+  @visibleForTesting
+  List<_UiMessage> get messagesForDebug => _messages;
+
   @override
   void initState() {
     super.initState();
