@@ -506,7 +506,7 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
           const SizedBox(height: 10),
           for (final (i, step) in const [
             'console.cloud.google.com → create a project (any name).',
-            'APIs & Services → Library → enable Gmail, Google Drive '
+            'APIs & Services → Library → enable Gmail, Google Docs '
                 'and YouTube Data API.',
             'OAuth consent screen → External → add your own account '
                 'under Test users.',

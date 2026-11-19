@@ -670,7 +670,12 @@ void main() {
       final url = (await _body(res))['url'] as String;
       expect(url, contains('client_id=123.apps.googleusercontent.com'));
       expect(url, contains('redirect_uri=http%3A%2F%2F127.0.0.1%3A4321%2Fcallback'));
-      expect(url, contains('gmail'));
+      // 2026-11-19: Google rejects a bare /auth/gmail scope ("Some requested
+      // scopes were invalid") — the real scope is gmail.modify, and the
+      // consent URL must never carry the invalid one.
+      expect(url, contains('gmail.modify'));
+      expect(url, isNot(contains('auth/gmail ')));
+      expect(url, isNot(contains('auth/gmail&')));
       expect(url, contains('documents'));
       expect(url, contains('youtube'));
       expect(url, contains('access_type=offline'));
@@ -686,7 +691,7 @@ void main() {
             'access_token': 'ya29.fresh',
             'refresh_token': '1//refresh-me',
             'scope':
-                'openid https://www.googleapis.com/auth/gmail '
+                'openid https://www.googleapis.com/auth/gmail.modify '
                     'https://www.googleapis.com/auth/documents',
           }),
           userinfoBody: jsonEncode({

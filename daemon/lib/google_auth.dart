@@ -35,8 +35,14 @@ class GoogleAuth {
       'https://openidconnect.googleapis.com/v1/userinfo';
 
   /// The tool set gork connects at once — the phone shows these as chips.
+  ///
+  /// NOTE (2026-11-19): there is NO bare
+  /// `https://www.googleapis.com/auth/gmail` scope — Google answered the
+  /// whole consent with "Some requested scopes were invalid". Gmail scopes
+  /// are granular; `gmail.modify` is the one that covers reading, sending,
+  /// labels and trash WITHOUT permanent delete.
   static const List<(String, String)> kToolScopes = [
-    ('gmail', 'https://www.googleapis.com/auth/gmail'),
+    ('gmail', 'https://www.googleapis.com/auth/gmail.modify'),
     ('docs', 'https://www.googleapis.com/auth/documents'),
     ('youtube', 'https://www.googleapis.com/auth/youtube'),
   ];
