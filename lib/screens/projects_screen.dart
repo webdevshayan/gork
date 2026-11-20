@@ -62,9 +62,8 @@ Future<void> showProjectEditor(BuildContext context, {Project? existing}) {
   final titleController = TextEditingController(text: existing?.title);
   final notesController = TextEditingController(text: existing?.notes);
   final palette = paletteOf(context);
-  return showModalBottomSheet<void>(
+  return showGorkSheet<void>(
     context: context,
-    backgroundColor: Colors.transparent,
     builder: (context) {
       return SafeArea(
         child: GlassContainer(
@@ -172,13 +171,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final contentController = TextEditingController();
     final palette = paletteOf(context);
 
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.only(
@@ -294,13 +288,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   Future<void> _showFile(ProjectFile file) async {
     final palette = paletteOf(context);
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.all(Spacing.lg),

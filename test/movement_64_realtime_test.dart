@@ -198,7 +198,8 @@ void main() {
       await key.currentState!.send('second');
       await tester.pumpAndSettle();
       expect(find.text('second'), findsOneWidget);
-      expect(find.text('queued'), findsOneWidget);
+      // Movement 69 — typed = sent: no dimmed 'queued' tag anywhere.
+      expect(find.text('queued'), findsNothing);
       expect(jobCount, 1,
           reason: 'no second request while the first reply is in flight');
 
@@ -212,7 +213,7 @@ void main() {
       expect(jobCount, 2, reason: 'the queue went out as ONE request');
       expect(jsonDecode(posts[1])['text'], 'second',
           reason: 'the batch carries the queued follow-up');
-      // 4. the queued bubble is no longer marked queued.
+      // 4. still no 'queued' tag — it went out as one batched request.
       expect(find.text('queued'), findsNothing);
 
       // 5. the batched job answers too.

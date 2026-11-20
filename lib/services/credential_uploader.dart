@@ -77,6 +77,28 @@ class GoogleCredentialsUploader {
     }
   }
 
+  /// Movement 69 — the ONE-TAP path: the user creates an ANDROID OAuth
+  /// client in Cloud Console (package dev.shayan.gork + their SHA-1) and
+  /// pastes ONLY its client id here. No credentials.json, no secret, no
+  /// redirect-URI dance — the daemon exchanges installed-app codes without
+  /// a client secret.
+  Future<void> uploadClientId(String clientId) async {
+    final base = url;
+    if (base == null) {
+      throw StateError('no VPS configured — set it up in Cloud Computer');
+    }
+    final res = await _http.post(
+      Uri.parse('$base/v1/credentials/google'),
+      headers: await _headers(),
+      body: jsonEncode({
+        'client_json': {'android': {'client_id': clientId.trim()}},
+      }),
+    );
+    if (res.statusCode != 201) {
+      throw StateError('the VPS refused the client id (HTTP ${res.statusCode})');
+    }
+  }
+
   /// Status only — the server never returns the secret itself.
   Future<bool> hasCredentials() async {
     final base = url;

@@ -4,12 +4,17 @@ import '../constants/design_tokens.dart';
 import '../services/locator.dart';
 import '../services/panels_store.dart';
 import '../services/weather_service.dart';
-import '../widgets/g_button.dart';
-import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
+import '../widgets/glass.dart';
+import '../widgets/panel_view.dart';
 
-/// Panels: mini-dashboards. The weather panel is live (Open-Meteo, no key).
-/// LLM-built panels arrive with tool calling.
+/// Movement 69 — Panels are AI-authored, never hand-filled. The agent
+/// replies with a ```gork-panel fenced JSON block and the widget lands on
+/// this feed: stats, sparkline graphs, progress bars and lists — study
+/// streaks, shipped PRs, topics to read today, whatever the user's life
+/// needs. This screen renders the feed and offers per-role starter prompts
+/// (student, farmer, freelancer, hotel owner…) that ask the AI to BUILD the
+/// widgets — there is no manual form anywhere.
 class PanelsScreen extends StatefulWidget {
   const PanelsScreen({super.key});
 
@@ -21,9 +26,29 @@ class _PanelsScreenState extends State<PanelsScreen> {
   List<PanelSpec> _panels = [];
   Map<String, WeatherNow> _weather = {};
 
+  /// The role the feed is tuned for — remembered, shown as the active chip.
+  String _role = 'everyone';
+
+  static const List<String> kRoles = [
+    'everyone',
+    'student',
+    'teacher',
+    'software engineer',
+    'web developer',
+    'mobile developer',
+    'freelancer',
+    'farmer',
+    'hotel owner',
+    'restaurant owner',
+    'shop owner',
+    'parent',
+    'athlete',
+  ];
+
   @override
   void initState() {
     super.initState();
+    _role = Locator.prefs.getString('panels.role') ?? 'everyone';
     _refresh();
   }
 
@@ -44,77 +69,20 @@ class _PanelsScreenState extends State<PanelsScreen> {
         setState(() => _weather[panelId] = weather);
       }
     } catch (_) {
-      // Weather is optional decoration; panel shows "unavailable".
+      // Weather is optional decoration; panel shows the cached value.
     }
   }
 
-  Future<void> _addManualPanel() async {
-    final titleController = TextEditingController();
-    final valueController = TextEditingController();
-    final palette = paletteOf(context);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: palette.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: Spacing.lg,
-            right: Spacing.lg,
-            top: Spacing.lg,
-            bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('New panel', style: TypeScale.title(color: palette.textPrimary)),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                controller: titleController,
-                style: TypeScale.body(color: palette.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Title (e.g. Water the plants)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: Spacing.sm),
-              TextField(
-                controller: valueController,
-                style: TypeScale.body(color: palette.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Value to show',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: Spacing.lg),
-              GButton(
-                label: 'Save panel',
-                expands: true,
-                onPressed: () {
-                  final title = titleController.text.trim();
-                  if (title.isEmpty) return;
-                  Locator.panels.save(PanelSpec(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    title: title,
-                    kind: PanelKind.metric,
-                    source: PanelSource.manual,
-                    manualValue: valueController.text.trim(),
-                    createdAt: DateTime.now().millisecondsSinceEpoch,
-                  ));
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    _refresh();
+  /// A role chip was picked: remember it — the feed is tuned for that life.
+  /// The widgets themselves are built by gork in chat (the user asks once
+  /// and the reply's gork-panel blocks land on the feed automatically).
+  Future<void> _pickRole(String role) async {
+    await Locator.prefs.setString('panels.role', role);
+    setState(() => _role = role);
+    if (role == 'everyone' || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Feed tuned for a $role — ask gork in chat: '
+            '"rebuild my feed for a $role" and the widgets land here.')));
   }
 
   @override
@@ -122,96 +90,99 @@ class _PanelsScreenState extends State<PanelsScreen> {
     final palette = paletteOf(context);
     return Screen(
       title: 'Panels',
-      fab: FloatingActionButton(
-        backgroundColor: palette.primary,
-        foregroundColor: palette.onPrimary,
-        child: const Icon(Icons.add),
-        onPressed: _addManualPanel,
-      ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: Spacing.md),
         children: [
-          GCard(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
             child: Text(
-              'Mini-dashboards. The weather panel is live; describe new panels '
-              'in chat and gork builds them.',
-              style: TypeScale.caption(color: palette.textSecondary),
+              'Every widget here was built by gork — ask in chat for more, '
+              'or tune the feed for your work and life below.',
+              style: TypeScale.body(color: palette.textSecondary),
             ),
           ),
           const SizedBox(height: Spacing.md),
-          for (final panel in _panels)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.md),
-              child: GCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(panel.title,
-                              style: TypeScale.heading(
-                                  color: palette.textPrimary)),
-                        ),
-                        if (panel.source == PanelSource.manual)
-                          IconButton(
-                            icon: Icon(Icons.delete_outline,
-                                size: 20, color: palette.error),
-                            onPressed: () async {
-                              await Locator.panels.delete(panel.id);
-                              _refresh();
-                            },
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
-                    if (panel.source == PanelSource.weather)
-                      _weatherContent(panel.id, palette)
-                    else
-                      Text(
-                        panel.manualValue.isEmpty ? '—' : panel.manualValue,
-                        style:
-                            TypeScale.title(color: palette.textPrimary),
-                      ),
-                  ],
-                ),
-              ),
+          // Role chips — the feed is customizable for every kind of person.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final role in kRoles)
+                  _RoleChip(
+                    label: role,
+                    active: role == _role,
+                    onTap: () => _pickRole(role),
+                  ),
+              ],
             ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          if (_panels.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+              child: Text(
+                'No panels yet. Ask gork in chat — "build me a widget for '
+                'my study streak" — and it appears here.',
+                style: TypeScale.body(color: palette.textTertiary),
+              ),
+            )
+          else
+            for (final panel in _panels)
+              PanelTile(
+                panel: panel,
+                weather: panel.source == PanelSource.weather
+                    ? _weather[panel.id]
+                    : null,
+                onWeatherRefresh: panel.source == PanelSource.weather
+                    ? () => _loadWeather(panel.id)
+                    : null,
+                onDelete: panel.source == PanelSource.agent
+                    ? () async {
+                        await Locator.panels.delete(panel.id);
+                        _refresh();
+                      }
+                    : null,
+              ),
         ],
       ),
     );
   }
+}
 
-  Widget _weatherContent(String panelId, Palette palette) {
-    final weather = _weather[panelId];
-    if (weather == null) {
-      return Text('Loading weather…',
-          style: TypeScale.body(color: palette.textTertiary));
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text('${weather.tempC.toStringAsFixed(0)}°C',
-            style: TypeScale.display(color: palette.primary)),
-        const SizedBox(width: Spacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(weather.label,
-                  style: TypeScale.body(color: palette.textPrimary)),
-              Text('wind ${weather.windKmh.toStringAsFixed(0)} km/h',
-                  style: TypeScale.caption(color: palette.textTertiary)),
-            ],
+/// The role chip: plain pill, ink when active — no color, the Movement 59
+/// language.
+class _RoleChip extends StatelessWidget {
+  const _RoleChip({required this.label, required this.active, required this.onTap});
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = paletteOf(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? palette.primary : GlassColors.fill,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: active ? palette.primary : GlassColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            color: active ? palette.onPrimary : palette.textPrimary,
           ),
         ),
-        GButton(
-          label: 'Refresh',
-          variant: ButtonVariant.secondary,
-          onPressed: () => _loadWeather(panelId),
-        ),
-      ],
+      ),
     );
   }
 }

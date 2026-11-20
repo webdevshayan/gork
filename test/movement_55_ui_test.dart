@@ -28,7 +28,10 @@ void main() {
   testWidgets('the Google Cloud Console upload card lives IN the list',
       (tester) async {
     await bindMinimal();
-    await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+    await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    
     await tester.pumpAndSettle();
 
     final card = find.text('Google Cloud Console');
@@ -48,18 +51,19 @@ void main() {
 
     // The menu is a lazy ListView — nine rows in the first card alone, so
     // scroll to each row before asserting it.
+    // Movement 69 — one flat list, de-duplicated: Accounts / Integrations /
+    // Google folded into Connections; Inbox is a notification surface, not
+    // a setting; AI Providers lives inside Connections.
     for (final row in [
       'Profile',
       'Scheduled Tasks',
-      'Accounts',
-      'Integrations',
-      'Google',
-      'Inbox',
+      'Connections',
+      'Skills',
       'Panels',
       'Cloud Computer',
-      // Movement 59: the Theme row is gone — the app is always auto.
+      'Theme',
       'Security',
-      'AI Providers',
+      'Sync to daemon',
       'Updates',
     ]) {
       await tester.scrollUntilVisible(

@@ -4,19 +4,27 @@ import '../constants/design_tokens.dart';
 import '../services/integrations.dart';
 import '../services/locator.dart';
 import '../widgets/g_button.dart';
-import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
+import '../widgets/glass.dart';
+import 'accounts_screen.dart';
+import 'google_accounts_screen.dart';
+import 'providers_screen.dart';
 
-/// Connect services (GitHub, Slack, Strava, Spotify, Gmail, PayPal) by
-/// pasting your own token. Tokens are stored encrypted on this device only.
-class IntegrationsScreen extends StatefulWidget {
-  const IntegrationsScreen({super.key});
+/// Movement 69 — Connections, ChatGPT-style. ONE screen, ONE list: every
+/// outside service gork can act through, each with a one-tap Connect.
+/// Google is first — a real one-tap sign-in guided inside its own screen
+/// (Android client, no credentials.json hunt). Tokens for the rest are
+/// verified on save and sealed on this device. No separate "Integrations"
+/// or "Accounts" screens to hunt through any more: connections, skills,
+/// providers — everything a person signs INTO lives here.
+class ConnectionsScreen extends StatefulWidget {
+  const ConnectionsScreen({super.key});
 
   @override
-  State<IntegrationsScreen> createState() => _IntegrationsScreenState();
+  State<ConnectionsScreen> createState() => _ConnectionsScreenState();
 }
 
-class _IntegrationsScreenState extends State<IntegrationsScreen> {
+class _ConnectionsScreenState extends State<ConnectionsScreen> {
   final Map<String, bool> _connected = {};
 
   @override
@@ -38,13 +46,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     String? testResult;
     Color? testColor;
 
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: palette.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
@@ -60,24 +63,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(def.name,
+                    Text('Connect ${def.name}',
                         style: TypeScale.title(color: palette.textPrimary)),
                     const SizedBox(height: Spacing.xs),
                     Text(def.tokenHint,
                         style: TypeScale.caption(color: palette.textTertiary)),
                     const SizedBox(height: Spacing.md),
-                    Text('${def.tokenLabel} (stored only on this device)',
-                        style: TypeScale.caption(color: palette.textSecondary)),
-                    const SizedBox(height: Spacing.xs),
                     TextField(
                       controller: tokenController,
                       obscureText: true,
                       autocorrect: false,
                       enableSuggestions: false,
                       style: TypeScale.code(color: palette.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'paste your token',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        hintText: 'paste your ${def.tokenLabel}',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: Spacing.lg),
@@ -123,7 +123,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     if (_connected[def.id] == true) ...[
                       const SizedBox(height: Spacing.sm),
                       GButton(
-                        label: 'Remove token',
+                        label: 'Disconnect',
                         variant: ButtonVariant.ghost,
                         onPressed: () async {
                           await Locator.integrations.vault.clearToken(def.id);
@@ -150,67 +150,175 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   Widget build(BuildContext context) {
     final palette = paletteOf(context);
     return Screen(
-      title: 'Integrations',
-      body: ListView.builder(
+      title: 'Connections',
+      body: ListView(
         padding: const EdgeInsets.symmetric(vertical: Spacing.md),
-        itemCount: kIntegrations.length,
-        itemBuilder: (context, index) {
-          final def = kIntegrations[index];
-          final connected = _connected[def.id] ?? false;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: Spacing.md),
-            child: GCard(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(RadiusTokens.lg),
-                onTap: () => _openEditor(context, def),
-                child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+            child: Text(
+              'Everything gork can act through, connected in one tap — and '
+              'staying connected.',
+              style: TypeScale.body(color: palette.textSecondary),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+
+          // --- Google: the flagship one-tap connection ---
+          _ConnectionRow(
+            key: const ValueKey('connection-google'),
+            name: 'Google',
+            detail: 'Gmail, Google Docs and YouTube in one sign-in',
+            connectedText: 'Connected',
+            icon: Icons.account_circle_outlined,
+            connected: Locator.prefs.getBool('google.connectedHint') ?? false,
+            onTap: () async {
+              await Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const GoogleAccountsScreen()));
+              if (mounted) setState(() {});
+            },
+          ),
+          const SizedBox(height: Spacing.sm),
+
+          // --- The rest: one-click token connections ---
+          for (final def in kIntegrations) ...[
+            _ConnectionRow(
+              key: ValueKey('connection-${def.id}'),
+              name: def.name,
+              detail: connectedRowDetail(def),
+              connectedText: 'Connected',
+              icon: Icons.link,
+              connected: _connected[def.id] ?? false,
+              onTap: () => _openEditor(context, def),
+            ),
+            const SizedBox(height: Spacing.sm),
+          ],
+
+          const SizedBox(height: Spacing.md),
+          Divider(color: GlassColors.divider, height: 1),
+          const SizedBox(height: Spacing.md),
+
+          // --- Website accounts (what gork logged into FOR you) ---
+          _ConnectionRow(
+            key: const ValueKey('connection-accounts'),
+            name: 'Website accounts',
+            detail: 'Accounts gork signed into from the in-app browser',
+            connectedText: '',
+            icon: Icons.public,
+            connected: false,
+            showChevronOnly: true,
+            onTap: () async {
+              await Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const AccountsScreen()));
+              if (mounted) setState(() {});
+            },
+          ),
+          const SizedBox(height: Spacing.sm),
+          _ConnectionRow(
+            key: const ValueKey('connection-providers'),
+            name: 'AI providers',
+            detail: 'OpenAI, Gemini, Anthropic or your own endpoint',
+            connectedText: '',
+            icon: Icons.key_outlined,
+            connected: false,
+            showChevronOnly: true,
+            onTap: () async {
+              await Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ProvidersScreen()));
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String connectedRowDetail(IntegrationDef def) =>
+    def.id == 'gmail'
+        ? 'Gmail over your own token — reads, drafts, labels'
+        : 'Connect with your own ${def.tokenLabel}';
+
+/// One connection row: flat, bordered, one obvious tap. Connected rows
+/// show a quiet green check; unconnected ones a Connect pill.
+class _ConnectionRow extends StatelessWidget {
+  const _ConnectionRow({
+    super.key,
+    required this.name,
+    required this.detail,
+    required this.connectedText,
+    required this.icon,
+    required this.connected,
+    required this.onTap,
+    this.showChevronOnly = false,
+  });
+
+  final String name;
+  final String detail;
+  final String connectedText;
+  final IconData icon;
+  final bool connected;
+  final VoidCallback onTap;
+  final bool showChevronOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = paletteOf(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: GlassColors.fill,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: GlassColors.border),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 26, color: palette.textPrimary),
+              const SizedBox(width: Spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: connected
-                            ? palette.success.withValues(alpha: 0.12)
-                            : palette.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(RadiusTokens.md),
-                      ),
-                      child: Icon(
-                        connected ? Icons.link : Icons.add_link,
-                        color: connected ? palette.success : palette.textTertiary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: Spacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(def.name,
-                              style:
-                                  TypeScale.heading(color: palette.textPrimary)),
-                          const SizedBox(height: Spacing.xs),
-                          Text(
-                            connected
-                                ? 'Connected — one-time setup, stays until '
-                                    'you remove it'
-                                : def.tokenLabel,
-                            style: TypeScale.caption(
-                              color: connected
-                                  ? palette.success
-                                  : palette.textTertiary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.edit_outlined,
-                        size: 18, color: palette.textTertiary),
+                    Text(name,
+                        style: TypeScale.heading(color: palette.textPrimary)),
+                    const SizedBox(height: 2),
+                    Text(detail,
+                        style: TypeScale.caption(color: palette.textTertiary)),
                   ],
                 ),
               ),
-            ),
-          );
-        },
+              const SizedBox(width: 8),
+              if (connected) ...[
+                Icon(Icons.check_circle_outline,
+                    size: 20, color: palette.success),
+                const SizedBox(width: 4),
+                Text('Connected',
+                    style: TypeScale.caption(color: palette.success)),
+              ] else if (showChevronOnly)
+                Icon(Icons.chevron_right,
+                    size: 24, color: palette.textSecondary)
+              else
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: palette.primary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('Connect',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: palette.onPrimary)),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

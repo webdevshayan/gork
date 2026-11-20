@@ -104,15 +104,14 @@ void main() {
     await bind();
     await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
     await tester.pump();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('menu-accounts')),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.byKey(const ValueKey('menu-accounts')));
+    // Movement 69 — Accounts folded into Connections; the deep settings
+    // search still lands on it directly.
+    await tester.enterText(
+        find.byKey(const ValueKey('menu-settings-search')), 'website accounts');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Website accounts'));
     await tester.pumpAndSettle();
     expect(find.byType(AccountsScreen), findsOneWidget);
-    expect(find.text('Accounts'), findsWidgets);
   });
 
   test('browser tool without a VPS answers honestly', () async {

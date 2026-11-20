@@ -27,6 +27,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import threading
 import time
 import uuid
@@ -125,6 +126,9 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS vault_secrets (
           label TEXT PRIMARY KEY, sealed BLOB NOT NULL,
           updated_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS backups (
+          owner TEXT PRIMARY KEY, payload TEXT NOT NULL,
+          updated_at INTEGER NOT NULL);
         """)
 
 
@@ -173,81 +177,127 @@ def _call_provider(history):
 
 
 # ---------------------------------------------- browser + secure fill ---
-class _PlaywrightDriver:
-    """The AI's full browser on the VPS. Lazy: playwright + chromium are
-    installed on the real VPS; when they are missing the factory returns
-    None and every op fails honestly instead of pretending."""
+class _AgentBrowserDriver:
+    """The AI's full browser on the VPS — driven through the agent-browser
+    CLI (npm i -g agent-browser && agent-browser install --with-deps).
+    Chromium/Playwright were REMOVED in Movement 69: one browser tool, the
+    same one the user asked for, with HUMAN-grade interactions — click by
+    element ref, press/hold keys, drag sliders (captcha puzzles), scroll
+    and screenshot. When the CLI is missing every op fails honestly."""
 
     def __init__(self):
-        from playwright.sync_api import sync_playwright
-        self._pw = sync_playwright().start()
-        self._contexts = {}
+        self._check = subprocess.run(['agent-browser', '--version'],
+                                     capture_output=True, timeout=15)
+        if self._check.returncode != 0:
+            raise RuntimeError('agent-browser CLI not installed')
 
-    def _page(self, session):
-        ctx = self._contexts.get(session)
-        if ctx is None:
-            ctx = self._pw.chromium.launch(headless=True).new_context()
-            self._contexts[session] = ctx
-        return ctx.pages[0] if ctx.pages else ctx.new_page()
+    def _run(self, *args, timeout=60):
+        r = subprocess.run(['agent-browser', *args],
+                           capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout or 'agent-browser '
+                                'failed').strip()[:500])
+        return (r.stdout or '').strip()
 
     def op(self, session, action, args):
-        page = self._page(session)
-        if action == "navigate":
-            page.goto(args.get("url", "about:blank"), wait_until="domcontentloaded")
-            return {"url": page.url, "title": page.title()}
-        if action == "click":
-            page.click(args["selector"])
-            return {"ok": True}
-        if action == "type":
-            page.type(args["selector"], args.get("text", ""))
-            return {"ok": True}
-        if action == "read":
-            return {"text": page.inner_text("body")[:8000]}
-        if action == "screenshot":
+        # One shared browser on the VPS; sessions are accepted for
+        # compatibility and ignored (agent-browser owns its process).
+        if action in ('navigate', 'open'):
+            out = self._run('open', args.get('url', 'about:blank'))
+            return {'url': out or args.get('url', ''),
+                    'title': self._safe(self._run, 'get', 'title')}
+        if action == 'snapshot':
+            flags = ['-i'] if args.get('interactive', True) else []
+            return {'snapshot': self._run('snapshot', *flags)}
+        if action == 'click':
+            return {'ok': True,
+                    'out': self._run('click', args['selector'])}
+        if action == 'fill':
+            return {'ok': True,
+                    'out': self._run('fill', args['selector'],
+                                     args.get('text', ''))}
+        if action == 'type':
+            return {'ok': True,
+                    'out': self._run('type', args['selector'],
+                                     args.get('text', ''))}
+        if action == 'press':
+            return {'ok': True, 'out': self._run('press', args.get('key', 'Enter'))}
+        if action == 'hold':
+            # keydown/keyup pairs let the agent HOLD a key like a person.
+            self._run('keydown', args.get('key', 'Shift'))
+            return {'ok': True, 'held': args.get('key', 'Shift')}
+        if action == 'release':
+            self._run('keyup', args.get('key', 'Shift'))
+            return {'ok': True, 'released': args.get('key', 'Shift')}
+        if action == 'scroll':
+            return {'ok': True, 'out': self._run(
+                'scroll', args.get('direction', 'down'),
+                str(args.get('amount', 500)))}
+        if action == 'drag':
+            # Slider/puzzle captchas: drag element A onto element B (refs
+            # from a snapshot), or drag the SAME element (hold-move feel).
+            out = self._run('drag', args['selector'], args['target'],
+                            timeout=120)
+            return {'ok': True, 'out': out}
+        if action == 'slide':
+            # Human slider verification: drag the handle ref across the
+            # track ref, then verify the page state changed.
+            self._run('drag', args['handle'], args['target'], timeout=120)
+            return {'ok': True, 'state': self._run('snapshot', '-i')}
+        if action == 'wait':
+            return {'ok': True,
+                    'out': self._run('wait', args.get('selector', 'body'),
+                                     timeout=30)}
+        if action == 'get':
+            out = self._run('get', args.get('what', 'title'),
+                            *([args['selector']] if args.get('selector')
+                              else []))
+            return {'value': out}
+        if action == 'read':
+            return {'text': self._run('snapshot', '-c')[:8000]}
+        if action == 'screenshot':
             path = f"/tmp/gork-{session}-{int(time.time())}.png"
-            page.screenshot(path=path)
-            return {"screenshot": path}
-        raise RuntimeError("unknown browser action: " + str(action))
+            self._run('screenshot', path, timeout=60)
+            return {'screenshot': path}
+        raise RuntimeError('unknown browser action: ' + str(action))
+
+    def _safe(self, fn, *args):
+        try:
+            return fn(*args)
+        except Exception:  # noqa: BLE001 — best effort decoration
+            return ''
 
     def fill_active(self, session, text):
-        """Fill the ACTIVE input without the AI ever learning the value."""
-        page = self._page(session)
-        return page.evaluate(
-            """t => {
-              const el = document.activeElement;
-              if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA'
-                          && !el.isContentEditable)) return false;
-              el.value = t;
-              el.dispatchEvent(new Event('input', {bubbles: true}));
-              return true;
-            }""", text)
+        """Fill the ACTIVE input without the AI ever learning the value.
+        With the CLI we fill the first visible text field — honest about
+        being an approximation (the value itself NEVER crosses the wire)."""
+        snap = self._run('snapshot', '-i', timeout=30)
+        ref = None
+        for line in snap.splitlines():
+            if ('textbox' in line.lower() or 'input' in line.lower()) \
+                    and '@' in line:
+                for token in line.split():
+                    if token.startswith('@'):
+                        ref = token.rstrip(',;)')
+                        break
+            if ref:
+                break
+        if not ref:
+            return False
+        self._run('fill', ref, text, timeout=30)
+        return True
 
     def close(self, session):
-        ctx = self._contexts.pop(session, None)
-        if ctx:
-            ctx.close()
-
-
-_BROWSER_DRIVER = None
-_BROWSER_TRIED = False
-
-
-def _browser_driver():
-    """One lazy driver instance; None when playwright is not installed."""
-    global _BROWSER_DRIVER, _BROWSER_TRIED
-    if not _BROWSER_TRIED:
-        _BROWSER_TRIED = True
         try:
-            _BROWSER_DRIVER = _PlaywrightDriver()
-        except Exception:  # noqa: BLE001 — no engine on this VPS
-            _BROWSER_DRIVER = None
-    return _BROWSER_DRIVER
+            self._run('close', timeout=15)
+        except Exception:  # noqa: BLE001 — closing a dead browser is fine
+            pass
 
 
 _NO_ENGINE = {
     "ok": False,
-    "error": "browser engine not installed on the VPS "
-             "(pip install playwright && playwright install chromium)",
+    "error": "browser not available on the VPS — install agent-browser: "
+             "npm i -g agent-browser && agent-browser install --with-deps",
 }
 
 
@@ -451,8 +501,35 @@ def worker_loop(stop: threading.Event) -> None:
 
 
 # ----------------------------------------------------------------- handler ---
+def _owner():
+    """Movement 69 — per-ACCOUNT (or per-device) data ownership. The app
+    sends X-Gork-Account (the signed-in Google email) or X-Gork-Device (a
+    stable device id); everything backed up lands under that identity on
+    the VPS — a new phone restores its whole history."""
+    acct = request_account()
+    if acct:
+        return "acct:" + acct
+    dev = request_device()
+    if dev:
+        return "dev:" + dev
+    return "default"
+
+
+def request_account():
+    # Handler context is thread-local; read off the active request.
+    return getattr(_local, "account", None)
+
+
+def request_device():
+    return getattr(_local, "device", None)
+
+
+import threading as _t
+_local = _t.local()
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "gork-vps/1.10"
+    server_version = "gork-vps/1.12"
 
     def log_message(self, fmt, *args):  # paths only — never bodies, never auth
         print("[gork-vps] " + fmt % args)
@@ -473,8 +550,15 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         return json.loads(self.rfile.read(n).decode() or "{}")
 
+    def _capture_identity(self):
+        """Per-request identity: X-Gork-Account wins (per-account data),
+        X-Gork-Device backs it up (per-device when signed out)."""
+        _local.account = (self.headers.get("X-Gork-Account") or "").strip().lower() or None
+        _local.device = (self.headers.get("X-Gork-Device") or "").strip() or None
+
     def do_GET(self):
         path = urlparse(self.path).path
+        self._capture_identity()
         if path == "/health":
             return self._json(200, {"ok": True, "service": "gork-vps"})
         if not self._authed():
@@ -529,6 +613,17 @@ class Handler(BaseHTTPRequestHandler):
                                  "ORDER BY label").fetchall()
             return self._json(200, {"labels": [r["label"] for r in rows],
                                     "sealed_with": SEALED_WITH})
+        if path == "/v1/backup":
+            # Restore path: the new phone pulls everything the account
+            # (or its previous device) backed up.
+            with _LOCK, db() as c:
+                row = c.execute("SELECT payload,updated_at FROM backups "
+                                "WHERE owner=?", (_owner(),)).fetchone()
+            if not row:
+                return self._json(200, {"found": False, "owner": _owner()})
+            return self._json(200, {"found": True,
+                                    "conversations": json.loads(row["payload"]),
+                                    "updated_at": row["updated_at"]})
         if path == "/v1/memory/map":
             with db() as c:
                 return self._json(200, _memory_map(c))
@@ -544,21 +639,63 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        self._capture_identity()
         if not self._authed():
             return self._json(401, {"error": "unauthorized"})
+        if path == "/v1/backup":
+            # Movement 69 — EVERYTHING backed up on the server: the full
+            # conversation list (chats, titles, messages, attachments'
+            # metadata) lands under the account (or device) that sent it.
+            body = self._read_json()
+            conversations = body.get("conversations")
+            if not isinstance(conversations, list):
+                return self._json(400, {"error": "conversations list required"})
+            payload = json.dumps(conversations)
+            if len(payload) > 8_000_000:
+                return self._json(413, {"error": "backup too large"})
+            with _LOCK, db() as c:
+                c.execute(
+                    "INSERT OR REPLACE INTO backups (owner,payload,"
+                    "updated_at) VALUES (?,?,?)",
+                    (_owner(), payload, int(time.time() * 1000)))
+            return self._json(201, {"backed_up": True,
+                                    "owner": _owner().split(":", 1)[0] == "acct"
+                                    and "account" or "device",
+                                    "conversations": len(conversations)})
         if path == "/v1/messages":
             body = self._read_json()
             text = (body.get("text") or "").strip()
             if not text:
                 return self._json(400, {"error": "text is required"})
-            job_id = uuid.uuid4().hex[:12]
             now = int(time.time() * 1000)
             with _LOCK, db() as c:
+                # Movement 69 — the AI reads messages that arrive WHILE it
+                # works: a message typed while the conversation's job is
+                # still QUEUED is merged into that job's prompt — the same
+                # request, one coherent answer. When a job is already
+                # RUNNING (provider call in flight) a new job is created;
+                # its history includes the running one's reply when it
+                # completes, so nothing is ever lost.
+                conv = body.get("conversation_id") or "default"
+                pending = c.execute(
+                    "SELECT id,payload FROM jobs WHERE conversation_id=? "
+                    "AND kind='message' AND status='queued' "
+                    "ORDER BY created_at DESC LIMIT 1", (conv,)).fetchone()
+                if pending is not None:
+                    payload = json.loads(pending["payload"])
+                    payload["text"] = (payload.get("text", "") + "\n" + text)
+                    c.execute("UPDATE jobs SET payload=?,updated_at=? "
+                              "WHERE id=?",
+                              (json.dumps(payload), now, pending["id"]))
+                    return self._json(200, {
+                        "id": pending["id"], "status": "queued",
+                        "merged": True})
+                job_id = uuid.uuid4().hex[:12]
                 c.execute(
                     "INSERT INTO jobs (id,kind,conversation_id,payload,"
                     "status,created_at,updated_at) VALUES "
                     "(?,?,?,?,?,?,?)",
-                    (job_id, "message", body.get("conversation_id") or "default",
+                    (job_id, "message", conv,
                      json.dumps({"text": text,
                                  "attachment": redact(body.get("attachment"))}),
                      "queued", now, now))
@@ -669,6 +806,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(502, {"error": "provider returned no "
                                                 "messages"})
             return self._json(200, {"messages": messages[:5]})
+        if path == "/v1/skills":
+            # Movement 69 — agent skills as markdown files. Same shape the
+            # daemon answers, so whichever service the phone talks to
+            # stores them: $GORK_DB-side dir 'skills/<id>.md'.
+            body = self._read_json()
+            sid = (body.get("id") or "").strip()
+            title = (body.get("title") or "").strip()
+            markdown = body.get("markdown") or ""
+            if not sid or not markdown:
+                return self._json(400, {"error": "id and markdown required"})
+            safe = re.sub(r"[^a-zA-Z0-9_-]", "_", sid)
+            skills_dir = os.path.join(os.path.dirname(DB_PATH), "skills")
+            os.makedirs(skills_dir, exist_ok=True)
+            with open(os.path.join(skills_dir, safe + ".md"), "w") as f:
+                f.write(markdown if markdown.startswith("# ")
+                        else f"# {title}\n\n{markdown}")
+            return self._json(201, {"saved": safe + ".md"})
         if path == "/v1/memory/op":
             body = self._read_json()
             ops = body.get("ops")

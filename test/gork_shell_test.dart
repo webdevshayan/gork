@@ -64,7 +64,7 @@ void main() {
 
     // No weather card on the first screen — the chat is facing the user.
     expect(find.text('Sehwan Taluka, PK'), findsNothing);
-    expect(find.text('Create a new panel'), findsNothing);
+    expect(find.text('Customize feed'), findsNothing);
 
     // The nav pill starts on chat…
     await tester.tap(find.byKey(const ValueKey('left-button')));
@@ -95,11 +95,15 @@ void main() {
     expect(find.text(kDefaultName), findsNothing);
     expect(find.text(kDefaultEmail), findsNothing);
     expect(find.text('Sehwan Taluka, PK'), findsOneWidget);
-    expect(find.text('Broken Clouds'), findsOneWidget);
-    expect(find.text('26°C'), findsOneWidget);
+    // Movement 69 — instant, honest: a live clock from frame one, and NO
+    // fake placeholder weather (offline here → the honest dash).
+    expect(find.byKey(const ValueKey('home-clock')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-temp')), findsOneWidget);
+    expect(find.text('26°C'), findsNothing);
+    expect(find.text('Broken Clouds'), findsNothing);
     expect(find.text('Sunset'), findsOneWidget);
-    expect(find.text('5:40 PM'), findsOneWidget);
-    expect(find.text('Create a new panel'), findsOneWidget);
+    expect(find.byKey(const ValueKey('weather-sunset-tile')), findsOneWidget);
+    expect(find.text('Customize feed'), findsOneWidget);
     expect(find.text('Message Gork'), findsOneWidget);
     expect(find.byIcon(Icons.mic_none), findsOneWidget);
     // Movement 62 — the theme toggle MOVED to Settings › Preferences:
@@ -115,15 +119,16 @@ void main() {
     await pumpShell(tester);
     await openTab(tester, 'home');
 
-    final weather = tester.widget<GlassContainer>(
+    // Movement 69 — the weather block is ONE flat bordered container
+    // (radius 20), no card-in-card nesting.
+    final weather = tester.widget<Container>(
       find.ancestor(
         of: find.text('Sehwan Taluka, PK'),
-        matching: find.byType(GlassContainer),
-      ),
+        matching: find.byType(Container),
+      ).first,
     );
-    expect(weather.radius, 28);
-    // Movement 60 — solid surfaces: no sigma/blur parameter anymore.
-    expect(weather.strong, isFalse);
+    final decoration = weather.decoration as BoxDecoration;
+    expect(decoration.borderRadius, BorderRadius.circular(20));
 
     final pill = tester.widget<GlassContainer>(
       find.ancestor(
@@ -263,11 +268,12 @@ void main() {
     expect(find.text('Resets'), findsNothing);
     expect(find.text('Usage and plan'), findsNothing);
     for (final row in [
-      'Profile', 'Scheduled Tasks', 'Accounts', 'Security',
-      'AI Providers', 'Sync to daemon',
+      // Movement 69 — Accounts and AI Providers folded into Connections.
+      'Profile', 'Scheduled Tasks', 'Connections', 'Skills',
+      'Security', 'Sync to daemon',
     ]) {
-      // Movement 55 added Inbox/Panels/Cloud Computer rows — the list grew,
-      // so scroll to each row (lazy ListView) before asserting it.
+      // The rows sit in a lazy CustomScrollView — scroll to each before
+      // asserting it.
       await tester.scrollUntilVisible(
         find.text(row, skipOffstage: false),
         120,

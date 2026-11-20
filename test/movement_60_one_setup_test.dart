@@ -198,18 +198,19 @@ void main() {
       expect(Locator.prefs.getString('home.sunset'), isNull);
     });
 
-    testWidgets('the inner tiles stretch full width inside the first card',
-        (tester) async {
+    testWidgets('the flat weather block stretches edge to edge '
+        '(Movement 69)', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: GorkHome()));
       await tester.pumpAndSettle();
 
-      final conditions = tester
-          .getSize(find.byKey(const ValueKey('weather-conditions-tile')));
-      final sunset =
-          tester.getSize(find.byKey(const ValueKey('weather-sunset-tile')));
-      expect(conditions.width, sunset.width);
-      expect(conditions.width, greaterThan(600),
-          reason: 'edge to edge inside the card, not content-hugging');
+      // Both rows live in ONE flat bordered block — measure the block
+      // itself via the sunset row's ancestor container.
+      final block = tester.getSize(find.ancestor(
+        of: find.byKey(const ValueKey('weather-sunset-tile')),
+        matching: find.byType(Container),
+      ).last);
+      expect(block.width, greaterThan(300),
+          reason: 'edge to edge inside the block, not content-hugging');
     });
   });
 

@@ -63,20 +63,25 @@ void main() {
     expect(find.text('wind 12 km/h'), findsOneWidget);
   });
 
-  testWidgets('create a manual panel', (tester) async {
+  testWidgets('no manual form — widgets are AI-authored (Movement 69); '
+      'an AI spec lands on the feed', (tester) async {
+    tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const MaterialApp(home: PanelsScreen()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
+    // No FAB, no form anywhere: the user asks in chat, the AI answers with
+    // a gork-panel block, and the app harvests it.
+    expect(find.byIcon(Icons.add), findsNothing);
+    await Locator.panels.addSpec(
+        PanelSpec.fromAgent({'title': 'Focus streak', 'value': '5 days'}));
+    await tester.pump();
+    // The screen reads the store on init; force a remount (same widget
+    // type would reuse the stale state).
+    await tester
+        .pumpWidget(MaterialApp(home: PanelsScreen(key: UniqueKey())));
     await tester.pumpAndSettle();
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Title (e.g. Water the plants)').first,
-        'Focus streak');
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Value to show').first, '5 days');
-    await tester.tap(find.text('Save panel'));
-    await tester.pumpAndSettle();
-
     expect(find.text('Focus streak'), findsOneWidget);
     expect(find.text('5 days'), findsOneWidget);
   });

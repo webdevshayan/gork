@@ -23,7 +23,7 @@ const int kDefaultPort = 8787;
 /// The daemon's own version, reported by /health. The phone app shows it
 /// (Cloud Computer) and uses a refusal from an OLD daemon to point the user
 /// at `gork daemon update`. Bump when the daemon gains endpoints or fixes.
-const String kDaemonVersion = '0.4.0';
+const String kDaemonVersion = '0.5.0';
 
 /// Where task state lives.
 ///
@@ -191,6 +191,52 @@ Router buildRouter(Daemon daemon,
   router.post('/run', (Request request) async {
     final ran = await daemon.runDueTasks();
     return _json({'ran': ran});
+  });
+
+  // Movement 69 — Skills live here as markdown: the app pushes every skill
+  // it teaches or harvests from the agent; the agent reads them back from
+  // $GORK_HOME/skills so it can FOLLOW its own learned how-tos.
+  router.post('/skills', (Request request) async {
+    final raw = await request.readAsString();
+    final Map<String, dynamic> body;
+    try {
+      body = jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      return _json({'error': 'body must be JSON'}, 400);
+    }
+    final id = body['id']?.toString() ?? '';
+    final title = body['title']?.toString() ?? '';
+    final markdown = body['markdown']?.toString() ?? '';
+    if (id.isEmpty || markdown.isEmpty) {
+      return _json({'error': 'id and markdown are required'}, 400);
+    }
+    final home = Platform.environment['GORK_HOME'] ??
+        '${Platform.environment['HOME'] ?? '.'}/.gork';
+    final dir = Directory('$home/skills');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    final safe = id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final f = File('${dir.path}/$safe.md');
+    await f.writeAsString(
+        markdown.startsWith('# ') ? markdown : '# $title\n\n$markdown',
+        flush: true);
+    return _json({'saved': f.path});
+  });
+
+  router.get('/skills', (Request request) async {
+    final home = Platform.environment['GORK_HOME'] ??
+        '${Platform.environment['HOME'] ?? '.'}/.gork';
+    final dir = Directory('$home/skills');
+    final skills = <Map<String, String>>[];
+    if (dir.existsSync()) {
+      for (final f in dir.listSync().whereType<File>()) {
+        if (!f.path.endsWith('.md')) continue;
+        skills.add({
+          'id': f.path.split('/').last.replaceAll('.md', ''),
+          'markdown': f.readAsStringSync(),
+        });
+      }
+    }
+    return _json({'skills': skills});
   });
 
   // The phone's "Sync to daemon" action: write provider keys, model, ntfy

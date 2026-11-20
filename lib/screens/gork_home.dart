@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,13 +8,17 @@ import '../services/locator.dart';
 import '../services/panels_store.dart';
 import '../services/weather_service.dart';
 import '../widgets/glass.dart';
+import '../widgets/panel_view.dart';
 import 'panels_screen.dart';
 import '../constants/design_tokens.dart';
 
-/// Home tab: live weather card (outer card + two full-width inner tiles:
-/// conditions / sunset), a theme toggle (Movement 60 — the theme is
-/// TOGGLEABLE again), the "Create a new panel" pill, then any manual
-/// panels. No header — identity lives on the menu surface.
+/// Movement 69 — the Home feed. Instant by design:
+///  * the CLOCK ticks from the first frame (a live timer, no async gap);
+///  * the TEMPERATURE renders from the persisted cache the moment the
+///    widget builds — the network only REFINES it, never gates it;
+///  * every panel the AI has authored lands here, not just manual ones.
+/// The layout is flat: one bordered weather block with hairline dividers
+/// instead of the old card-in-card-in-card stack.
 class GorkHome extends StatefulWidget {
   const GorkHome({super.key});
 
@@ -21,15 +28,49 @@ class GorkHome extends StatefulWidget {
 
 class _GorkHomeState extends State<GorkHome> {
   WeatherNow? _weather;
+
+  /// True only when we have neither cache nor network — the honest '—' state.
   bool _weatherFailed = false;
+  Timer? _clock;
+  DateTime _now = DateTime.now();
 
   /// The persisted sunset override ('HH:mm'), set by tapping the tile.
   static const String kSunsetKey = 'home.sunset';
+  static const String kCacheKey = 'home.weather.cache';
 
   @override
   void initState() {
     super.initState();
+    _loadCachedWeather();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
     _loadWeather();
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  /// Cached-first: the last fetched conditions render instantly on the
+  /// first frame — no '26°C' placeholder pretending to be data.
+  void _loadCachedWeather() {
+    final raw = Locator.prefs.getString(kCacheKey);
+    if (raw == null) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      setState(() {
+        _weather = WeatherNow(
+          (map['tempC'] as num).toDouble(),
+          (map['code'] as num?)?.toInt() ?? 0,
+          (map['windKmh'] as num?)?.toDouble() ?? 0,
+        );
+      });
+    } catch (_) {
+      // A corrupt cache is the same as no cache.
+    }
   }
 
   Future<void> _loadWeather() async {
@@ -38,19 +79,30 @@ class _GorkHomeState extends State<GorkHome> {
         lat: Locator.ambientLat,
         lon: Locator.ambientLon,
       );
-      if (mounted) setState(() => _weather = weather);
+      if (!mounted) return;
+      setState(() {
+        _weather = weather;
+        _weatherFailed = false;
+      });
+      await Locator.prefs.setString(
+          kCacheKey,
+          jsonEncode({
+            'tempC': weather.tempC,
+            'code': weather.code,
+            'windKmh': weather.windKmh,
+          }));
     } catch (_) {
-      if (mounted) setState(() => _weatherFailed = true);
+      if (!mounted) return;
+      // Only mark failed when there was never anything to show.
+      setState(() => _weatherFailed = _weather == null);
     }
   }
 
   /// Sunset tile value: the user's override when they edited it, otherwise
-  /// computed locally from the coordinates (no network). Falls back to the
-  /// reference copy when the clock data is unavailable.
+  /// computed locally from the coordinates (no network).
   String get _sunsetLabel {
     final override = Locator.prefs.getString(kSunsetKey);
     if (override != null && override.isNotEmpty) return _formatTime(override);
-    if (_weatherFailed) return '5:40 PM';
     try {
       final dt = sunsetFor(
         Locator.ambientLat,
@@ -62,7 +114,7 @@ class _GorkHomeState extends State<GorkHome> {
       final minute = local.minute.toString().padLeft(2, '0');
       return '${hour12.toString()}:$minute ${local.hour < 12 ? 'AM' : 'PM'}';
     } catch (_) {
-      return '5:40 PM';
+      return '—';
     }
   }
 
@@ -116,6 +168,13 @@ class _GorkHomeState extends State<GorkHome> {
     return '$hour12:${m.toString().padLeft(2, '0')} ${h < 12 ? 'AM' : 'PM'}';
   }
 
+  /// The live clock label — h:mm AM/PM, ticking, INSTANT (no async load).
+  String get _clockLabel {
+    final int h12 = _now.hour % 12 == 0 ? 12 : _now.hour % 12;
+    final String min = _now.minute.toString().padLeft(2, '0');
+    return '$h12:$min ${_now.hour < 12 ? 'AM' : 'PM'}';
+  }
+
   Future<void> _editSunset(BuildContext context) async {
     final controller =
         TextEditingController(text: _sunsetLabel);
@@ -124,6 +183,7 @@ class _GorkHomeState extends State<GorkHome> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: GlassColors.fill,
           title: const Text('Edit sunset time'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -133,10 +193,6 @@ class _GorkHomeState extends State<GorkHome> {
                 key: const ValueKey('sunset-input'),
                 controller: controller,
                 autofocus: true,
-                // Movement 64 — the datetime keyboard on Android is a
-                // NUMBER pad with no colon; plain text + a formatter
-                // gives the full keyboard so '17:40' can be typed as-is
-                // (and 1740 still works).
                 keyboardType: TextInputType.text,
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(
@@ -147,9 +203,6 @@ class _GorkHomeState extends State<GorkHome> {
                   border: const OutlineInputBorder(),
                 ),
               ),
-              // The error renders as its OWN wrapped text (never inside the
-              // field's decorator): the decorator ellipsized it to one line
-              // and the user could not read the accepted formats.
               if (error != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -158,7 +211,7 @@ class _GorkHomeState extends State<GorkHome> {
                   maxLines: 3,
                   softWrap: true,
                   style: TextStyle(
-                      fontSize: 12, color: GlassColors.danger),
+                      fontSize: 13, color: GlassColors.danger),
                 ),
               ],
               const SizedBox(height: 8),
@@ -166,7 +219,7 @@ class _GorkHomeState extends State<GorkHome> {
                 'Your edit is kept on this device and wins over the '
                 'computed time.',
                 style: TextStyle(
-                    fontSize: 12, color: GlassColors.textDim),
+                    fontSize: 13, color: GlassColors.textDim),
               ),
             ],
           ),
@@ -206,162 +259,207 @@ class _GorkHomeState extends State<GorkHome> {
     if (mounted) setState(() {});
   }
 
-  String get _conditionsLabel => _weather?.label ?? 'Broken Clouds';
-
-  String get _tempLabel => _weather == null
-      ? '26°C'
-      : '${_weather!.tempC.toStringAsFixed(0)}°C';
-
   @override
   Widget build(BuildContext context) {
-    final manualPanels = Locator.panels.all().where(
-      (p) => p.source == PanelSource.manual,
-    );
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _WeatherCard(
-          weather: _weather,
-          failed: _weatherFailed,
-          onRetry: _loadWeather,
-          conditions: _conditionsLabel,
-          temp: _tempLabel,
-          sunset: _sunsetLabel,
-          overridden: _sunsetOverridden,
-          onEditSunset: () => _editSunset(context),
-        ),
-        const SizedBox(height: 16),
-        _CreatePanelButton(onTap: () => _push(context, const PanelsScreen())),
-        for (final panel in manualPanels) ...[
-          const SizedBox(height: 16),
-          _ManualPanelRow(panel: panel),
-        ],
-      ],
-    );
-  }
-
-  void _push(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
-  }
-}
-
-/// Reference weather panel: outer solid card (radius 28) with the location
-/// header, and two inner solid tiles stacked vertically — full width
-/// (Movement 60: the inner tiles stretch edge to edge inside the card).
-/// The sunset tile is editable: tap it to set or reset the time.
-class _WeatherCard extends StatelessWidget {
-  const _WeatherCard({
-    required this.weather,
-    required this.failed,
-    required this.onRetry,
-    required this.conditions,
-    required this.temp,
-    required this.sunset,
-    required this.overridden,
-    required this.onEditSunset,
-  });
-
-  final WeatherNow? weather;
-  final bool failed;
-  final VoidCallback onRetry;
-  final String conditions;
-  final String temp;
-  final String sunset;
-  final bool overridden;
-  final VoidCallback onEditSunset;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: failed ? onRetry : null,
-      child: GlassContainer(
-        radius: 28,
+    final palette = paletteOf(context);
+    final feedPanels = Locator.panels
+        .all()
+        .where((p) => p.id != 'weather-now' && p.source != PanelSource.manual)
+        .toList();
+    return RefreshIndicator(
+      color: palette.primary,
+      backgroundColor: GlassColors.fill,
+      onRefresh: _loadWeather,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+        children: [
+          // One flat block: location + live clock, then hairline-separated
+          // rows for conditions / temperature / sunset.
+          Container(
+            decoration: BoxDecoration(
+              color: GlassColors.fill,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: GlassColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  Icons.cloud_outlined,
-                  size: 20,
-                  color: GlassColors.text,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  Locator.locationLabel,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w500,
-                    color: GlassColors.text,
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          Locator.locationLabel,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w500,
+                            color: GlassColors.text,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.schedule,
+                          size: 18, color: GlassColors.textDim),
+                      const SizedBox(width: 8),
+                      Text(
+                        _clockLabel,
+                        key: const ValueKey('home-clock'),
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: GlassColors.text,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            GlassContainer(
-              key: const ValueKey('weather-conditions-tile'),
-              radius: 24,
-              strong: true,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    conditions,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: GlassColors.textDim,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    temp,
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w500,
-                      color: GlassColors.text,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onEditSunset,
-              child: GlassContainer(
-                key: const ValueKey('weather-sunset-tile'),
-                radius: 24,
-                strong: true,
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                Divider(color: GlassColors.divider, height: 1),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _weatherFailed ? _loadWeather : null,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          'Sunset',
+                          // The cached temperature — INSTANT, honest when
+                          // nothing was ever fetched ('—', never a fake 26).
+                          _weather == null
+                              ? '—'
+                              : '${_weather!.tempC.toStringAsFixed(0)}°C',
+                          key: const ValueKey('home-temp'),
                           style: TextStyle(
-                              fontSize: 16, color: GlassColors.textDim),
+                            fontSize: 34,
+                            fontWeight: FontWeight.w500,
+                            color: GlassColors.text,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _weather == null
+                                    ? (_weatherFailed
+                                        ? 'Weather unavailable — tap to retry'
+                                        : 'Loading…')
+                                    : _weather!.label,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: GlassColors.textDim,
+                                ),
+                              ),
+                              if (_weather != null)
+                                Text(
+                                  'wind ${_weather!.windKmh.toStringAsFixed(0)} km/h',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: GlassColors.textFaint,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (_weatherFailed)
+                          Icon(Icons.refresh,
+                              size: 22, color: GlassColors.textDim),
+                      ],
+                    ),
+                  ),
+                ),
+                Divider(color: GlassColors.divider, height: 1),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _editSunset(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Sunset',
+                              style: TextStyle(
+                                  fontSize: 15, color: GlassColors.textDim),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _sunsetLabel,
+                              key: const ValueKey('weather-sunset-tile'),
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w500,
+                                color: GlassColors.text,
+                              ),
+                            ),
+                          ],
                         ),
                         const Spacer(),
                         Icon(
-                          overridden
-                              ? Icons.edit
-                              : Icons.edit_outlined,
-                          size: 16,
+                          Icons.edit_outlined,
+                          size: 18,
                           color: GlassColors.textFaint,
                           semanticLabel: 'Edit sunset time',
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // The AI-built feed: every panel gork has authored for this user.
+          if (feedPanels.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Text(
+                'Your feed is yours. Ask gork in chat — "build me a widget '
+                'for my study streak" or "track my shipped PRs" — and the '
+                'widget lands right here. Tune it for your role on the '
+                'Panels screen.',
+                style: TextStyle(
+                    fontSize: 15, height: 1.45, color: GlassColors.textDim),
+              ),
+            )
+          else
+            for (final panel in feedPanels)
+              PanelTile(
+                panel: panel,
+                compact: true,
+                weather: panel.source == PanelSource.weather
+                    ? _weather
+                    : null,
+                onDelete: panel.source == PanelSource.agent
+                    ? () async {
+                        await Locator.panels.delete(panel.id);
+                        if (mounted) setState(() {});
+                      }
+                    : null,
+              ),
+          const SizedBox(height: 8),
+          GlassContainer(
+            radius: 30,
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _push(context, const PanelsScreen()),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.dashboard_customize_outlined,
+                        size: 20, color: GlassColors.text),
+                    const SizedBox(width: 10),
                     Text(
-                      sunset,
+                      'Customize feed',
                       style: TextStyle(
-                        fontSize: 34,
+                        fontSize: 17,
                         fontWeight: FontWeight.w500,
                         color: GlassColors.text,
                       ),
@@ -370,83 +468,13 @@ class _WeatherCard extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-/// Full-width pill: "+ Create a new panel".
-class _CreatePanelButton extends StatelessWidget {
-  const _CreatePanelButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      radius: 30,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add, size: 20, color: GlassColors.text),
-            SizedBox(width: 10),
-            Text(
-              'Create a new panel',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w500,
-                color: GlassColors.text,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ManualPanelRow extends StatelessWidget {
-  const _ManualPanelRow({required this.panel});
-
-  final PanelSpec panel;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassContainer(
-      radius: 28,
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  panel.title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: GlassColors.text,
-                  ),
-                ),
-                if (panel.manualValue.isNotEmpty)
-                  Text(
-                    panel.manualValue,
-                    style: TextStyle(fontSize: 14, color: GlassColors.textDim),
-                  ),
-              ],
-            ),
           ),
-          Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
         ],
       ),
     );
+  }
+
+  void _push(BuildContext context, Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 }

@@ -53,7 +53,7 @@ class _SearchScreenState extends State<SearchScreen> {
     _Jump('Panels', Icons.dashboard_outlined, PanelsScreen()),
     _Jump('Projects', Icons.folder_outlined, ProjectsScreen()),
     _Jump('Cloud Computer', Icons.dns_outlined, CloudComputerScreen()),
-    _Jump('Integrations', Icons.extension_outlined, IntegrationsScreen()),
+    _Jump('Connections', Icons.link_rounded, ConnectionsScreen()),
     _Jump('Scheduled Tasks', Icons.schedule_outlined, TasksScreen()),
     _Jump('Providers', Icons.key_outlined, ProvidersScreen()),
   ];

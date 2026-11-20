@@ -6,6 +6,7 @@ import '../services/tasks_store.dart';
 import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
+import '../widgets/glass.dart';
 
 /// Scheduled tasks: things that run on a timer, not on demand.
 class TasksScreen extends StatefulWidget {
@@ -41,13 +42,8 @@ class _TasksScreenState extends State<TasksScreen> {
     final minutesController = TextEditingController(text: '60');
     final palette = paletteOf(context);
 
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: palette.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.only(

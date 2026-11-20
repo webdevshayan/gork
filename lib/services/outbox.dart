@@ -87,6 +87,98 @@ class MessageOutbox {
 
   Future<String?> token() => (store ?? Locator.store).read('vps.token');
 
+  /// Movement 69 — a stable per-device id (minted once) and the signed-in
+  /// account email: every request carries both. The VPS buckets backups
+  /// and data per ACCOUNT when signed in, per DEVICE otherwise — a new
+  /// phone restores everything under the same account.
+  static const String kDeviceKey = 'device.id';
+
+  Future<String> deviceId() async {
+    var id = prefs.getString(kDeviceKey);
+    if (id == null || id.isEmpty) {
+      id = DateTime.now().microsecondsSinceEpoch.toString() +
+          DateTime.now().hashCode.toRadixString(36);
+      await prefs.setString(kDeviceKey, id);
+    }
+    return id;
+  }
+
+  Future<Map<String, String>> identityHeaders() async {
+    final headers = <String, String>{
+      'X-Gork-Device': await deviceId(),
+    };
+    final account = prefs.getString('profile.email');
+    if (account != null && account.trim().isNotEmpty) {
+      headers['X-Gork-Account'] = account.trim();
+    }
+    return headers;
+  }
+
+  /// Movement 69 — push EVERYTHING to the server: the full conversation
+  /// history (chats, titles, messages) is backed up per account/device.
+  /// Fire-and-forget friendly; returns true when the server acked.
+  Future<bool> pushBackup() async {
+    final base = url;
+    if (base == null) return false;
+    try {
+      final conversations = [
+        for (final c in Locator.history.all())
+          {
+            'id': c.id,
+            'title': c.title,
+            'providerId': c.providerId,
+            'updatedAt': c.updatedAt,
+            'messages': [
+              for (final m in c.messages)
+                {
+                  'role': m.role,
+                  'content': m.content,
+                  'time': m.time,
+                },
+            ],
+          },
+      ];
+      final headers = {
+        'Content-Type': 'application/json',
+        if (await token() != null)
+          'Authorization': 'Bearer ${await token()}',
+        ...await identityHeaders(),
+      };
+      final res = await _http.post(Uri.parse('$base/v1/backup'),
+          headers: headers,
+          body: jsonEncode({'conversations': conversations}));
+      return res.statusCode == 201;
+    } catch (_) {
+      return false; // offline — retried on the next push
+    }
+  }
+
+  /// Pull the server-side backup for this account (or device). Returns the
+  /// stored conversations when the server has one.
+  Future<List<Map<String, dynamic>>?> pullBackup() async {
+    final base = url;
+    if (base == null) return null;
+    try {
+      final headers = {
+        'Content-Type': 'application/json',
+        if (await token() != null)
+          'Authorization': 'Bearer ${await token()}',
+        ...await identityHeaders(),
+      };
+      final res = await _http.get(Uri.parse('$base/v1/backup'),
+          headers: headers);
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['found'] != true) return null;
+      return [
+        for (final c in body['conversations'] as List)
+          (c as Map<String, dynamic>)
+      ];
+    } catch (_) {
+      return null;
+    }
+  }
+
   SharedPreferences get prefs =>
       _prefsOverride ?? Locator.prefs;
 
@@ -156,6 +248,7 @@ class MessageOutbox {
         headers: {
           'Content-Type': 'application/json',
           if (await token() != null) 'Authorization': 'Bearer ${await token()}',
+          ...await identityHeaders(),
         },
         body: jsonEncode({
           'conversation_id': entry.conversationId,

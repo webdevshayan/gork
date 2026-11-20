@@ -191,7 +191,9 @@ void main() {
       Locator.bind(prefs: prefs);
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
 
-      expect(find.byKey(const ValueKey('menu-google')), findsOneWidget);
+      // Movement 69 — Google lives inside Connections now.
+      expect(find.byKey(const ValueKey('menu-connections')),
+          findsOneWidget);
     });
   });
 

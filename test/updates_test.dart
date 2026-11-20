@@ -162,10 +162,13 @@ void main() {
     testWidgets('the menu offers Updates with the installed version',
         (tester) async {
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
-      // The Updates card sits mid-list; bring it into the lazy viewport.
+      await tester.pumpAndSettle();
+      // Movement 69 — CustomScrollView menu: ensure the row is built and
+      // on screen (the pinned header leaves plenty of list below).
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('menu-updates')),
         200,
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('menu-updates')), findsOneWidget);

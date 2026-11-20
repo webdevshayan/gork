@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/design_tokens.dart';
 import 'glass.dart';
+import '../widgets/glass.dart';
 
 /// What the + (attachment) menu offers.
 enum AttachKind { camera, photos, files }
@@ -18,9 +19,8 @@ class AttachMenu extends StatelessWidget {
   /// Presents the menu as a small floating sheet above the input bar and
   /// resolves with the chosen kind (null = dismissed).
   static Future<AttachKind?> show(BuildContext context) {
-    return showModalBottomSheet<AttachKind>(
+    return showGorkSheet<AttachKind>(
       context: context,
-      backgroundColor: Colors.transparent,
       barrierColor: Colors.black26,
       builder: (_) => Padding(
         padding: const EdgeInsets.only(bottom: 24),

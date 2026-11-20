@@ -131,11 +131,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               controller: _controller,
               onPageChanged: (i) => setState(() => _page = i),
               children: [
-                _welcome(palette),
-                _setup(palette),
-                _google(palette),
-                _profile(palette),
-                _done(palette),
+                for (final (i, page) in [
+                  _welcome(palette),
+                  _setup(palette),
+                  _google(palette),
+                  _profile(palette),
+                  _done(palette),
+                ].indexed)
+                  _PageEntrance(
+                    key: ValueKey('onboard-page-$i'),
+                    child: page,
+                  ),
+              ],
+            ),
+          ),
+          // Movement 69 — animated progress dots: the active dot stretches,
+          // the rest stay round. You always know where you are.
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.md),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < _pages; i++)
+                  AnimatedContainer(
+                    key: ValueKey('onboard-dot-$i'),
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOut,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: i == _page ? 26 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: i == _page
+                          ? palette.textPrimary
+                          : palette.textTertiary.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -173,8 +204,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _welcome(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('gork', style: TypeScale.display(color: palette.textPrimary)),
@@ -184,14 +217,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'everything stays on your phone.',
           style: TypeScale.body(color: palette.textSecondary),
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
   Widget _setup(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -218,7 +255,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           onPressed: _openProviders,
           expands: true,
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
@@ -227,8 +266,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// upload button and the exact redirect URI) lives one tap away.
   Widget _google(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -274,7 +315,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           onPressed: _openGoogle,
           expands: true,
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
@@ -282,8 +325,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// Google and is read-only everywhere (sign in once and it fills in).
   Widget _profile(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -371,14 +416,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             );
           },
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
   Widget _done(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('You are set', style: TypeScale.title(color: palette.textPrimary)),
@@ -389,7 +438,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'connect the companion daemon.',
           style: TypeScale.body(color: palette.textSecondary),
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -411,5 +462,50 @@ class _OnboardingGateState extends State<OnboardingGate> {
     // skipped on ancestor rebuilds and never re-reads GlassColors.
     if (_done) return GorkShell();
     return OnboardingScreen(onFinished: () => setState(() => _done = true));
+  }
+}
+
+/// Movement 69 — every onboarding page ENTERS: fades in, rises and settles
+/// with a soft overshoot. Re-keyed per page so swiping back and forth
+/// replays it — the setup feels alive instead of snapping.
+class _PageEntrance extends StatefulWidget {
+  const _PageEntrance({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_PageEntrance> createState() => _PageEntranceState();
+}
+
+class _PageEntranceState extends State<_PageEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved =
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.10),
+          end: Offset.zero,
+        ).animate(curved),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
+          child: widget.child,
+        ),
+      ),
+    );
   }
 }

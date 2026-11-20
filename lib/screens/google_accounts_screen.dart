@@ -457,7 +457,7 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
             child: Text(
               tool.toString().toUpperCase(),
               style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: GlassColors.textOnChip),
             ),
@@ -512,6 +512,10 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                 // needs those credentials AND the one registered redirect
                 // URI — asking the user to connect before any of that
                 // existed just produced Google's 400 redirect_uri_mismatch.
+                // Movement 69 — the RECOMMENDED setup: an Android client
+                // and one pasted id. No file, no secret, no redirect list.
+                if (_credsOnVps != true) _buildAndroidClientCard(),
+                const SizedBox(height: 16),
                 _buildCloudConsoleCard(),
                 const SizedBox(height: 16),
                 GButton(
@@ -543,7 +547,7 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   'One-time setup — it stays connected until you remove it. '
                   'The sign-in token is sealed on your VPS; connector tokens '
                   'stay encrypted on this device.',
-                  style: TextStyle(fontSize: 12, color: GlassColors.textFaint),
+                  style: TextStyle(fontSize: 13, color: GlassColors.textFaint),
                 ),
               ],
             ),
@@ -553,9 +557,115 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
     );
   }
 
+  /// Movement 69 — the Android-client quick setup: paste ONE string (the
+  /// client id), tap Save — the VPS seals it, and Connect with Google
+  /// below just works. The card spells out the exact Cloud Console clicks
+  /// (package name + SHA-1) because that console trip is unavoidable.
+  Widget _buildAndroidClientCard() {
+    return GlassContainer(
+      radius: 24,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.smartphone_outlined,
+                  size: 20, color: GlassColors.text),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('One-tap setup (Android client)',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: GlassColors.text)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'In console.cloud.google.com → Credentials → Create '
+            'credentials → OAuth client ID → Android:\n'
+            'package name: dev.shayan.gork\n'
+            'SHA-1: run keytool -list -v -keystore ~/.android/debug.keystore '
+            '-alias androiddebugkey (password android) and copy the SHA-1 '
+            'fingerprint. Then paste the client id here.',
+            style: TextStyle(
+                fontSize: 14, height: 1.45, color: GlassColors.textDim),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('android-client-id'),
+            controller: _androidClientIdCtrl,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: TextStyle(fontSize: 15, color: GlassColors.text),
+            decoration: InputDecoration(
+              hintText: '1234…apps.googleusercontent.com',
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GButton(
+            key: const ValueKey('android-client-save'),
+            label: _androidSaving ? 'Saving…' : 'Save client id',
+            onPressed: _androidSaving ? null : _saveAndroidClientId,
+            expands: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveAndroidClientId() async {
+    final id = _androidClientIdCtrl.text.trim();
+    if (id.isEmpty || !id.endsWith('apps.googleusercontent.com')) {
+      setState(() => _oauthStatus =
+          'That does not look like a Google client id — it ends in '
+          'apps.googleusercontent.com');
+      return;
+    }
+    setState(() => _androidSaving = true);
+    try {
+      await _uploader.uploadClientId(id);
+      if (!mounted) return;
+      setState(() {
+        _credsOnVps = true;
+        _stepsOverride = false; // collapse the long recipe — the fast path won
+        _oauthStatus = 'Client id sealed on your VPS — tap Connect with '
+            'Google below. One tap, done.';
+        _androidSaving = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString();
+      setState(() {
+        _oauthStatus = 'Could not save it: '
+            '${msg.substring(0, msg.length.clamp(0, 160))}';
+        _androidSaving = false;
+      });
+    }
+  }
+
+  /// Movement 68 — the six-step Cloud Console recipe COLLAPSES once the
+  /// credentials are sealed (the common case: setup done, card is just
+  /// noise above Connect with Google). First-timers see it open. The
+  /// override tracks manual taps so the auto-collapse never fights the
+  /// user: null = follow the default.
+  bool? _stepsOverride;
+
+  /// Movement 69 — the one-tap Android client setup state.
+  final TextEditingController _androidClientIdCtrl = TextEditingController();
+  bool _androidSaving = false;
+
+  bool get _stepsOpen => _stepsOverride ?? (_credsOnVps != true);
+
   /// The Google Cloud Console card: the exact recipe to CREATE the
   /// credentials (before there is anything to upload), the upload action,
-  /// and the one redirect URI to register. Movement 64.
+  /// and the one redirect URI to register. Movement 64. Movement 68 —
+  /// scannable at any age: collapsible steps, one size larger, brighter
+  /// ink, 26dp badges, real spacing between steps.
   Widget _buildCloudConsoleCard() {
     return GlassContainer(
       radius: 24,
@@ -563,69 +673,108 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Google Cloud Console',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: GlassColors.text)),
-          const SizedBox(height: 4),
-          Text(
-            'First time? Create the credentials Google signs in against — '
-            'once, then upload them here.',
-            style: TextStyle(fontSize: 13, color: GlassColors.textDim),
-          ),
-          const SizedBox(height: 10),
-          for (final (i, step) in const [
-            'console.cloud.google.com → create a project (any name).',
-            'APIs & Services → Library → enable Gmail, Google Docs '
-                'and YouTube Data API.',
-            'OAuth consent screen → External → add your own account '
-                'under Test users.',
-            // Movement 66 — Desktop app, NOT Web application: web clients
-            // reject custom-scheme redirect URIs ("must use http or https"),
-            // desktop (installed-app) clients accept BOTH kinds.
-            'Credentials → Create credentials → OAuth client ID → '
-                'Desktop app.',
-            'Authorized redirect URIs — BOTH, exactly: '
-                '${GoogleOAuthService.kRedirectUri} and '
-                '${GoogleOAuthService.kDeepLinkUri}',
-            'Download the JSON and upload it below. A Web-application '
-                'client from an earlier setup keeps working for sign-in, '
-                'but only a Desktop client can carry the deep-link '
-                'redirect.',
-          ].indexed) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+          GestureDetector(
+            key: const ValueKey('gconsole-steps-toggle'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _stepsOverride = !_stepsOpen),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    margin: const EdgeInsets.only(top: 2),
-                    decoration: BoxDecoration(
-                      color: GlassColors.chip,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text('${i + 1}',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: GlassColors.textOnChip)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(step,
+                    child: Text('Google Cloud Console',
                         style: TextStyle(
-                            fontSize: 13,
-                            height: 1.35,
-                            color: GlassColors.textDim)),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: GlassColors.text)),
+                  ),
+                  Text(
+                    _stepsOpen ? 'Hide steps' : 'Show 6 steps',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: GlassColors.textDim),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    _stepsOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 24,
+                    color: GlassColors.textDim,
                   ),
                 ],
               ),
             ),
+          ),
+          if (!_stepsOpen && _credsOnVps == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Credentials sealed on the VPS ✓ — Connect with Google below.',
+                key: const ValueKey('gconsole-status'),
+                style: TextStyle(fontSize: 15, color: GlassColors.text),
+              ),
+            ),
+          if (_stepsOpen) ...[
+            Text(
+              'First time? Create the credentials Google signs in against — '
+              'once, then upload them here.',
+              style: TextStyle(fontSize: 15, color: GlassColors.textDim),
+            ),
+            const SizedBox(height: 14),
+            for (final (i, step) in const [
+              'console.cloud.google.com → create a project (any name).',
+              'APIs & Services → Library → enable Gmail, Google Docs '
+                  'and YouTube Data API.',
+              'OAuth consent screen → External → add your own account '
+                  'under Test users.',
+              // Movement 66 — Desktop app, NOT Web application: web clients
+              // reject custom-scheme redirect URIs ("must use http or https"),
+              // desktop (installed-app) clients accept BOTH kinds.
+              'Credentials → Create credentials → OAuth client ID → '
+                  'Desktop app.',
+              'Authorized redirect URIs — BOTH, exactly: '
+                  '${GoogleOAuthService.kRedirectUri} and '
+                  '${GoogleOAuthService.kDeepLinkUri}',
+              'Download the JSON and upload it below. A Web-application '
+                  'client from an earlier setup keeps working for sign-in, '
+                  'but only a Desktop client can carry the deep-link '
+                  'redirect.',
+            ].indexed) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      margin: const EdgeInsets.only(top: 1),
+                      decoration: BoxDecoration(
+                        color: GlassColors.chip,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text('${i + 1}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: GlassColors.textOnChip)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(step,
+                          style: TextStyle(
+                              fontSize: 15,
+                              height: 1.45,
+                              color: GlassColors.text)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 10),
           GestureDetector(
@@ -634,19 +783,28 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
             onTap: _uploadCredentials,
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 10),
+                  horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Text('Upload credentials.json',
                   style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.white)),
             ),
           ),
-          if (_credsOnVps != null) ...[
+          if (_credsOnVps == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Checking the VPS…',
+              key: const ValueKey('gconsole-status'),
+              style: TextStyle(fontSize: 14, color: GlassColors.textDim),
+            ),
+          ] else if (_stepsOpen) ...[
+            // Collapsed + sealed shows the status in the header area
+            // already (no duplicate line here).
             const SizedBox(height: 8),
             Text(
               _credsOnVps!
@@ -654,7 +812,7 @@ class _GoogleAccountsScreenState extends State<GoogleAccountsScreen> {
                   : 'No credentials stored yet — upload before connecting.',
               key: const ValueKey('gconsole-status'),
               style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   color: _credsOnVps!
                       ? GlassColors.text
                       : GlassColors.textDim),

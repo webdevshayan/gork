@@ -75,6 +75,36 @@ void main() {
       expect(contrast(Palette.dark.onPrimary, Palette.dark.primary),
           greaterThanOrEqualTo(4.5));
     });
+
+    // Movement 68 — the EXHAUSTIVE gate: every text tier against every
+    // surface it can sit on, in both palettes. The old spot checks let
+    // textTertiary sit right at the AA edge on the elevated surface (the
+    // dense gray walls in the screenshots); now nothing can regress.
+    test('exhaustive matrix — all tiers × all surfaces × both palettes', () {
+      final palettes = {'light': Palette.light, 'dark': Palette.dark};
+      for (final p in palettes.entries) {
+        final surfaces = {
+          'background': p.value.background,
+          'surface': p.value.surface,
+          'surfaceElevated': p.value.surfaceElevated,
+        };
+        final tiers = {
+          'textPrimary': p.value.textPrimary,
+          'textSecondary': p.value.textSecondary,
+          'textTertiary': p.value.textTertiary,
+        };
+        for (final tier in tiers.entries) {
+          for (final surface in surfaces.entries) {
+            expect(
+                contrast(tier.value, surface.value),
+                greaterThanOrEqualTo(4.5),
+                reason: '${p.key} ${tier.key} on ${surface.key} is '
+                    '${contrast(tier.value, surface.value).toStringAsFixed(2)}'
+                    ':1 — below WCAG AA');
+          }
+        }
+      }
+    });
   });
 
   group('elevation levels', () {
@@ -93,12 +123,30 @@ void main() {
       expect(TypeScale.title().fontSize, 28);
       expect(TypeScale.heading().fontSize, 22);
       expect(TypeScale.heading().fontWeight, FontWeight.w600);
-      expect(TypeScale.body().fontSize, 16);
-      expect(TypeScale.bodySmall().fontSize, 14);
-      expect(TypeScale.caption().fontSize, 12);
-      expect(TypeScale.code().fontSize, 13);
+      // Movement 68 — the scan pass: body 17, small 15, caption 13,
+      // code 14, and NOTHING in the scale below 13.
+      expect(TypeScale.body().fontSize, 17);
+      expect(TypeScale.bodySmall().fontSize, 15);
+      expect(TypeScale.caption().fontSize, 13);
+      expect(TypeScale.code().fontSize, 14);
       expect(TypeScale.code().fontWeight, FontWeight.w500);
       expect(TypeScale.code().fontFamily, 'monospace');
+    });
+
+    test('no text style below 13 — the readability floor', () {
+      final sizes = [
+        TypeScale.display().fontSize!,
+        TypeScale.title().fontSize!,
+        TypeScale.heading().fontSize!,
+        TypeScale.body().fontSize!,
+        TypeScale.bodySmall().fontSize!,
+        TypeScale.caption().fontSize!,
+        TypeScale.code().fontSize!,
+      ];
+      for (final s in sizes) {
+        expect(s, greaterThanOrEqualTo(13),
+            reason: 'text under 13 is unreadable at arm\u2019s length');
+      }
     });
   });
 }

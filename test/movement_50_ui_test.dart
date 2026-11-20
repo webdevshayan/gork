@@ -155,10 +155,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
 
-    // Movement 63 added the embedded Preferences section — the Security row
-    // sits deeper in the lazy list now; drag before finding it.
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1200));
-    await tester.pumpAndSettle();
+    // Movement 69 — CustomScrollView menu: no manual drag needed, the
+    // scrollUntilVisible below builds the rows on the way.
 
     expect(find.byKey(const ValueKey('menu-wallet'), skipOffstage: false),
         findsNothing,
@@ -182,20 +180,14 @@ void main() {
 
   testWidgets('no Wallet jump in search', (tester) async {
     await pumpShell(tester);
-    // Search lives in the menu surface's search pill.
     await tester.tap(find.byKey(const ValueKey('avatar')));
     await tester.pumpAndSettle();
-    final searchPill = find.byKey(const ValueKey('menu-search'),
-        skipOffstage: false);
-    await tester.scrollUntilVisible(
-      searchPill,
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(searchPill);
+    // Movement 69 — the search pill became a STICKY settings search bar.
+    await tester.enterText(
+        find.byKey(const ValueKey('menu-settings-search')), 'wallet');
     await tester.pumpAndSettle();
 
-    expect(find.text('Wallet', skipOffstage: false), findsNothing,
+    expect(find.textContaining('Wallet', skipOffstage: false), findsNothing,
         reason: 'the wallet jump entry is gone');
   });
 

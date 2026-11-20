@@ -152,12 +152,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Avatar → menu → Search pill (the row sits low in the menu list).
-    await tester.tap(find.byKey(const ValueKey('avatar')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await scrollTo(tester, find.byKey(const ValueKey('menu-search')));
-    await tester.tap(find.byKey(const ValueKey('menu-search')));
+    // Movement 69 — the menu's Search pill became a sticky settings search;
+    // the GLOBAL search lives on the shell's top-left button (one verb, one
+    // place). Deep settings search matches chat history too.
+    await tester.tap(find.byKey(const ValueKey('left-button')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

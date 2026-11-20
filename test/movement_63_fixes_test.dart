@@ -146,8 +146,9 @@ void main() {
   });
 
   group('Movement 63 — Preferences live in the menu, no Settings screen', () {
-    testWidgets('the menu hosts the tabs; the theme is a row that pushes '
-        'its own screen (Movement 65)', (tester) async {
+    testWidgets('the theme is a row that pushes its own screen — and the '
+        'Preferences | About tabs are GONE (Movement 68: one flat list '
+        'scans faster than tabs-within-a-list)', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
 
@@ -162,9 +163,13 @@ void main() {
           find.byKey(const ValueKey('menu-theme')), const Offset(0, -120));
       await tester.pumpAndSettle();
 
-      // The tabs are IN the menu.
-      expect(find.text('Preferences', skipOffstage: false), findsOneWidget);
-      expect(find.text('About', skipOffstage: false), findsOneWidget);
+      // Movement 68 — no tabs, no panes, no background-responses card.
+      expect(find.text('Preferences', skipOffstage: false), findsNothing);
+      expect(find.text('About', skipOffstage: false), findsNothing);
+      expect(find.byKey(const ValueKey('settings-tab-preferences')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('settings-tab-about')), findsNothing);
+      expect(find.text('Background responses'), findsNothing);
 
       // No nested "Settings" row anywhere.
       expect(find.text('Settings'), findsNothing);
@@ -185,27 +190,25 @@ void main() {
       expect(Locator.prefs.getString('ui.theme'), 'dark');
     });
 
-    testWidgets('the About tab shows the version and the updates entry',
-        (tester) async {
+    testWidgets('version + update checks live on the Updates row, not in '
+        'a vanished About pane', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('settings-tab-about')),
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('settings-tab-about')));
-      await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('settings-version')), findsOneWidget);
-      expect(find.text('gork v$kAppVersion'), findsOneWidget);
+      expect(find.text('gork v$kAppVersion'), findsNothing);
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('settings-updates')),
+        find.byKey(const ValueKey('menu-updates')),
         120,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.byKey(const ValueKey('settings-updates')));
+      await tester.pumpAndSettle();
+      // The row carries the version as its trailing label (hidden in dev
+      // builds, where the version is literally 'dev')...
+      if (kAppVersion != 'dev') {
+        expect(find.text('v$kAppVersion'), findsOneWidget);
+      }
+      // ...and pushes the Updates screen (which owns the check).
+      await tester.tap(find.byKey(const ValueKey('menu-updates')));
       await tester.pumpAndSettle();
       expect(find.byType(UpdatesScreen), findsOneWidget);
     });

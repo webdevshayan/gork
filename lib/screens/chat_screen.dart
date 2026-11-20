@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import '../services/history_store.dart';
 import '../services/llm_client.dart';
 import '../services/locator.dart';
 import '../services/outbox.dart';
+import '../services/panels_store.dart';
 import '../services/profile_info.dart';
 import '../services/projects_store.dart';
 import '../widgets/error_card.dart';
@@ -27,17 +29,20 @@ class _UiMessage {
   /// person behind the app (the first-run intro sequence).
   final bool animate;
 
-  /// Movement 64 — sent while another reply was still being worked on:
-  /// the bubble shows as queued until the batch goes out.
-  final bool queued;
+  /// Movement 69 — a follow-up typed while a reply was on its way. The
+  /// bubbles NEVER read as "queued" (that was noise): from the moment of
+  /// typing they look sent, exactly like WhatsApp, and they still travel
+  /// together as one batched request when the current reply lands.
+  final bool wasQueued;
+
+  /// The quoted message this one answers, when sent as a reply (the
+  /// swipe-to-quote feature). Rendered as a small header inside the bubble
+  /// and prefixed into the agent's context.
+  final String? quoted;
 
   const _UiMessage(this.role, this.content,
       {this.time, this.attachment, this.animate = false,
-       this.queued = false});
-
-  /// The queued message went out — it reads as a normal sent message now.
-  _UiMessage markSent() => _UiMessage(role, content,
-      time: time, attachment: attachment, animate: animate);
+       this.wasQueued = false, this.quoted});
 }
 
 /// The Chat tab, pixel-matched to the reference screenshots:
@@ -80,10 +85,16 @@ class ChatScreenState extends State<ChatScreen> {
   bool _showScrollButton = false;
 
   /// Movement 64 — messages typed while a reply is still on its way.
-  /// They queue as dimmed bubbles and go out TOGETHER as one batched
-  /// request the moment the current reply lands: fewer VPS round-trips,
-  /// one coherent answer, like a person who read your follow-ups.
-  final List<String> _queued = [];
+  /// They go out TOGETHER as one batched request the moment the current
+  /// reply lands: fewer VPS round-trips, one coherent answer, like a
+  /// person who read your follow-ups. Movement 69: the UI no longer paints
+  /// a "queued" state — every bubble looks sent from the start.
+  final List<String> _queued = <String>[];
+
+  /// Movement 69 — swipe-to-quote: the message the user is answering. The
+  /// bubble gets a quote header, the agent gets the quoted text as context,
+  /// and the composer chip shows what will be referenced.
+  _UiMessage? _replyTo;
 
   /// Test hook: the current thread as the UI sees it.
   @visibleForTesting
@@ -225,24 +236,35 @@ class ChatScreenState extends State<ChatScreen> {
   /// Public send API — the shell's glass input bar drives this.
   ///
   /// Movement 64 — a message typed while a reply is on its way is QUEUED,
-  /// never dropped. Queued messages show as dimmed "queued" bubbles and
-  /// go out together as ONE request when the current reply lands.
-  /// [silent] (the queue drain) adds no bubble — the queued bubbles
-  /// themselves are the sent record.
+  /// never dropped; it goes out together as ONE request when the current
+  /// reply lands. Movement 69 — the bubble looks SENT from the moment of
+  /// typing (like WhatsApp: check + time, never a dimmed "queued" state),
+  /// and when the user swiped a message to quote it, the agent receives
+  /// the quoted text as context in the SAME request.
   Future<void> send(String rawText, {bool silent = false}) async {
     final text = rawText.trim();
     if (text.isEmpty) return;
 
+    final reply = _replyTo;
+    // The agent's view: the quoted message travels with the reply — one
+    // request, full context. The bubble keeps both parts for display.
+    final String agentText = reply == null || reply.content.isEmpty
+        ? text
+        : '[Replying to your earlier message: "${reply.content}"\n— my reply: $text]';
+    if (reply != null && mounted) {
+      setState(() => _replyTo = null);
+    }
+
     // The user's message always lands in the thread, even before any key is
     // configured — the guidance shows underneath it.
-    final bool willQueue = _loading && !silent;
     if (!silent) {
       setState(() {
-        _messages.add(
-          _UiMessage('user', text,
-              time: DateTime.now().millisecondsSinceEpoch,
-              queued: willQueue),
-        );
+        _messages.add(_UiMessage(
+          'user',
+          text,
+          time: DateTime.now().millisecondsSinceEpoch,
+          quoted: reply?.content,
+        ));
         _error = null;
         _errorDetails = null;
         if (_conversationId.isEmpty) {
@@ -251,8 +273,8 @@ class ChatScreenState extends State<ChatScreen> {
         }
       });
       _scrollToBottom();
-      if (willQueue) {
-        _queued.add(text);
+      if (_loading) {
+        _queued.add(agentText);
         await _persist();
         return;
       }
@@ -265,7 +287,7 @@ class ChatScreenState extends State<ChatScreen> {
     if (Locator.outbox.configured) {
       setState(() => _loading = true);
       final entry =
-          await Locator.outbox.enqueue(_conversationId, text, awaitAcceptance: true);
+          await Locator.outbox.enqueue(_conversationId, agentText, awaitAcceptance: true);
       await _persist();
       if (entry.jobId != null) {
         _startServerPoll(entry.jobId!);
@@ -289,7 +311,7 @@ class ChatScreenState extends State<ChatScreen> {
     try {
       final result = await Locator.agent.run(
         providerId: _providerId!,
-        userText: text,
+        userText: agentText,
         priorMessages: [
           for (final m in _messages.take(_messages.length - 1))
             _withAttachment(m),
@@ -303,6 +325,7 @@ class ChatScreenState extends State<ChatScreen> {
         _toolsUsed = result.toolsUsed;
         _loading = false;
       });
+      _harvestPanels(result.content);
       await _persist();
       _scrollToBottom();
       // The reply landed — whatever the user typed while waiting goes out
@@ -346,6 +369,7 @@ class ChatScreenState extends State<ChatScreen> {
         );
         _loading = false;
       });
+      _harvestPanels(reply);
       await _persist();
       // The user has now READ this reply — pollFinished must never
       // re-notify it (Movement 67: "I read it, then got notified").
@@ -359,17 +383,11 @@ class ChatScreenState extends State<ChatScreen> {
   /// Movement 64 — the queue drain: every message typed while a reply was
   /// on its way goes out here as ONE batched request (joined with
   /// newlines, exactly as a person would have typed them in sequence).
-  /// The dimmed "queued" bubbles flip to normal sent bubbles — the thread
-  /// reads like it does in real messaging: three quick messages, ONE reply.
+  /// Movement 69 — the bubbles already read as sent; this only ships them.
   Future<void> _flushQueue() async {
     if (_queued.isEmpty || !mounted) return;
     final batch = _queued.join('\n');
     _queued.clear();
-    setState(() {
-      _messages = [
-        for (final m in _messages) m.queued ? m.markSent() : m,
-      ];
-    });
     try {
       await send(batch, silent: true);
     } catch (_) {
@@ -378,6 +396,59 @@ class ChatScreenState extends State<ChatScreen> {
           _error = 'Could not send your queued messages — check the '
               'connection and send again.';
         });
+      }
+    }
+  }
+
+  /// Movement 69 — the agent can AUTHOR home panels. When a reply carries
+  /// a ```gork-panel fenced JSON block, the panel is harvested and lands on
+  /// the user's Home feed — widgets are created by the AI, never by a form.
+  /// Spec shape (all AI-authored):
+  ///   {"title": "Shipped PRs", "kind": "stat"|"graph"|"progress"|"list",
+  ///    "value": "12", "unit": "this week", "series": [3,5,4,8],
+  ///    "items": ["..."], "progress": 0.7, "note": "streak: 4 days"}
+  void _harvestPanels(String reply) {
+    final matches = RegExp(
+        r'```gork-panel\s*(\{.*?\})\s*```',
+        dotAll: true,
+        multiLine: true)
+        .allMatches(reply);
+    for (final m in matches) {
+      try {
+        final spec = PanelSpec.fromAgent(
+            jsonDecode(m.group(1)!) as Map<String, dynamic>);
+        Locator.panels.addSpec(spec);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Panel added to Home: ${spec.title}')));
+        }
+      } catch (_) {
+        // A malformed spec stays a harmless code block in the thread.
+      }
+    }
+    _harvestSkills(reply);
+  }
+
+  /// Movement 69 — the agent LEARNS skills: a ```gork-skill fenced JSON
+  /// block ({"title": "...", "steps": "1. …\n2. …"}) in any reply is saved
+  /// as a markdown skill file and synced to the VPS. The agent remembers
+  /// how to do things because it wrote them down itself.
+  Future<void> _harvestSkills(String reply) async {
+    final matches = RegExp(
+        r'```gork-skill\s*(\{.*?\})\s*```',
+        dotAll: true,
+        multiLine: true)
+        .allMatches(reply);
+    for (final m in matches) {
+      try {
+        final skill = await Locator.skills
+            .addFromAgent(jsonDecode(m.group(1)!) as Map<String, dynamic>);
+        if (skill != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Skill learned: ${skill.title}')));
+        }
+      } catch (_) {
+        // A malformed block stays a harmless code block in the thread.
       }
     }
   }
@@ -427,6 +498,39 @@ class ChatScreenState extends State<ChatScreen> {
       await _persist();
       _scrollToBottom();
     }
+    _maybeRestoreFromBackup();
+  }
+
+  /// Movement 69 — a fresh install pulls EVERYTHING the account backed up:
+  /// when the local history is empty and the server holds one, the whole
+  /// conversation list is restored (once per device; never overwrites).
+  Future<void> _maybeRestoreFromBackup() async {
+    if (!Locator.outbox.configured || _conversationId != kGlobalChatId) return;
+    if (Locator.history.all().isNotEmpty) return;
+    final prefs = Locator.prefs;
+    if (prefs.getBool('backup.restored') == true) return;
+    final conversations = await Locator.outbox.pullBackup();
+    if (conversations == null || conversations.isEmpty || !mounted) return;
+    for (final c in conversations) {
+      try {
+        await Locator.history.save(Conversation(
+          id: c['id'] as String,
+          title: c['title'] as String? ?? 'Chat',
+          providerId: c['providerId'] as String? ?? 'none',
+          updatedAt: c['updatedAt'] as int? ?? 0,
+          messages: [
+            for (final m in (c['messages'] as List?) ?? const [])
+              ChatTurn(m['role'] as String? ?? 'user',
+                  m['content'] as String? ?? '',
+                  time: m['time'] as int?),
+          ],
+        ));
+      } catch (_) {
+        // One malformed conversation never blocks the rest.
+      }
+    }
+    await prefs.setBool('backup.restored', true);
+    if (mounted) setState(() {});
   }
 
   /// An image picked from the + menu lands here as a thread message. When
@@ -493,7 +597,9 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   /// Writes the thread to history. Attachment-only threads save with the
-  /// 'none' provider marker so they restore cleanly.
+  /// 'none' provider marker so they restore cleanly. Movement 69 — every
+  /// persist also BACKS UP the whole history to the server (per account,
+  /// or per device when signed out): a lost phone never loses the chats.
   Future<void> _persist() async {
     if (_conversationId.isEmpty) return;
     await Locator.history.save(
@@ -509,6 +615,9 @@ class ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+    if (Locator.outbox.configured) {
+      unawaited(Locator.outbox.pushBackup());
+    }
   }
 
   /// Live search — the shell's search bar drives this. Empty string shows
@@ -551,9 +660,8 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickProvider() async {
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (context) {
         return SafeArea(
           child: GlassContainer(
@@ -652,12 +760,20 @@ class ChatScreenState extends State<ChatScreen> {
         ),
       );
 
-  Widget _withStamp(_UiMessage m) {
-    final Widget bubble = _Bubble(
-      text: m.content,
-      isUser: m.role == 'user',
-      attachment: m.attachment,
-      dimmed: m.queued,
+  Widget _withStamp(_UiMessage m, {String stackPos = 'single'}) {
+    final Widget bubble = _SwipeToQuote(
+      // Movement 69 — every message (either side) can be swiped into a
+      // quote: user bubbles sweep left from the right edge, agent bubbles
+      // sweep right from the left edge.
+      fromRight: m.role == 'user' || m.attachment != null,
+      onQuote: () => setState(() => _replyTo = m),
+      child: _Bubble(
+        text: m.content,
+        isUser: m.role == 'user',
+        attachment: m.attachment,
+        stackPos: stackPos,
+        quoted: m.quoted,
+      ),
     );
     final bool left = !(m.role == 'user' || m.attachment != null);
     return _BubbleEntrance(
@@ -667,30 +783,24 @@ class ChatScreenState extends State<ChatScreen> {
             left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
         children: [
           bubble,
-          // Movement 64 — the follow-up the user typed while a reply was on
-          // its way: a small "queued" tag under the dimmed bubble.
-          if (m.queued)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.schedule, size: 12,
-                      color: GlassColors.textFaint),
-                  const SizedBox(width: 4),
-                  Text('queued',
-                      style: TextStyle(
-                          fontSize: 11, color: GlassColors.textFaint)),
-                ],
-              ),
-            ),
           if (m.time != null)
             Padding(
               padding: EdgeInsets.only(
                   bottom: 8, left: left ? 4 : 0, right: left ? 0 : 4),
-              child: Text(
-                _timeLabel(m.time!),
-                style: TextStyle(fontSize: 11, color: GlassColors.textFaint),
+              // Movement 69 — WhatsApp-style delivery: the check + the time
+              // on the person's bubbles, plain time on the agent's. No
+              // "queued" state ever — typed = sent.
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!left) ...[
+                    Icon(Icons.done, size: 12, color: GlassColors.textDim),
+                    const SizedBox(width: 3),
+                  ],
+                  Text(_timeLabel(m.time!),
+                      style: TextStyle(
+                          fontSize: 11, color: GlassColors.textDim)),
+                ],
               ),
             )
           else
@@ -718,17 +828,36 @@ class ChatScreenState extends State<ChatScreen> {
   /// Inline-badge thread renderer: one badge per day that scrolls with its
   /// messages (only one visible at a time), stamps under every bubble,
   /// 16dp side padding keeps bubbles off the screen edges, no Read receipts.
+  /// Movement 69 — consecutive messages from the same sender STACK like
+  /// Google Messages: tight corners where bubbles join, round at the ends,
+  /// tighter gaps inside the stack.
   List<Widget> _threadSlivers(List<_UiMessage> source) {
     final slivers = <Widget>[];
     for (final g in _groupedByDay(source)) {
       if (g.label.isNotEmpty) {
         slivers.add(SliverToBoxAdapter(child: _dateBadge(g.label)));
       }
+      String sender(_UiMessage m) =>
+          (m.role == 'user' || m.attachment != null) ? 'user' : 'assistant';
       slivers.add(SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverToBoxAdapter(
           child: Column(
-            children: [for (final m in g.messages) _withStamp(m)],
+            children: [
+              for (final (i, m) in g.messages.indexed)
+                _withStamp(
+                  m,
+                  stackPos: (i > 0 && sender(g.messages[i - 1]) == sender(m))
+                      ? (i < g.messages.length - 1 &&
+                              sender(g.messages[i + 1]) == sender(m))
+                          ? 'middle'
+                          : 'last'
+                      : (i < g.messages.length - 1 &&
+                              sender(g.messages[i + 1]) == sender(m))
+                          ? 'first'
+                          : 'single',
+                ),
+            ],
           ),
         ),
       ));
@@ -768,6 +897,44 @@ class ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: ErrorDetailsCard(
                     summary: _error!, details: _errorDetails),
+              ),
+            if (_replyTo != null && !searching)
+              // Movement 69 — the swipe-to-quote composer chip: what the
+              // next send will reference, one tap to dismiss.
+              Container(
+                key: const ValueKey('reply-chip'),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: GlassColors.fillStrong,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: GlassColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.reply, size: 18, color: GlassColors.textDim),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _replyTo!.content.isEmpty
+                            ? 'an attachment'
+                            : _replyTo!.content,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14, color: GlassColors.textDim),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _replyTo = null),
+                      child: Icon(Icons.close,
+                          size: 18, color: GlassColors.textDim),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -916,21 +1083,59 @@ class _BubbleEntranceState extends State<_BubbleEntrance>
 /// Google-Messages-style bubbles: solid theme-aware fills, no glass blur.
 /// The person's bubble is ink (black in light mode, near-white in dark) with
 /// the label on the opposite side; the assistant's is the quiet surface so
-/// long markdown reads cleanly. Sender-side corner is tighter (6) like the
-/// reference app; attachments render as rounded media cards.
-class _Bubble extends StatelessWidget {  const _Bubble({
+/// long markdown reads cleanly. Movement 69 — consecutive bubbles from one
+/// sender STACK: 'first' tightens its sender-side top corner, 'last' carries
+/// the classic 6dp tail, 'middle' stays round, gaps tighten inside a stack.
+class _Bubble extends StatelessWidget {
+  const _Bubble({
     required this.text,
     required this.isUser,
     this.attachment,
-    this.dimmed = false,
+    this.stackPos = 'single',
+    this.quoted,
   });
 
   final String text;
   final bool isUser;
   final ChatAttachment? attachment;
 
-  /// Movement 64 — a queued follow-up: rendered softer until it goes out.
-  final bool dimmed;
+  /// Where this bubble sits in a same-sender stack:
+  /// single | first | middle | last.
+  final String stackPos;
+
+  /// Quoted message header (swipe-to-quote reply).
+  final String? quoted;
+
+  /// The sender-side corner pair tightens where bubbles join. The user
+  /// bubbles sit on the right (topRight/bottomRight), the agent's on the
+  /// left.
+  BorderRadius _radii() {
+    const r = 22.0;
+    const tail = 6.0;
+    final bool right = isUser;
+    double topSender = r, bottomSender = r;
+    switch (stackPos) {
+      case 'single':
+        bottomSender = tail;
+        break;
+      case 'first':
+        topSender = tail;
+        break;
+      case 'middle':
+        topSender = tail;
+        bottomSender = tail;
+        break;
+      case 'last':
+        bottomSender = tail;
+        break;
+    }
+    return BorderRadius.only(
+      topLeft: Radius.circular(right ? r : topSender),
+      topRight: Radius.circular(right ? topSender : r),
+      bottomLeft: Radius.circular(right ? r : bottomSender),
+      bottomRight: Radius.circular(right ? bottomSender : r),
+    );
+  }
 
   Future<void> _openFilePreview(BuildContext context) async {
     String content = '';
@@ -942,9 +1147,8 @@ class _Bubble extends StatelessWidget {  const _Bubble({
       binary = true;
     }
     if (!context.mounted) return;
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (context) {
         return SafeArea(
           child: GlassContainer(
@@ -1079,24 +1283,53 @@ class _Bubble extends StatelessWidget {  const _Bubble({
     } else {
       final Palette palette = paletteOf(context);
       bubble = Container(
-        margin: const EdgeInsets.only(bottom: 8),
+        // Stack rhythm: bubbles inside a same-sender run sit 4dp apart,
+        // standalone ones 8dp — the Google-Messages grouping feel.
+        margin: EdgeInsets.only(
+            bottom: stackPos == 'first' || stackPos == 'middle' ? 4 : 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
           // Google Messages fills: the person's bubble is ink (black in light
           // mode, near-white in dark), the assistant's is the surface so
           // markdown always sits on a calm, theme-aware plate.
           color: isUser ? palette.primary : palette.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(22),
-            topRight: const Radius.circular(22),
-            bottomLeft: Radius.circular(isUser ? 22 : 6),
-            bottomRight: Radius.circular(isUser ? 6 : 22),
-          ),
+          borderRadius: _radii(),
         ),
         child: isUser
-            ? SelectableText(
-                text,
-                style: TextStyle(fontSize: 16, color: palette.onPrimary),
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (quoted != null) ...[
+                    // The swipe-to-quote header inside the bubble — like the
+                    // reference apps: a slim quoted line above the text.
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: palette.onPrimary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border(
+                            left: BorderSide(
+                                width: 3,
+                                color:
+                                    palette.onPrimary.withValues(alpha: 0.5))),
+                      ),
+                      child: Text(
+                        quoted!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: palette.onPrimary.withValues(alpha: 0.85)),
+                      ),
+                    ),
+                  ],
+                  SelectableText(
+                    text,
+                    style: TextStyle(fontSize: 16, color: palette.onPrimary),
+                  ),
+                ],
               )
             // Assistant bubbles render safe markdown (no web view, no network)
             // inside a SelectionArea — AI responses are selectable too.
@@ -1112,7 +1345,74 @@ class _Bubble extends StatelessWidget {  const _Bubble({
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.80,
         ),
-        child: dimmed ? Opacity(opacity: 0.55, child: bubble) : bubble,
+        child: bubble,
+      ),
+    );
+  }
+}
+
+/// Movement 69 — swipe-to-quote. Swipe any bubble toward the screen center
+/// (user bubbles left, agent bubbles right — the natural thumb sweep): the
+/// bubble slides a little, a reply icon fades in, and releasing past the
+/// threshold quotes the message. The composer chip then shows the reference.
+class _SwipeToQuote extends StatefulWidget {
+  const _SwipeToQuote({
+    required this.child,
+    required this.onQuote,
+    required this.fromRight,
+  });
+
+  final Widget child;
+  final VoidCallback onQuote;
+
+  /// True when the bubble hugs the RIGHT edge (user messages): it sweeps
+  /// LEFT. Agent bubbles sweep right.
+  final bool fromRight;
+
+  @override
+  State<_SwipeToQuote> createState() => _SwipeToQuoteState();
+}
+
+class _SwipeToQuoteState extends State<_SwipeToQuote> {
+  double _dx = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      onHorizontalDragUpdate: (d) {
+        setState(() {
+          final raw = widget.fromRight ? -d.delta.dx : d.delta.dx;
+          _dx = (_dx + raw).clamp(0.0, 56.0);
+        });
+      },
+      onHorizontalDragEnd: (d) {
+        final bool quoted = _dx > 40;
+        setState(() => _dx = 0);
+        if (quoted) widget.onQuote();
+      },
+      child: Stack(
+        alignment:
+            widget.fromRight ? Alignment.centerRight : Alignment.centerLeft,
+        children: [
+          Positioned(
+            right: widget.fromRight ? 0 : null,
+            left: widget.fromRight ? null : 0,
+            child: Opacity(
+              opacity: (_dx / 56).clamp(0.0, 1.0),
+              child: Icon(Icons.reply, size: 22, color: GlassColors.textDim),
+            ),
+          ),
+          AnimatedContainer(
+            duration: _dx == 0
+                ? const Duration(milliseconds: 160)
+                : Duration.zero,
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(
+                widget.fromRight ? -_dx : _dx, 0, 0),
+            child: widget.child,
+          ),
+        ],
       ),
     );
   }

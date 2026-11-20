@@ -221,9 +221,8 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
 
   void _onAvatarTap() {
     if (_onMenu) {
-      showModalBottomSheet<void>(
+      showGorkSheet<void>(
         context: context,
-        backgroundColor: Colors.transparent,
         builder: (context) => const _AvatarSheet(),
       );
       return;
@@ -301,7 +300,6 @@ class _GorkShellState extends State<GorkShell> with WidgetsBindingObserver {
         }
       },
       child: Scaffold(
-      backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [

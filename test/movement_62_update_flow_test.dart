@@ -120,8 +120,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('menu-theme')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Preferences', skipOffstage: false), findsOneWidget);
-      expect(find.text('About', skipOffstage: false), findsOneWidget);
+      // Movement 68 — the tabs are gone; the pushed theme screen works.
+      expect(find.text('Preferences', skipOffstage: false), findsNothing);
+      expect(find.text('About', skipOffstage: false), findsNothing);
 
       // Pick Dark — the SAME pref the old Home toggle wrote.
       await tester.tap(find.byKey(const ValueKey('theme-dark')));
@@ -134,29 +135,24 @@ void main() {
       expect(Locator.prefs.getString('ui.theme'), 'auto');
     });
 
-    testWidgets('the About tab shows the version and the updates entry',
-        (tester) async {
+    testWidgets('version + update checks live on the Updates row (the '
+        'About pane is gone)', (tester) async {
       await _bind();
       await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('settings-tab-about')),
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('settings-tab-about')));
-      await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('settings-version')), findsOneWidget);
-      expect(
-          find.text('gork v$kAppVersion'), findsOneWidget);
+      expect(find.text('gork v$kAppVersion'), findsNothing);
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('settings-updates')),
+        find.byKey(const ValueKey('menu-updates')),
         120,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.byKey(const ValueKey('settings-updates')));
+      await tester.pumpAndSettle();
+      // The trailing version label is hidden in dev builds ('dev').
+      if (kAppVersion != 'dev') {
+        expect(find.text('v$kAppVersion'), findsOneWidget);
+      }
+      await tester.tap(find.byKey(const ValueKey('menu-updates')));
       await tester.pumpAndSettle();
       expect(find.byType(UpdatesScreen), findsOneWidget);
     });

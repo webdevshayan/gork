@@ -53,8 +53,15 @@ class GoogleAuth {
     'https://www.googleapis.com/auth/userinfo.profile',
   ];
 
-  /// The sealed OAuth client: ('installed'|'web', {client_id, ...}), or
-  /// null when no credentials.json was uploaded yet.
+  /// The sealed OAuth client: ('installed'|'web'|'android',
+  /// {client_id, ...}), or null when no client was saved yet.
+  ///
+  /// Movement 69 — the ANDROID client is the recommended one (the user's
+  /// phone IS an Android device): Google accepts a client_id-only Android
+  /// client, the exchange needs NO client_secret, and the loopback
+  /// redirect works. Accepted shapes: a downloaded credentials.json
+  /// ("installed"/"web"), {"android": {"client_id": ...}}, or a bare
+  /// {"client_id": ...} pasted straight into the app.
   (String, Map<String, dynamic>)? _clientJson() {
     if (_vaultDir == null) return null;
     final raw = readVault(_vaultDir)['google_credentials'];
@@ -63,6 +70,8 @@ class GoogleAuth {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       if (json['installed'] is Map) return ('installed', (json['installed'] as Map).cast<String, dynamic>());
       if (json['web'] is Map) return ('web', (json['web'] as Map).cast<String, dynamic>());
+      if (json['android'] is Map) return ('android', (json['android'] as Map).cast<String, dynamic>());
+      if (json['client_id'] != null) return ('android', json);
     } catch (_) {}
     return null;
   }
@@ -112,10 +121,14 @@ class GoogleAuth {
       throw StateError('no credentials.json on the VPS — upload it first');
     }
     final (kind, config) = client;
+    // Movement 69 — installed/Android clients exchange WITHOUT a secret
+    // (Google treats the app itself as the secret). A web client still
+    // sends its secret when one was uploaded.
+    final secret = config['client_secret']?.toString() ?? '';
     final tokenRes = await _client.post(Uri.parse(_tokenEndpoint), body: {
       'code': code,
       'client_id': config['client_id']?.toString() ?? '',
-      'client_secret': config['client_secret']?.toString() ?? '',
+      if (secret.isNotEmpty) 'client_secret': secret,
       'redirect_uri': redirectUri,
       'grant_type': 'authorization_code',
     });

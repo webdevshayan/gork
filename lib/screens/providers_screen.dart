@@ -6,6 +6,7 @@ import '../services/locator.dart';
 import '../widgets/g_button.dart';
 import '../widgets/g_card.dart';
 import '../widgets/screen.dart';
+import '../widgets/glass.dart';
 
 /// Settings screen where the user brings their own API keys.
 /// Keys are stored ONLY on this device, namespaced per provider.
@@ -41,13 +42,8 @@ class _ProvidersScreenState extends State<ProvidersScreen> {
     String? testResult;
     Color? testColor;
 
-    await showModalBottomSheet<void>(
+    await showGorkSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl)),
-      ),
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {

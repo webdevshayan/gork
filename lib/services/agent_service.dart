@@ -38,12 +38,30 @@ class AgentService {
     // The agent always knows which rooms exist and which blocks are in
     // them — the map rides in the system prompt (null when no VPS).
     final roomBlock = await _memoryRooms?.promptBlock();
+    // Movement 69 — the agent is a BUILDER: it authors home widgets and
+    // learns skills by emitting fenced blocks the app harvests. This is
+    // how the feed customizes itself for every kind of person (a student
+    // asks for a study-streak widget; a farmer for a rain alert) and how
+    // the agent remembers HOW to do things across sessions.
+    final authorBlock = '\n\nAUTHORING (important — use this, not prose '
+        'alone, whenever it fits):\n'
+        '• To put a widget on the user\u2019s Home feed, reply with a '
+        '```gork-panel fenced JSON block:\n'
+        '  {"title": "Shipped PRs", "kind": "stat"|"graph"|"progress"|"list", '
+        '"value": "12", "series": [3,5,4,8], "items": ["a","b"], '
+        '"progress": 0.7, "note": "streak: 4 days"}\n'
+        '  Use graph when the user tracks a number over days, progress for '
+        'percent goals, list for topics/steps, stat for a single count.\n'
+        '• To LEARN a reusable skill, reply with a ```gork-skill fenced '
+        'JSON block: {"title": "Nightly backup", "steps": "1. ssh…\\n2. '
+        'run…\\n3. verify…"} — steps only, no prose. The skill is saved and '
+        'reused next time.';
     final systemText = 'You are gork, the user\u2019s personal AI assistant '
         'running on their Android phone. Be direct and concrete. '
         'Use the provided tools when they help. '
         'Sensitive actions (vault writes, task scheduling) must be described '
         'clearly before calling them.${_memory.systemPromptBlock()}'
-        '${roomBlock ?? ''}';
+        '${roomBlock ?? ''}$authorBlock';
 
     var messages = <ChatMessage>[
       ChatMessage('system', systemText),

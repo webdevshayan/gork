@@ -49,21 +49,25 @@ void main() {
     expect(find.textContaining('free & open'), findsNothing);
   });
 
-  testWidgets('an AI Providers row reaches the BYOK screen',
-      (tester) async {
+  testWidgets('AI Providers is reachable through Connections (Movement 69 '
+      'de-duplication)', (tester) async {
     await _pump(tester);
-    // Google + Theme rows pushed AI Providers below the fold — drag
-    // the menu list up before anything that touches the row.
-    await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await tester.pumpAndSettle();
-    // Movement 63 added the embedded Preferences section, so the row sits
-    // deeper — scrollUntilVisible builds it on the way.
+    // The menu is a CustomScrollView now; AI Providers no longer has its
+    // own row — it lives inside Connections, one tap away.
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('menu-providers')),
+      find.byKey(const ValueKey('menu-connections')),
       100.0,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.byKey(const ValueKey('menu-providers')));
+    await tester.tap(find.byKey(const ValueKey('menu-connections')));
+    await tester.pumpAndSettle();
+    // The connections list is lazy — scroll the providers row in.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('connection-providers')),
+      120.0,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const ValueKey('connection-providers')));
     await tester.pumpAndSettle();
     expect(find.text('Providers'), findsOneWidget);
   });
@@ -79,12 +83,13 @@ void main() {
   testWidgets('Security row opens the Security screen (the vault)',
       (tester) async {
     await _pump(tester);
-    // Movement 62 added the Settings row, so the Security row sits below
-    // the fold and the lazy ListView has not BUILT it yet — scroll first,
-    // then ensureVisible can find it.
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1200));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('menu-security')));
+    // Movement 69 — CustomScrollView menu: scroll until the Security row
+    // builds, then tap it.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('menu-security')),
+      120.0,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('menu-security')));
     await tester.pumpAndSettle();

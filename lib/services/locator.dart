@@ -12,6 +12,7 @@ import 'memory_store.dart';
 import 'notifications.dart';
 import 'outbox.dart';
 import 'panels_store.dart';
+import 'skills_store.dart';
 import 'browser_service.dart';
 import 'intro_service.dart';
 import 'memory_rooms.dart';
@@ -103,6 +104,8 @@ class Locator {
   static WeatherService get weather => WeatherService(httpClient);
 
   static PanelsStore get panels => PanelsStore(prefs);
+
+  static SkillsStore get skills => SkillsStore(prefs);
 
   static ToolRegistry get toolRegistry => ToolRegistry(
     memory: memory,

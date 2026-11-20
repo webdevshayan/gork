@@ -63,6 +63,53 @@ class GlassContainer extends StatelessWidget {
   }
 }
 
+/// Movement 69 — the ONE way every sheet/drawer in gork opens.
+///
+/// Two problems this kills:
+///  1. **Keyboard**: a sheet with a text field used to slide DOWN behind the
+///     keyboard instead of riding on top of it. Every sheet here is
+///     scroll-controlled and lifts itself above [MediaQuery.viewInsets]
+///     with an animated bottom padding — the drawer always sits at the top
+///     edge of the keyboard, whatever the screen.
+///  2. **Solid backgrounds**: every drawer is opaque [GlassColors.fill]
+///     (Movement 60, enforced) — content under the sheet can never bleed
+///     through, on any screen, any theme.
+Future<T?> showGorkSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool fullTall = false,
+  Color? barrierColor = Colors.black54,
+}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    barrierColor: barrierColor,
+    backgroundColor: GlassColors.fill,
+    elevation: 0,
+    isScrollControlled: true,
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (context) {
+      return AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        // Ride ON the keyboard: the sheet's bottom hugs viewInsets —
+        // when the keyboard opens, the drawer moves UP, not down.
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: fullTall
+            ? FractionallySizedBox(
+                heightFactor: 0.94,
+                child: builder(context),
+              )
+            : builder(context),
+      );
+    },
+  );
+}
+
 /// Circular glass button used in the top bar (menu / back).
 class GlassIconButton extends StatelessWidget {
   const GlassIconButton({
@@ -174,29 +221,37 @@ class GlassMenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 22, color: GlassColors.text),
-              const SizedBox(width: 16),
-            ],
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 17, color: GlassColors.text),
+    // Movement 68 — bigger type and icons, and a real button semantic for
+    // TalkBack: a bare GestureDetector exposes NOTHING to screen readers,
+    // so every menu row was literally nameless with the screen off.
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 24, color: GlassColors.text),
+                const SizedBox(width: 16),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, color: GlassColors.text),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            trailing ??
-                Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
-          ],
+              const SizedBox(width: 12),
+              trailing ??
+                  Icon(Icons.chevron_right,
+                      size: 24, color: GlassColors.textDim),
+            ],
+          ),
         ),
       ),
     );

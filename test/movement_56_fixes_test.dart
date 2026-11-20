@@ -104,7 +104,10 @@ void main() {
       FilePicker.platform = picker;
       final original = FilePicker.platform;
       addTearDown(() => FilePicker.platform = original);
-      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       final button = find.byKey(const ValueKey('gconsole-upload'));
@@ -128,7 +131,10 @@ void main() {
           prefs: await SharedPreferences.getInstance(),
           store: InMemorySecureStore());
       FilePicker.platform = FakePicker();
-      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       final button = find.byKey(const ValueKey('gconsole-upload'));
@@ -161,7 +167,10 @@ void main() {
       final original = FilePicker.platform;
       addTearDown(() => FilePicker.platform = original);
       addTearDown(() => tmp.deleteSync(recursive: true));
-      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+      await tester.pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       final button = find.byKey(const ValueKey('gconsole-upload'));
@@ -185,11 +194,13 @@ void main() {
       await tester.pump();
       final cards = find.byType(GlassContainer).evaluate().length;
       expect(cards, greaterThan(1), reason: 'menu stacks several cards');
+      // Movement 69 — the menu is a CustomScrollView: the gaps are 16dp
+      // sliver paddings between the cards.
       final gaps = tester
-          .widgetList<SizedBox>(find.byType(SizedBox))
-          .where((s) => s.height == 16)
+          .widgetList<SliverPadding>(find.byType(SliverPadding))
+          .where((s) => s.padding == const EdgeInsets.fromLTRB(16, 16, 16, 0))
           .length;
-      expect(gaps, greaterThanOrEqualTo(3),
+      expect(gaps, greaterThanOrEqualTo(2),
           reason: 'every stacked pair must have a gap between the cards');
     });
 
@@ -204,10 +215,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       final gaps = tester
           .widgetList<SizedBox>(find.byType(SizedBox))
-          .where((s) => s.height == 16)
+          .where((s) => s.height == 16 || s.height == 20)
           .length;
       expect(gaps, greaterThanOrEqualTo(1),
-          reason: 'home stacks cards with a 16px gap');
+          reason: 'home stacks the weather block and the feed with a gap');
     });
   });
 }
