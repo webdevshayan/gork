@@ -573,7 +573,7 @@ class ChatScreenState extends State<ChatScreen> {
                 ),
                 subtitle: Text(
                   p.isCustom ? 'custom' : p.baseURL,
-                  style: TextStyle(fontSize: 12, color: GlassColors.textDim),
+                  style: TextStyle(fontSize: 13, color: GlassColors.textDim),
                 ),
                 trailing: _providerId == p.id ? const Icon(Icons.check) : null,
                 onTap: () {
@@ -680,7 +680,7 @@ class ChatScreenState extends State<ChatScreen> {
                   const SizedBox(width: 4),
                   Text('queued',
                       style: TextStyle(
-                          fontSize: 11, color: GlassColors.textFaint)),
+                          fontSize: 13, color: GlassColors.textFaint)),
                 ],
               ),
             ),
@@ -690,7 +690,7 @@ class ChatScreenState extends State<ChatScreen> {
                   bottom: 8, left: left ? 4 : 0, right: left ? 0 : 4),
               child: Text(
                 _timeLabel(m.time!),
-                style: TextStyle(fontSize: 11, color: GlassColors.textFaint),
+                style: TextStyle(fontSize: 13, color: GlassColors.textFaint),
               ),
             )
           else
@@ -1261,7 +1261,7 @@ class _PreviewCardView extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     color: GlassColors.textDim,
                   ),
                 ),

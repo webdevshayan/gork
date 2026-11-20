@@ -5,7 +5,6 @@ import '../constants/version.dart';
 import '../services/handoff_service.dart';
 import '../services/locator.dart';
 import '../services/profile_info.dart';
-import '../widgets/g_button.dart';
 import '../widgets/glass.dart';
 import 'accounts_screen.dart';
 import 'cloud_computer_screen.dart';
@@ -22,16 +21,16 @@ import 'theme_preferences_screen.dart';
 import 'updates_screen.dart';
 
 /// The profile/menu surface (opened from the avatar): big identity header,
-/// a card of rows covering EVERY settings surface (Profile / Scheduled
-/// Tasks / Accounts / Integrations / Google / Inbox / Panels / Cloud
-/// Computer), then the PREFERENCES section embedded right here — Movement
-/// 63: no separate Settings screen anymore. Where the old Settings row sat
-/// the menu now carries the Preferences | About tabs directly (theme,
-/// background responses, version, updates), followed by Security, AI
-/// Providers, Sync-to-daemon, Updates and the Search pill. Movement 55:
-/// Inbox, Panels and Cloud Computer were reachable from nowhere — now they
-/// are listed here like every other settings screen. No wallet (removed,
-/// Movement 50), no upsell, no plan rows.
+/// then ONE card of rows covering EVERY settings surface (Profile /
+/// Scheduled Tasks / Accounts / Integrations / Google / Inbox / Panels /
+/// Cloud Computer / Theme), followed by Security, AI Providers,
+/// Sync-to-daemon, Updates and the Search pill. Movement 68 — the
+/// Preferences | About tabs are GONE: the theme stays as its own row (one
+/// obvious link), version + update checking live on the Updates row (they
+/// were duplicated in the About pane), and the background-responses
+/// explainer was removed — one list, no tabs, nothing to hunt for. Every
+/// row is a full-width 60dp target with a big label and a chevron: easy to
+/// scan and to hit at any age.
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key, this.onBack, this.onOpenChat});
 
@@ -45,10 +44,6 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  /// Which embedded tab is open: Preferences (default) or About — the
-  /// tabs live in the menu itself now, not on a pushed Settings screen.
-  bool _preferences = true;
-
   void _push(BuildContext context, Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
@@ -186,72 +181,10 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         const SizedBox(height: 16),
 
-        // ---- Preferences | About, embedded (Movement 63) ----
-        // Where the Settings row used to sit: the tabs and their content
-        // are part of THIS screen — no push, no second "Settings" title.
-        _SettingsTabs(
-          preferences: _preferences,
-          onPick: (v) => setState(() => _preferences = v),
-        ),
-        const SizedBox(height: 16),
-        if (_preferences) ...[
-          // Movement 65 — the theme picker moved to its own screen (the
-          // Theme row above); Preferences keeps the background responses.
-          GlassContainer(
-            radius: 28,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Background responses',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: GlassColors.text)),
-                const SizedBox(height: 8),
-                Text(
-                  'Messages you send run on YOUR VPS — the phone can die, '
-                  'the app can close, the answer still completes there '
-                  'and arrives as a notification when you are back.',
-                  style: TextStyle(
-                      fontSize: 14, height: 1.4, color: GlassColors.textDim),
-                ),
-              ],
-            ),
-          ),
-        ] else ...[
-          GlassContainer(
-            radius: 28,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('gork v$kAppVersion',
-                    key: const ValueKey('settings-version'),
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: GlassColors.text)),
-                const SizedBox(height: 8),
-                Text(
-                  'Install over any earlier version — settings, keys, '
-                  'tasks and the vault are kept.',
-                  style: TextStyle(
-                      fontSize: 14, height: 1.4, color: GlassColors.textDim),
-                ),
-                const SizedBox(height: 12),
-                GButton(
-                  key: const ValueKey('settings-updates'),
-                  label: 'Check for updates',
-                  variant: ButtonVariant.secondary,
-                  expands: true,
-                  onPressed: () => _push(context, const UpdatesScreen()),
-                ),
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
+        // Movement 68 — the Preferences | About tabs and their panes are
+        // gone. Theme = the row above; version + update checks = the
+        // Updates row below (they were already duplicated there); the
+        // background-responses explainer was noise for a settings list.
         GlassContainer(
           radius: 28,
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -339,60 +272,7 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 }
 
-/// The two-tab header: Preferences | About — embedded in the menu itself
-/// (Movement 63). Solid chips, gray & black — Movement 59/60 language, no
-/// color. Same keys as the old Settings screen so tests and muscle memory
-/// carry over.
-class _SettingsTabs extends StatelessWidget {
-  const _SettingsTabs({required this.preferences, required this.onPick});
-
-  final bool preferences;
-  final void Function(bool) onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget tab(String label, bool active, VoidCallback onTap,
-        {String? testKey}) {
-      return Expanded(
-        child: GestureDetector(
-          key: testKey == null ? null : ValueKey(testKey),
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: active ? GlassColors.chip : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Center(
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: active
-                          ? GlassColors.textOnChip
-                          : GlassColors.textDim)),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return GlassContainer(
-      radius: 28,
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          tab('Preferences', preferences, () => onPick(true),
-              testKey: 'settings-tab-preferences'),
-          const SizedBox(width: 8),
-          tab('About', !preferences, () => onPick(false),
-              testKey: 'settings-tab-about'),
-        ],
-      ),
-    );
-  }
-}
-
 /// The theme picker lived here until Movement 65 — it is a screen of its
-/// own now (theme_preferences_screen.dart), pushed by the Theme row.
+/// own now (theme_preferences_screen.dart), pushed by the Theme row. The
+/// Preferences | About tabs lived here from Movement 63 until Movement 68
+/// removed them: one flat list scans faster than tabs-within-a-list.

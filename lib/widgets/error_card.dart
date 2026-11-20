@@ -62,7 +62,7 @@ class _ErrorDetailsCardState extends State<ErrorDetailsCard> {
                         Text(
                           'Details',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: _red.withValues(alpha: 0.8),
                           ),
@@ -98,7 +98,7 @@ class _ErrorDetailsCardState extends State<ErrorDetailsCard> {
                         child: SelectableText(
                           details ?? '',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 13,
                             height: 1.35,
                             fontFamily: 'monospace',
                             color:

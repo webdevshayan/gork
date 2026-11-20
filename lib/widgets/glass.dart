@@ -174,29 +174,37 @@ class GlassMenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 22, color: GlassColors.text),
-              const SizedBox(width: 16),
-            ],
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 17, color: GlassColors.text),
+    // Movement 68 — bigger type and icons, and a real button semantic for
+    // TalkBack: a bare GestureDetector exposes NOTHING to screen readers,
+    // so every menu row was literally nameless with the screen off.
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 24, color: GlassColors.text),
+                const SizedBox(width: 16),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, color: GlassColors.text),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            trailing ??
-                Icon(Icons.chevron_right, size: 20, color: GlassColors.textDim),
-          ],
+              const SizedBox(width: 12),
+              trailing ??
+                  Icon(Icons.chevron_right,
+                      size: 24, color: GlassColors.textDim),
+            ],
+          ),
         ),
       ),
     );

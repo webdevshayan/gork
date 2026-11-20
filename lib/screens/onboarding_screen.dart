@@ -173,8 +173,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _welcome(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('gork', style: TypeScale.display(color: palette.textPrimary)),
@@ -184,14 +186,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'everything stays on your phone.',
           style: TypeScale.body(color: palette.textSecondary),
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
   Widget _setup(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -218,7 +224,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           onPressed: _openProviders,
           expands: true,
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
@@ -227,8 +235,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// upload button and the exact redirect URI) lives one tap away.
   Widget _google(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -274,7 +284,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           onPressed: _openGoogle,
           expands: true,
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
@@ -282,8 +294,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// Google and is read-only everywhere (sign in once and it fills in).
   Widget _profile(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -371,14 +385,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             );
           },
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 
   Widget _done(Palette palette) => Padding(
     padding: const EdgeInsets.all(Spacing.xl),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    child: Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('You are set', style: TypeScale.title(color: palette.textPrimary)),
@@ -389,7 +407,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'connect the companion daemon.',
           style: TypeScale.body(color: palette.textSecondary),
         ),
-      ],
+          ],
+        ),
+      ),
     ),
   );
 }

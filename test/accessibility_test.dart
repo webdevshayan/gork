@@ -8,10 +8,12 @@ import 'package:gork/app.dart';
 import 'package:gork/constants/design_tokens.dart';
 import 'package:gork/screens/google_accounts_screen.dart';
 import 'package:gork/screens/gork_shell.dart';
+import 'package:gork/screens/menu_screen.dart';
 import 'package:gork/screens/profile_edit_screen.dart';
 import 'package:gork/screens/search_screen.dart';
 import 'package:gork/services/locator.dart';
 import 'package:gork/services/secure_store.dart';
+import 'package:gork/widgets/g_button.dart';
 import 'package:gork/widgets/glass.dart';
 import 'package:gork/widgets/screen.dart';
 import 'package:http/http.dart' as http;
@@ -200,6 +202,64 @@ void main() {
             reason: 'primary text on strong chrome');
       });
     }
+  });
+
+  group('Movement 68 — easy to scan, easy to touch, easy to hear', () {
+    testWidgets('the Google setup steps collapse — and the toggle works',
+        (tester) async {
+      await tester
+          .pumpWidget(const MaterialApp(home: GoogleAccountsScreen()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Credentials unknown (daemon offline here) — a first-timer sees the
+      // steps OPEN, at readable sizes.
+      final stepText = find.textContaining('console.cloud.google.com');
+      expect(stepText, findsOneWidget);
+      final style =
+          tester.widget<Text>(stepText).style!;
+      expect(style.fontSize, greaterThanOrEqualTo(15),
+          reason: 'step text must not be the old 13px gray wall');
+
+      // The toggle collapses and re-opens the recipe.
+      await tester.tap(find.byKey(const ValueKey('gconsole-steps-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('Show 6 steps'), findsOneWidget);
+      expect(find.textContaining('console.cloud.google.com'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('gconsole-steps-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('Hide steps'), findsOneWidget);
+      expect(find.textContaining('console.cloud.google.com'), findsOneWidget);
+    });
+
+    testWidgets('menu rows carry a real button semantic for TalkBack',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: MenuScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('menu-theme')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final semantics = tester.getSemantics(
+          find.byKey(const ValueKey('menu-theme')));
+      expect(semantics.hasFlag(SemanticsFlag.isButton), isTrue,
+          reason: 'a bare GestureDetector is nameless with the screen off');
+    });
+
+    testWidgets('GButton meets the 48dp minimum touch target',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(child: GButton(label: 'Save', onPressed: () {})),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final size = tester.getSize(find.byType(GButton));
+      expect(size.height, greaterThanOrEqualTo(48),
+          reason: 'the smallest comfortable target, any finger, any age');
+    });
   });
 }
 

@@ -46,7 +46,9 @@ class GButton extends StatelessWidget {
     }
 
     final Widget content = Container(
-      height: 44,
+      // Movement 68 — 48dp, not 44: the smallest comfortable target for
+      // any finger, any age (Material accessibility guidance).
+      height: 48,
       // Movement 67 — the label used to touch the pill's edge (screenshots
       // 2026-11-19: "New chat"/"Add file"/"Add image" looked clipped on the
       // project screen). Real horizontal padding, like every other chip.

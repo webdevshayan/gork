@@ -56,7 +56,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
         child: Text(
           text.toUpperCase(),
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
             color: GlassColors.textFaint,

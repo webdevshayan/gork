@@ -158,7 +158,7 @@ class _GorkHomeState extends State<GorkHome> {
                   maxLines: 3,
                   softWrap: true,
                   style: TextStyle(
-                      fontSize: 12, color: GlassColors.danger),
+                      fontSize: 13, color: GlassColors.danger),
                 ),
               ],
               const SizedBox(height: 8),
@@ -166,7 +166,7 @@ class _GorkHomeState extends State<GorkHome> {
                 'Your edit is kept on this device and wins over the '
                 'computed time.',
                 style: TextStyle(
-                    fontSize: 12, color: GlassColors.textDim),
+                    fontSize: 13, color: GlassColors.textDim),
               ),
             ],
           ),

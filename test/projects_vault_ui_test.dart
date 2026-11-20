@@ -19,6 +19,11 @@ void main() {
   });
 
   testWidgets('create a project with notes and a file', (tester) async {
+    // Movement 68 — the editor sheet grew (48dp buttons): give the probe a
+    // real phone-sized surface so every hit-test lands like on a device.
+    tester.view.physicalSize = const Size(720, 1280);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const MaterialApp(home: ProjectsScreen()));
     await tester.pumpAndSettle();
 
@@ -35,7 +40,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Debian setup'), findsOneWidget);
-    expect(find.text('0 chats · 0 files · 0 images'), findsOneWidget,
+    // Movement 68 — the type grew one size and the card sits lower: the
+    // counts line can fall past the lazy-viewport fold. The card EXISTS
+    // (title visible right above it) — assert offstage-inclusive.
+    expect(
+        find.text('0 chats · 0 files · 0 images', skipOffstage: false),
+        findsOneWidget,
         reason: 'the unified folder card carries the counts line');
 
     // Open detail and add a file.

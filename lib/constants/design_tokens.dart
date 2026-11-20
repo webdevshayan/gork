@@ -64,12 +64,15 @@ class Palette {
 
   static const Palette light = Palette(
     // Movement 59: grays and white only — no warm or colored tint anywhere.
+    // Movement 68: the faint tiers were lifted to hold WCAG AA (>= 4.5:1)
+    // against EVERY surface they sit on — small faint text must stay
+    // readable for tired and older eyes, not just in the design file.
     background: Color(0xFFF1F2F3),
     surface: Color(0xFFFFFFFF),
     surfaceElevated: Color(0xFFF5F6F7),
     textPrimary: Color(0xFF131313),
-    textSecondary: Color(0xFF4A4A4A),
-    textTertiary: Color(0xFF6E6E6E),
+    textSecondary: Color(0xFF424242),
+    textTertiary: Color(0xFF5D5D5D),
     // Movement 50: black & white only — the "primary" accent is ink in light
     // mode (black buttons, white labels), never blue or any other hue.
     primary: Color(0xFF131313),
@@ -82,12 +85,15 @@ class Palette {
 
   static const Palette dark = Palette(
     // Movement 59: deep grays sinking to near-black — pure neutral, no blue.
+    // Movement 68: textTertiary lifted (828282 sat right at the AA edge on
+    // the elevated surface) so stamps, meta lines and step text keep a
+    // comfortable margin above 4.5:1.
     background: Color(0xFF060607),
     surface: Color(0xFF151516),
     surfaceElevated: Color(0xFF1F1F20),
     textPrimary: Color(0xFFF2F2F2),
-    textSecondary: Color(0xFFA9A9A9),
-    textTertiary: Color(0xFF828282),
+    textSecondary: Color(0xFFB4B4B4),
+    textTertiary: Color(0xFF939393),
     // Dark mode mirrors it: white buttons, black labels.
     primary: Color(0xFFF2F2F2),
     onPrimary: Color(0xFF060607),
@@ -100,14 +106,21 @@ class Palette {
 
 /// Typography scale: size / weight. Monospace only for code.
 /// Never more than three weights on one screen.
+///
+/// Movement 68 — the scale is tuned to be SCANNED, not admired: body text
+/// starts at 17, the small sizes never drop below 13, and line heights
+/// breathe (1.45 on body). Every screen inherits this, so nothing else
+/// needed touching to make the whole app easier on the eye — the dense
+/// gray walls of small text (the Google setup card, empty states, stamps)
+/// read one size larger and one shade brighter everywhere.
 class TypeScale {
   static const double displaySize = 40;
   static const double titleSize = 28;
   static const double headingSize = 22;
-  static const double bodySize = 16;
-  static const double bodySmallSize = 14;
-  static const double captionSize = 12;
-  static const double codeSize = 13;
+  static const double bodySize = 17;
+  static const double bodySmallSize = 15;
+  static const double captionSize = 13;
+  static const double codeSize = 14;
 
   static TextStyle display({Color? color}) => TextStyle(
       fontSize: displaySize, fontWeight: FontWeight.w700, height: 1.15, color: color);
@@ -116,15 +129,15 @@ class TypeScale {
   static TextStyle heading({Color? color}) => TextStyle(
       fontSize: headingSize, fontWeight: FontWeight.w600, height: 1.25, color: color);
   static TextStyle body({Color? color}) => TextStyle(
-      fontSize: bodySize, fontWeight: FontWeight.w400, height: 1.4, color: color);
+      fontSize: bodySize, fontWeight: FontWeight.w400, height: 1.45, color: color);
   static TextStyle bodySmall({Color? color}) => TextStyle(
-      fontSize: bodySmallSize, fontWeight: FontWeight.w400, height: 1.4, color: color);
+      fontSize: bodySmallSize, fontWeight: FontWeight.w400, height: 1.45, color: color);
   static TextStyle caption({Color? color}) => TextStyle(
-      fontSize: captionSize, fontWeight: FontWeight.w400, height: 1.3, color: color);
+      fontSize: captionSize, fontWeight: FontWeight.w400, height: 1.35, color: color);
   static TextStyle code({Color? color}) => TextStyle(
       fontSize: codeSize,
       fontWeight: FontWeight.w500,
-      height: 1.3,
+      height: 1.35,
       fontFamily: 'monospace',
       color: color);
 }

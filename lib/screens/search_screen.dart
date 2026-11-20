@@ -429,7 +429,7 @@ class _HitCard extends StatelessWidget {
                 Text(
                   date,
                   style: TextStyle(
-                      fontSize: 12, color: GlassColors.textDim),
+                      fontSize: 13, color: GlassColors.textDim),
                 ),
               ],
             ),
