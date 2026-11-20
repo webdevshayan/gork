@@ -399,16 +399,17 @@ class BrowserAccountsTests(unittest.TestCase):
                          'the AI-facing response never carries the secret')
 
     def test_browser_op_without_engine_fails_honestly(self):
-        # Simulate a VPS without playwright: the factory must resolve to
-        # None (patch past the one-shot cache).
-        with patch.object(G, '_BROWSER_DRIVER', None), \
-             patch.object(G, '_BROWSER_TRIED', True):
+        # Simulate a VPS with no browser engine at all: the factory must
+        # resolve to None (Movement 69.1 — no cache flag left to patch).
+        with patch.object(G, '_browser_driver', return_value=None):
             st, out = req('POST', '/v1/browser/op',
                           {'session': 's1', 'action': 'navigate',
                            'url': 'https://example.com'})
         self.assertEqual(st, 200)
         self.assertFalse(out.get('ok', True))
-        self.assertIn('engine', out.get('error', '').lower())
+        self.assertIn('agent-browser', out.get('error', ''))
+        self.assertIn('daemon', out.get('error', ''),
+                      'points Termux hosts at the built-in fallback')
 
     def test_fill_secret_unknown_label_is_rejected(self):
         class FakeDriver:
@@ -465,7 +466,7 @@ class IntroTests(unittest.TestCase):
                          ['Hey Shayan, I am Gork.', 'One idea per bubble.'])
 
     def test_intro_without_provider_is_honest(self):
-        with patch.object(G, '_BROWSER_DRIVER', None):
+        with patch.object(G, '_browser_driver', return_value=None):
             pass  # keep patch import used; provider env untouched
         G.PROVIDER_URL_BACKUP = G.PROVIDER_URL
         G.PROVIDER_URL = ''
@@ -475,6 +476,51 @@ class IntroTests(unittest.TestCase):
             self.assertIn('provider', body['error'])
         finally:
             G.PROVIDER_URL = G.PROVIDER_URL_BACKUP
+
+
+class DaemonFallbackTest(unittest.TestCase):
+    """Movement 69.1 — no agent-browser binary (Termux)? The server proxies
+    browser ops to the daemon's built-in CDP browser, mapping verbs."""
+
+    def _driver(self):
+        d = G._AgentBrowserDriver.__new__(G._AgentBrowserDriver)
+        d._daemon = True
+        return d
+
+    def test_slide_maps_to_daemon_drag(self):
+        seen = {}
+
+        def fake(action, args):
+            seen['action'] = action
+            seen['args'] = args
+            return {'state': 'ok'}
+
+        d = self._driver()
+        with patch.object(d, '_daemon_op', side_effect=fake):
+            out = d.op('default', 'slide',
+                       {'handle': '@e1', 'target': '@e2'})
+        self.assertEqual(seen['action'], 'drag')
+        self.assertEqual(seen['args']['selector'], '@e1')
+        self.assertEqual(seen['args']['target'], '@e2')
+        self.assertEqual(out, {'state': 'ok'})
+
+    def test_fill_maps_to_daemon_type(self):
+        seen = {}
+
+        def fake(action, args):
+            seen['action'] = action
+            return {}
+
+        d = self._driver()
+        with patch.object(d, '_daemon_op', side_effect=fake):
+            d.op('default', 'fill', {'selector': '@e3', 'text': 'hi'})
+        self.assertEqual(seen['action'], 'type')
+
+    def test_unmapped_action_is_honest(self):
+        d = self._driver()
+        with self.assertRaises(RuntimeError) as ctx:
+            d.op('default', 'network', {})
+        self.assertIn('agent-browser-only', str(ctx.exception))
 
 
 if __name__ == '__main__':

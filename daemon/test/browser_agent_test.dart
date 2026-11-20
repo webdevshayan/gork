@@ -114,6 +114,20 @@ void main() {
     expect(missing['error'], contains('no element matches'));
   });
 
+  test('drag sweeps: press at A, interpolated moves, release at B '
+      '(slider-captcha primitive, Movement 69.1)', () async {
+    fake.evaluateValue = {'x': 100.0, 'y': 200.0};
+    final out = await browser.op('default', 'drag',
+        {'selector': '#handle', 'target': '#track-end'});
+    expect(out['ok'], true);
+    // One press...
+    expect(fake.called('Input.dispatchMouseEvent').where((p) => p.contains('mousePressed')).length, 1);
+    // ...24 interpolated moves...
+    expect(fake.called('Input.dispatchMouseEvent').where((p) => p.contains('mouseMoved')).length, greaterThanOrEqualTo(24));
+    // ...one release.
+    expect(fake.called('Input.dispatchMouseEvent').where((p) => p.contains('mouseReleased')).length, 1);
+  });
+
   test('type inserts text and reports only the CHAR COUNT (never the text)',
       () async {
     final result = await browser.op(

@@ -49,6 +49,7 @@ class AgentBrowser {
   static const List<String> actions = [
     'navigate',
     'click',
+    'drag',
     'type',
     'read',
     'back',
@@ -91,6 +92,9 @@ class AgentBrowser {
           return await _navigate(tab, '${args['url'] ?? ''}');
         case 'click':
           return await _click(tab, '${args['selector'] ?? ''}');
+        case 'drag':
+          return await _drag(
+              tab, '${args['selector'] ?? ''}', '${args['target'] ?? ''}');
         case 'type':
           return await _type(tab, '${args['selector'] ?? ''}',
               '${args['text'] ?? ''}');
@@ -223,6 +227,57 @@ class AgentBrowser {
         sessionId: tab.sessionId);
     await Future<void>.delayed(settleDelay);
     return {'ok': true, 'action': 'click', 'selector': selector, 'x': x, 'y': y};
+  }
+
+  /// Movement 69.1 — DRAG: press at element A, sweep in interpolated
+  /// moves, release at element B. This is the slider-captcha primitive —
+  /// the same gesture a finger makes on "slide to complete the puzzle".
+  Future<Map<String, dynamic>> _drag(
+      _Tab tab, String selector, String target) async {
+    if (selector.isEmpty || target.isEmpty) {
+      return {'ok': false, 'error': 'selector and target are required'};
+    }
+    Future<Map<String, dynamic>?> center(String sel) async =>
+        await tab.evaluateJson(
+                '(function(){const el=document.querySelector(${jsonEncode(sel)});'
+                'if(!el)return null;const r=el.getBoundingClientRect();'
+                'return {x:r.x+r.width/2,y:r.y+r.height/2};})()')
+            as Map<String, dynamic>?;
+    final from = await center(selector);
+    final to = await center(target);
+    if (from == null) {
+      return {'ok': false, 'error': 'no element matches "$selector"'};
+    }
+    if (to == null) {
+      return {'ok': false, 'error': 'no element matches "$target"'};
+    }
+    final double x0 = (from['x'] as num).toDouble();
+    final double y0 = (from['y'] as num).toDouble();
+    final double x1 = (to['x'] as num).toDouble();
+    final double y1 = (to['y'] as num).toDouble();
+    Future<void> mouse(String type, double x, double y) =>
+        tab.cdp.call('Input.dispatchMouseEvent',
+            {'type': type, 'x': x, 'y': y, 'button': 'left', 'clickCount': 1},
+            sessionId: tab.sessionId);
+    await mouse('mouseMoved', x0, y0);
+    await mouse('mousePressed', x0, y0);
+    // ~24 interpolated moves — enough for slider physics to register,
+    // slow enough to look like a finger sweep.
+    const steps = 24;
+    for (var i = 1; i <= steps; i++) {
+      final t = i / steps;
+      await mouse('mouseMoved',
+          x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+      await Future<void>.delayed(const Duration(milliseconds: 12));
+    }
+    await mouse('mouseReleased', x1, y1);
+    await Future<void>.delayed(settleDelay);
+    return {
+      'ok': true,
+      'action': 'drag',
+      'from': selector,
+      'to': target,
+    };
   }
 
   Future<Map<String, dynamic>> _type(

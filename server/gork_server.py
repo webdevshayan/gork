@@ -188,8 +188,63 @@ class _AgentBrowserDriver:
     def __init__(self):
         self._check = subprocess.run(['agent-browser', '--version'],
                                      capture_output=True, timeout=15)
-        if self._check.returncode != 0:
-            raise RuntimeError('agent-browser CLI not installed')
+        # Movement 69.1 — no agent-browser binary (Termux, android-arm64)?
+        # Fall back to the gork daemon's built-in CDP browser on this host
+        # instead of failing: the daemon drives chromium natively there.
+        self._daemon = self._check.returncode != 0
+
+    # -- daemon fallback ------------------------------------------------
+    def _daemon_op(self, action, args):
+        """Proxy an op to the daemon's /v1/browser/op (same host)."""
+        import urllib.request, urllib.error  # noqa: PLC0415 — stdlib only path
+        base = os.environ.get('GORK_DAEMON_URL', 'http://127.0.0.1:8787')
+        secret = (os.environ.get('GORK_DAEMON_SECRET')
+                  or os.environ.get('GORK_SECRET')
+                  or os.environ.get('GORK_VPS_TOKEN') or '')
+        req = urllib.request.Request(
+            base.rstrip('/') + '/v1/browser/op',
+            data=json.dumps({'session': args.get('session', 'default'),
+                             'action': action, **args}).encode(),
+            headers={'Content-Type': 'application/json',
+                     'X-Gork-Secret': secret},
+            method='POST')
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                body = json.loads(resp.read().decode())
+        except urllib.error.URLError as e:
+            raise RuntimeError(
+                'no agent-browser and no daemon browser reachable at '
+                + base + ' (' + str(e) + ')')
+        if not body.get('ok'):
+            raise RuntimeError(str(body.get('error') or 'daemon op failed'))
+        return body.get('result') or body
+
+    def _daemon_map(self, action, args):
+        """agent-browser verbs → daemon verbs. Unmapped ones answer
+        honestly instead of pretending."""
+        if action in ('navigate', 'open'):
+            return 'navigate', {'url': args.get('url', 'about:blank')}
+        if action == 'click':
+            return 'click', {'selector': args['selector']}
+        if action in ('fill', 'type'):
+            return 'type', {'selector': args['selector'],
+                            'text': args.get('text', '')}
+        if action == 'drag':
+            return 'drag', {'selector': args['selector'],
+                            'target': args['target']}
+        if action == 'slide':
+            return 'drag', {'selector': args['handle'],
+                            'target': args['target']}
+        if action == 'scroll':
+            return 'scroll', {'direction': args.get('direction', 'down')}
+        if action == 'read':
+            return 'read', {}
+        if action == 'screenshot':
+            return 'screenshot', {}
+        raise RuntimeError('action "%s" is agent-browser-only — the daemon '
+                           'browser on this host supports navigate, click, '
+                           'type, read, back, scroll, screenshot, drag, '
+                           'fill_secret, eval' % action)
 
     def _run(self, *args, timeout=60):
         r = subprocess.run(['agent-browser', *args],
@@ -200,6 +255,10 @@ class _AgentBrowserDriver:
         return (r.stdout or '').strip()
 
     def op(self, session, action, args):
+        if self._daemon:
+            mapped_action, mapped_args = self._daemon_map(action, dict(args))
+            mapped_args['session'] = session
+            return self._daemon_op(mapped_action, mapped_args)
         # One shared browser on the VPS; sessions are accepted for
         # compatibility and ignored (agent-browser owns its process).
         if action in ('navigate', 'open'):
@@ -271,6 +330,10 @@ class _AgentBrowserDriver:
         """Fill the ACTIVE input without the AI ever learning the value.
         With the CLI we fill the first visible text field — honest about
         being an approximation (the value itself NEVER crosses the wire)."""
+        if self._daemon:
+            # No focused-element op over the daemon bridge — answer
+            # honestly rather than typing into the wrong field.
+            return False
         snap = self._run('snapshot', '-i', timeout=30)
         ref = None
         for line in snap.splitlines():
@@ -294,10 +357,28 @@ class _AgentBrowserDriver:
             pass
 
 
+_BROWSER_DRIVER = None
+
+
+def _browser_driver():
+    """Lazy browser engine singleton. agent-browser CLI when present; on
+    hosts without it (Termux) the driver falls back to the daemon's CDP
+    browser; when neither exists, None → ops answer honestly."""
+    global _BROWSER_DRIVER
+    if _BROWSER_DRIVER is None:
+        try:
+            _BROWSER_DRIVER = _AgentBrowserDriver()
+        except Exception:  # noqa: BLE001 — engine install problems
+            return None
+    return _BROWSER_DRIVER
+
+
 _NO_ENGINE = {
     "ok": False,
-    "error": "browser not available on the VPS — install agent-browser: "
-             "npm i -g agent-browser && agent-browser install --with-deps",
+    "error": "browser not available on this host — install agent-browser "
+             "(npm i -g agent-browser && agent-browser install --with-deps) "
+             "or run the gork daemon here (its built-in browser is used "
+             "automatically, e.g. on Termux/arm64)",
 }
 
 
