@@ -23,7 +23,7 @@ const int kDefaultPort = 8787;
 /// The daemon's own version, reported by /health. The phone app shows it
 /// (Cloud Computer) and uses a refusal from an OLD daemon to point the user
 /// at `gork daemon update`. Bump when the daemon gains endpoints or fixes.
-const String kDaemonVersion = '0.5.1';
+const String kDaemonVersion = '0.6.0';
 
 /// Where task state lives.
 ///

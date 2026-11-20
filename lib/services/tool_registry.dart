@@ -1,4 +1,6 @@
 import 'browser_service.dart';
+import 'chat_service.dart';
+import '../providers/providers.dart';
 import 'github_service.dart';
 import 'gmail_service.dart';
 import 'handoff_service.dart';
@@ -32,6 +34,11 @@ class ToolRegistry {
   final MemoryRoomsService? memoryRooms;
   final BrowserService? browser;
 
+  /// Movement 70 — used by the browser's `describe` action: the phone's
+  /// own vision model turns the VPS screenshot into text the AI can act
+  /// on. Nullable for tests without a chat client.
+  final ChatService? chat;
+
   ToolRegistry({
     required this.memory,
     required this.projects,
@@ -43,6 +50,7 @@ class ToolRegistry {
     this.handoff,
     this.memoryRooms,
     this.browser,
+    this.chat,
   });
 
   List<ToolDef> get defs => const [
@@ -93,22 +101,29 @@ class ToolRegistry {
             'Your private, persistent browser on the VPS — use it like a '
             'human: navigate (url), click (selector), type (selector, '
             'text), read (page text or a selector), back, scroll (up/down), '
-            'screenshot (png), eval (js). Logins persist across sessions '
-            '(dedicated profile); secrets are handled by the vault. SECURE '
-            'FILL RULE: when a form asks for a password, auth code or '
-            'anything private, NEVER type its value — you do not have it '
-            'and must not ask for it. Fill every non-secret field, keep '
-            'that field focused, then call with action "fill_secret" and a '
-            'label you generate (e.g. "gmail-login"). The vault fills the '
-            'active input for you; the value is never shown to you, on any '
-            'website.', {
+            'screenshot (png), eval (js), press (key: Enter, Tab, Escape, '
+            'ArrowDown… for forms that need keys), wait (ms, or selector, '
+            'or text — poll instead of guessing), drag (selector, target — '
+            'press at A, sweep, release at B; slider puzzles) and describe '
+            '(prompt? — LOOK at a screenshot of the page with your vision '
+            'and get a literal text description of every field, button and '
+            'prompt: call this whenever you are not sure what the page '
+            'asks). Logins persist across sessions (dedicated profile); '
+            'secrets are handled by the vault. SECURE FILL RULE: when a '
+            'form asks for a password, auth code or anything private, '
+            'NEVER type its value — you do not have it and must not ask '
+            'for it. Fill every non-secret field, keep that field focused, '
+            'then call with action "fill_secret" and a label you generate '
+            '(e.g. "gmail-login"). The vault fills the active input for '
+            'you; the value is never shown to you, on any website.', {
           'type': 'object',
           'properties': {
             'action': {
               'type': 'string',
               'enum': [
                 'navigate', 'click', 'type', 'read', 'back', 'scroll',
-                'screenshot', 'fill_secret'
+                'screenshot', 'fill_secret', 'drag', 'slide', 'wait',
+                'press', 'eval', 'describe'
               ],
             },
             'session': {
@@ -116,14 +131,59 @@ class ToolRegistry {
               'description': 'Browser session id; reuse one to keep state.'
             },
             'url': {'type': 'string'},
-            'selector': {'type': 'string'},
+            'selector': {
+              'type': 'string',
+              'description': 'element A (drag: the handle)'
+            },
+            'target': {
+              'type': 'string',
+              'description': 'drag/slide only: element B to release on'
+            },
+            'handle': {
+              'type': 'string',
+              'description': 'slide only: the slider handle (alias of '
+                  'selector)'
+            },
+            'key': {
+              'type': 'string',
+              'description': 'press only: Enter, Tab, Escape, Backspace, '
+                  'Space, ArrowUp/Down/Left/Right, PageUp/Down, Home, End, '
+                  'Delete'
+            },
+            'ms': {
+              'type': 'integer',
+              'description': 'wait only: milliseconds to sleep (or poll '
+                  'deadline with selector/text)'
+            },
             'text': {'type': 'string'},
+            'js': {'type': 'string', 'description': 'eval only'},
+            'prompt': {
+              'type': 'string',
+              'description': 'describe only: what to look for'
+            },
             'label': {
               'type': 'string',
               'description': 'fill_secret only: the vault label you generate.'
             },
           },
           'required': ['action'],
+        }),
+        ToolDef('vps_shell',
+            'Run ONE shell command on your own VPS (install packages, run '
+            'scripts, manage files). Only if the operator enabled it: '
+            'disabled → the error explains how to enable it — tell the '
+            'user, do not retry. Output is capped and the command runs '
+            'with a clean environment; never put secret values IN a '
+            'command — use vault + fill_secret flows for secrets.', {
+          'type': 'object',
+          'properties': {
+            'command': {'type': 'string'},
+            'timeout': {
+              'type': 'integer',
+              'description': 'seconds, 1-300, default 60'
+            },
+          },
+          'required': ['command'],
         }),
         ToolDef('create_project', 'Create a project workspace with notes.', {
           'type': 'object',
@@ -257,6 +317,67 @@ class ToolRegistry {
       ];
 
   /// Execute a tool call, returning the text result for the model.
+  /// Movement 70 — the AI finally SEES its browser: screenshot on the
+  /// VPS, vision on the phone, text back to the agent. Both engines
+  /// return {'base64': png}; if the page did not load the AI gets the
+  /// honest error instead of a hallucinated form.
+  Future<String> _describePage(
+      BrowserService svc, Map<String, dynamic> args) async {
+    final chatSvc = chat;
+    if (chatSvc == null) {
+      return 'error: vision is not wired on this device';
+    }
+    final session =
+        ((args['session'] as String?)?.trim().isNotEmpty ?? false)
+            ? args['session'].trim()
+            : 'default';
+    final shot = await svc.op('screenshot', session: session);
+    if (shot == null) {
+      return 'error: the VPS did not answer — cannot describe';
+    }
+    String? b64;
+    final result = shot['result'];
+    if (result is Map && result['base64'] is String) {
+      b64 = result['base64'] as String;
+    } else if (shot['base64'] is String) {
+      b64 = shot['base64'] as String;
+    }
+    if (b64 == null || b64.isEmpty) {
+      return 'error: no screenshot data — the page likely did not load. '
+          'Try navigate + wait(ms: 3000) first, then describe again.';
+    }
+    final prompt = (args['prompt'] as String?)?.trim() ?? '';
+    final userText = 'Describe this web page screenshot for a form-filling '
+        'agent. Be exhaustive and literal: every input field (label, '
+        'placeholder, type), every button (exact visible text), links, '
+        'checkboxes, and any visible error message, instruction or prompt '
+        'text (e.g. "slide the puzzle piece"). Do not guess: only report '
+        'what is actually visible.${prompt.isEmpty ? '' : '\nFocus on: $prompt'}';
+    String providerId = '';
+    for (final p in kProviders) {
+      if (await chatSvc.hasKey(p.id)) {
+        providerId = p.id;
+        break;
+      }
+    }
+    if (providerId.isEmpty) {
+      return 'error: no chat provider key saved — vision needs one';
+    }
+    try {
+      final reply = await chatSvc.chat(
+        providerId: providerId,
+        messages: [
+          ChatMessage('user', userText,
+              images: [ChatImage('image/png', b64)]),
+        ],
+        maxTokens: 1024,
+      );
+      return reply.content;
+    } catch (e) {
+      return 'error: vision failed: $e';
+    }
+  }
+
   Future<String> execute(String name, Map<String, dynamic> args) async {
     switch (name) {
       case 'remember':
@@ -281,7 +402,21 @@ class ToolRegistry {
         if (svc == null) {
           return 'error: the AI browser is not available on this device';
         }
+        if ((args['action'] as String?)?.trim() == 'describe') {
+          return _describePage(svc, args);
+        }
         return svc.execute(args);
+
+      case 'vps_shell':
+        final shellSvc = browser;
+        if (shellSvc == null) {
+          return 'error: no VPS configured — set it up in Cloud Computer';
+        }
+        final cmd = (args['command'] as String?)?.trim() ?? '';
+        if (cmd.isEmpty) return 'error: command is required';
+        return shellSvc.shell(
+            cmd, timeout: ((args['timeout'] as num?)?.toInt() ?? 60)
+                .clamp(1, 300));
 
       case 'create_project':
         final title = (args['title'] as String?)?.trim() ?? '';

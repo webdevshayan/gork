@@ -50,6 +50,8 @@ class AgentBrowser {
     'navigate',
     'click',
     'drag',
+    'wait',
+    'press',
     'type',
     'read',
     'back',
@@ -86,6 +88,25 @@ class AgentBrowser {
   ) async {
     if (action == 'close') return _close(session);
     try {
+      return await _dispatch(session, action, args);
+    } catch (e) {
+      // Movement 70 — the browser process can die under us (OOM, crash,
+      // 'browser exited before the page loaded'). Revive once: drop the
+      // dead connection and every stale tab, relaunch, replay the op.
+      if (_browser != null) {
+        try { await _browser!.close(); } catch (_) {}
+        _browser = null;
+        _tabs.clear();
+        final out = await _dispatch(session, action, args);
+        return out..['revived'] = true;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> _dispatch(
+      String session, String action, Map<String, dynamic> args) async {
+    try {
       final tab = await _tab(session);
       switch (action) {
         case 'navigate':
@@ -110,6 +131,10 @@ class AgentBrowser {
           return await _fillSecret(tab, '${args['label'] ?? ''}');
         case 'eval':
           return await _eval(tab, '${args['js'] ?? ''}');
+        case 'wait':
+          return await _wait(tab, args);
+        case 'press':
+          return await _press(tab, '${args['key'] ?? ''}', args);
         default:
           return {
             'ok': false,
@@ -119,8 +144,89 @@ class AgentBrowser {
     } on BrowserUnavailable catch (e) {
       return {'ok': false, 'error': e.message};
     } catch (e) {
+      // Movement 70 — browser-death is NOT an op failure: let it escape
+      // to op()'s revive wrapper (relaunch + replay once). Everything
+      // else is an honest op error.
+      final msg = '$e';
+      final dead = e is StateError ||
+          e is ProcessException ||
+          e is WebSocketException ||
+          msg.contains('Target closed') ||
+          msg.contains('Connection closed') ||
+          msg.contains('browser exited') ||
+          msg.contains('Bad state');
+      if (dead) rethrow;
       return {'ok': false, 'error': '$action failed: $e'};
     }
+  }
+
+  /// Movement 70 — WAIT: sleep ms, or poll until a selector exists or
+  /// visible text contains [text]. 'the browser exited before the page
+  /// loaded' class of bugs mostly die here: poll, don't guess.
+  Future<Map<String, dynamic>> _wait(
+      _Tab tab, Map<String, dynamic> args) async {
+    final ms = (args['ms'] as num?)?.toInt() ?? 0;
+    final selector = '${args['selector'] ?? ''}';
+    final text = '${args['text'] ?? ''}';
+    final deadline = DateTime.now()
+        .add(Duration(milliseconds: ms > 0 ? ms : 10000));
+    while (true) {
+      if (ms > 0 && selector.isEmpty && text.isEmpty) {
+        await Future<void>.delayed(
+            Duration(milliseconds: ms.clamp(0, 60000)));
+        return {'ok': true, 'action': 'wait', 'waited_ms': ms};
+      }
+      bool ready = false;
+      if (selector.isNotEmpty) {
+        final r = await tab.evaluateJson(
+            '(function(){return !!document.querySelector('
+            '${jsonEncode(selector)});})()');
+        ready = r == true;
+      } else if (text.isNotEmpty) {
+        final r = await tab.evaluateJson(
+            '(function(){return document.body && document.body.innerText'
+            '.includes(${jsonEncode(text)});})()');
+        ready = r == true;
+      } else {
+        ready = true;
+      }
+      if (ready) return {'ok': true, 'action': 'wait', 'found': true};
+      if (DateTime.now().isAfter(deadline)) {
+        return {'ok': false, 'error': 'wait timed out', 'found': false};
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  static const Map<String, int> _keyCodes = {
+    'Enter': 13, 'Tab': 9, 'Escape': 27, 'Backspace': 8, 'Space': 32,
+    'ArrowUp': 38, 'ArrowDown': 40, 'ArrowLeft': 37, 'ArrowRight': 39,
+    'PageUp': 33, 'PageDown': 34, 'Home': 36, 'End': 35, 'Delete': 46,
+  };
+
+  /// Movement 70 — PRESS: real key events for forms that only react to
+  /// keys (Enter to submit). Named keys from the map, rawKeyDown + keyUp.
+  Future<Map<String, dynamic>> _press(
+      _Tab tab, String key, Map<String, dynamic> args) async {
+    if (key.isEmpty) return {'ok': false, 'error': 'key is required'};
+    final vk = _keyCodes[key];
+    if (vk == null) {
+      return {'ok': false,
+              'error': 'unknown key "$key" — known: ${_keyCodes.keys.join(", ")}'};
+    }
+    final base = {
+      'key': key,
+      'code': key == 'Space' ? 'Space' : key,
+      'windowsVirtualKeyCode': vk,
+      if ((args['modifiers'] as num?) != null)
+        'modifiers': (args['modifiers'] as num).toInt(),
+    };
+    await tab.cdp.call('Input.dispatchKeyEvent',
+        {'type': 'rawKeyDown', ...base}, sessionId: tab.sessionId);
+    await tab.cdp.call('Input.dispatchKeyEvent',
+        {'type': 'keyUp', ...base}, sessionId: tab.sessionId);
+    await Future<void>.delayed(settleDelay);
+    return {'ok': true, 'action': 'press', 'key': key};
   }
 
   // -- sessions ---------------------------------------------------------------

@@ -11,10 +11,18 @@ class FakeCdp implements CdpConnection {
   final List<(String, Map<String, dynamic>)> calls = [];
   dynamic evaluateValue = '';
 
+  /// Movement 70 — scripted failure: the named method throws ONCE (a dead
+  /// browser mid-op), then succeeds — exercises the self-heal revive.
+  String? throwOnceMethod;
+
   @override
   Future<Map<String, dynamic>> call(
       String method, Map<String, dynamic> params,
       {String? sessionId}) async {
+    if (method == throwOnceMethod) {
+      throwOnceMethod = null;
+      throw StateError('Target closed');
+    }
     calls.add((method, params));
     switch (method) {
       case 'Target.createTarget':
@@ -126,6 +134,57 @@ void main() {
     expect(fake.called('Input.dispatchMouseEvent').where((p) => p.contains('mouseMoved')).length, greaterThanOrEqualTo(24));
     // ...one release.
     expect(fake.called('Input.dispatchMouseEvent').where((p) => p.contains('mouseReleased')).length, 1);
+  });
+
+  test('self-heal: a dead browser mid-op revives and replays the op '
+      '(Movement 70)', () async {
+    fake.throwOnceMethod = 'Page.navigate';
+    final out = await browser.op('default', 'navigate', {'url': 'example.com'});
+    expect(out['ok'], true, reason: 'the retry after revive succeeds');
+    expect(out['revived'], true,
+        reason: 'the AI is told the browser was relaunched');
+    // Initial launch + exactly one relaunch — dead connections are
+    // dropped, never stacked.
+    expect(fake.calls.where((c) => c.$1 == 'LAUNCH').length, 2);
+  });
+
+  test('wait: sleeps ms, or polls until a selector appears', () async {
+    final out =
+        await browser.op('default', 'wait', {'ms': 40});
+    expect(out['ok'], true);
+    expect(out['waited_ms'], 40);
+  });
+
+  test('wait: times out honestly when the selector never appears', () async {
+    fake.evaluateValue = false;
+    final out = await browser.op(
+        'default', 'wait', {'selector': '#never', 'ms': 250});
+    expect(out['ok'], false);
+    expect(out['found'], false);
+    expect(out['error'], contains('timed out'));
+  });
+
+  test('press: real key events — rawKeyDown + keyUp, Enter = vk 13',
+      () async {
+    final out = await browser.op('default', 'press', {'key': 'Enter'});
+    expect(out['ok'], true);
+    final downs = fake
+        .called('Input.dispatchKeyEvent')
+        .where((p) => p.contains('rawKeyDown'))
+        .toList();
+    expect(downs.length, 1);
+    expect(downs.first, contains('13'));
+    expect(
+        fake.called('Input.dispatchKeyEvent')
+            .where((p) => p.contains('keyUp'))
+            .length,
+        1);
+  });
+
+  test('press: unknown key is rejected honestly', () async {
+    final out = await browser.op('default', 'press', {'key': 'Meta+F18'});
+    expect(out['ok'], false);
+    expect(out['error'], contains('known:'));
   });
 
   test('type inserts text and reports only the CHAR COUNT (never the text)',

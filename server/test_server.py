@@ -52,6 +52,7 @@ class ServerTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.stop.set()
         cls.httpd.shutdown()
+        cls.httpd.server_close()
 
     def test_health_open_but_informative_only(self):
         st, body = req('GET', '/health', auth=False)
@@ -521,6 +522,92 @@ class DaemonFallbackTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             d.op('default', 'network', {})
         self.assertIn('agent-browser-only', str(ctx.exception))
+
+
+class ShellGatewayTest(unittest.TestCase):
+    """Movement 70 — ANYTHING, SECURELY: the agent can run commands on its
+    own VPS, but only when the operator flips GORK_SHELL=1, and the server
+    never leaks its own secrets into the child process."""
+
+    @classmethod
+    def setUpClass(cls):
+        # Own server instance — ShellGatewayTest runs after ServerTests'
+        # httpd is already shut down.
+        os.environ['GORK_VPS_TOKEN'] = 'test-token'
+        G.VPS_TOKEN = 'test-token'
+        G.DB_PATH = '/tmp/gork-server-test-shell.sqlite3'
+        if os.path.exists(G.DB_PATH):
+            os.remove(G.DB_PATH)
+        G.init_db()
+        global PORT, BASE
+        # Own port — bind the first one that is actually free.
+        import socket as _socket
+        base_port = PORT + 1
+        for cand in range(base_port, base_port + 10):
+            probe = _socket.socket()
+            try:
+                probe.bind(('127.0.0.1', cand))
+                probe.close()
+                PORT = cand
+                break
+            except OSError:
+                print('PORT %d busy from within this process' % cand)
+            finally:
+                try:
+                    probe.close()
+                except OSError:
+                    pass
+        BASE = 'http://127.0.0.1:%d' % PORT
+        cls.httpd, cls.stop = G.serve('127.0.0.1', PORT)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        time.sleep(0.3)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.stop.set()
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def test_shell_disabled_by_default_is_honest(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('GORK_SHELL', None)
+            st, out = req('POST', '/v1/shell', {'command': 'echo hi'})
+        self.assertEqual(st, 200)
+        self.assertFalse(out.get('ok'))
+        self.assertIn('GORK_SHELL=1', out.get('error', ''))
+
+    def test_shell_enabled_runs_and_answers(self):
+        with patch.dict(os.environ, {'GORK_SHELL': '1'}):
+            st, out = req('POST', '/v1/shell',
+                          {'command': 'echo shell-works', 'timeout': 10})
+        self.assertEqual(st, 200)
+        self.assertTrue(out.get('ok'), out)
+        self.assertEqual(out.get('exit'), 0)
+        self.assertIn('shell-works', out.get('output', ''))
+
+    def test_shell_child_env_is_clean_no_server_secrets(self):
+        with patch.dict(os.environ, {'GORK_SHELL': '1',
+                                     'GORK_VPS_TOKEN': 'top-secret-token'}):
+            st, out = req('POST', '/v1/shell',
+                          {'command':
+                           'test -z "$GORK_VPS_TOKEN" && echo env-clean'})
+        self.assertEqual(st, 200)
+        self.assertTrue(out.get('ok'))
+        self.assertIn('env-clean', out.get('output', ''))
+        self.assertNotIn('top-secret-token', json.dumps(out))
+
+    def test_shell_timeout_kills_honestly(self):
+        with patch.dict(os.environ, {'GORK_SHELL': '1'}):
+            st, out = req('POST', '/v1/shell',
+                          {'command': 'sleep 5', 'timeout': 1})
+        self.assertEqual(st, 200)
+        self.assertFalse(out.get('ok'))
+        self.assertIn('timed out', out.get('error', ''))
+
+    def test_shell_empty_command_rejected(self):
+        with patch.dict(os.environ, {'GORK_SHELL': '1'}):
+            st, out = req('POST', '/v1/shell', {'command': '  '})
+        self.assertEqual(st, 400)
 
 
 if __name__ == '__main__':

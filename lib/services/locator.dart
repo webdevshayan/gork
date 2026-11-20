@@ -118,6 +118,7 @@ class Locator {
     handoff: handoff,
     memoryRooms: memoryRooms,
     browser: browser,
+    chat: chat,
   );
 
   static MemoryRoomsService get memoryRooms => MemoryRoomsService();

@@ -58,6 +58,32 @@ class BrowserService {
     }
   }
 
+  /// Movement 70 — run a command on the user's own VPS. The SERVER gates
+  /// this (GORK_SHELL=1); disabled → the honest error text comes back and
+  /// the AI tells the user how to enable it. The server runs the command
+  /// with a clean env — this app's tokens never reach the child process.
+  Future<String> shell(String command, {int timeout = 60}) async {
+    final base = url;
+    if (base == null) {
+      return 'error: no VPS configured — set it up in Cloud Computer first';
+    }
+    try {
+      final res = await _http.post(
+        Uri.parse('$base/v1/shell'),
+        headers: _headers(await _store.read('vps.token')),
+        body: jsonEncode({'command': command, 'timeout': timeout}),
+      );
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['ok'] != true) {
+        return 'error: ${body['error'] ?? 'command failed'}';
+      }
+      final out = (body['output'] ?? '').toString();
+      return 'exit ${body['exit']}\n$out';
+    } catch (_) {
+      return 'error: the VPS did not answer — command not run';
+    }
+  }
+
   /// The secure fill: the AI names a LABEL, the VPS fills the active input
   /// from the sealed vault. The response NEVER carries the value.
   Future<Map<String, dynamic>?> fillSecret(String label,

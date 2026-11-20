@@ -241,17 +241,39 @@ class _AgentBrowserDriver:
             return 'read', {}
         if action == 'screenshot':
             return 'screenshot', {}
+        if action == 'wait':
+            return 'wait', {'ms': args.get('ms', 0),
+                            'selector': args.get('selector', ''),
+                            'text': args.get('text', '')}
+        if action == 'press':
+            return 'press', {'key': args.get('key', 'Enter')}
+        if action == 'eval':
+            return 'eval', {'js': args.get('js', '')}
         raise RuntimeError('action "%s" is agent-browser-only — the daemon '
                            'browser on this host supports navigate, click, '
                            'type, read, back, scroll, screenshot, drag, '
-                           'fill_secret, eval' % action)
+                           'fill_secret, eval, wait, press' % action)
 
-    def _run(self, *args, timeout=60):
+    _TRANSIENT = ('exited', 'target closed', 'connection closed',
+                  'websocket', 'browser closed', 'session closed')
+
+    def _run(self, *args, timeout=60, retries=0):
         r = subprocess.run(['agent-browser', *args],
                            capture_output=True, text=True, timeout=timeout)
         if r.returncode != 0:
-            raise RuntimeError((r.stderr or r.stdout or 'agent-browser '
-                                'failed').strip()[:500])
+            err = (r.stderr or r.stdout or 'agent-browser '
+                   'failed').strip()[:500]
+            # Movement 70 — the browser process sometimes dies before the
+            # page loads (OOM, crash). Read-only verbs may replay once; a
+            # click/drag/fill NEVER re-runs (double-submit is worse than
+            # one honest failure).
+            low = err.lower()
+            if (retries < 1 and args and args[0] in
+                    ('snapshot', 'get', 'read', 'screenshot', 'open',
+                     'wait', 'url', 'title')
+                    and any(t in low for t in self._TRANSIENT)):
+                return self._run(*args, timeout=timeout, retries=retries + 1)
+            raise RuntimeError(err)
         return (r.stdout or '').strip()
 
     def op(self, session, action, args):
@@ -315,9 +337,13 @@ class _AgentBrowserDriver:
         if action == 'read':
             return {'text': self._run('snapshot', '-c')[:8000]}
         if action == 'screenshot':
+            # Movement 70 — return the PNG base64 directly so the phone's
+            # vision model can describe the page (one shape for both
+            # engines: agent-browser CLI and the daemon fallback).
             path = f"/tmp/gork-{session}-{int(time.time())}.png"
             self._run('screenshot', path, timeout=60)
-            return {'screenshot': path}
+            with open(path, 'rb') as f:
+                return {'base64': base64.b64encode(f.read()).decode()}
         raise RuntimeError('unknown browser action: ' + str(action))
 
     def _safe(self, fn, *args):
@@ -856,6 +882,44 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": False,
                                         "error": redact({"error": str(e)})["error"]})
             return self._json(200, {"ok": True, "result": result})
+        if path == "/v1/shell":
+            # Movement 70 — ANYTHING, SECURELY: the agent's own VPS shell.
+            # OFF until the operator turns it on (GORK_SHELL=1 in the
+            # server env). When on: same auth as every endpoint, a CLEAN
+            # child env (the server's tokens NEVER reach a command), a
+            # hard timeout, capped output, every call audited to the log.
+            if os.environ.get("GORK_SHELL") != "1":
+                return self._json(200, {
+                    "ok": False,
+                    "error": "shell is disabled on this VPS — enable it "
+                             "with GORK_SHELL=1 in the server environment "
+                             "if you want the agent to run commands there"})
+            body = self._read_json()
+            cmd = (body.get("command") or "").strip()
+            if not cmd:
+                return self._json(400, {"error": "command required"})
+            timeout_s = min(max(int(body.get("timeout", 60) or 60), 1), 300)
+            clean_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                         "HOME": os.environ.get("HOME", "/root"),
+                         "TERM": "dumb", "LANG": "C.UTF-8"}
+            self.log_message('SHELL by %s: %s', _owner(), cmd[:120])
+            try:
+                r = subprocess.run(["sh", "-c", cmd],
+                                   capture_output=True, text=True,
+                                   timeout=timeout_s, env=clean_env)
+                out = ((r.stdout or "") + (r.stderr or ""))[:100_000]
+                return self._json(200, {"ok": r.returncode == 0,
+                                        "exit": r.returncode,
+                                        "output": out,
+                                        "truncated": len(r.stdout or "") +
+                                        len(r.stderr or "") > 100_000})
+            except subprocess.TimeoutExpired:
+                return self._json(200, {"ok": False, "exit": None,
+                                        "error": "command timed out after "
+                                                 + str(timeout_s) + "s"})
+            except Exception as e:  # noqa: BLE001 — honest, redacted
+                return self._json(200, {"ok": False,
+                                        "error": redact({"error": str(e)})["error"]})
         if path == "/v1/onboarding/intro":
             # ONE provider request generates ALL the intro messages; the
             # client sends them as separate bubbles with human-like timing.
